@@ -82,19 +82,6 @@ function getVideoDuration(videoPath: string): Promise<number> {
   })
 }
 
-function extractFrame(videoPath: string, timestamp: number, outputPath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    ffmpeg(videoPath)
-      .seekInput(timestamp)
-      .frames(1)
-      .outputFormat('image2')
-      .outputOptions(['-q:v', '2', '-y'])
-      .on('end', () => resolve())
-      .on('error', (err) => reject(err))
-      .save(outputPath)
-  })
-}
-
 async function extractVideoFrames(videoPath: string, sliceCount: number): Promise<string[]> {
   if (!existsSync(videoPath)) {
     throw new Error(`Video file not found: ${videoPath}`)
@@ -104,28 +91,44 @@ async function extractVideoFrames(videoPath: string, sliceCount: number): Promis
   await mkdir(tempDir, { recursive: true })
 
   console.log(`[Analyzer] Extracting frames from: ${videoPath}`)
-  console.log(`[Analyzer] Temp directory: ${tempDir}`)
 
   try {
     const duration = await getVideoDuration(videoPath)
-    console.log(`[Analyzer] Video duration: ${duration}s`)
+    console.log(`[Analyzer] Video duration: ${duration}s, slices: ${sliceCount}`)
 
-    const frames: string[] = []
     const interval = duration / (sliceCount + 1)
-
+    const timestamps: number[] = []
     for (let i = 1; i <= sliceCount; i++) {
-      const timestamp = interval * i
-      const outputPath = join(tempDir, `frame_${i}.jpg`)
+      timestamps.push(interval * i)
+    }
 
-      try {
-        await extractFrame(videoPath, timestamp, outputPath)
-        if (existsSync(outputPath)) {
-          frames.push(outputPath)
-        } else {
-          console.warn(`[Analyzer] Frame ${i} not created at timestamp ${timestamp}s`)
-        }
-      } catch (frameError) {
-        console.error(`[Analyzer] Failed to extract frame ${i} at ${timestamp}s:`, (frameError as Error).message)
+    // 构建 select 滤镜：按时间选择帧，每个时间点允许 0.1 秒误差
+    const selectExpr = timestamps
+      .map((t) => `between(t\\,${t.toFixed(2)}\\,${(t + 0.1).toFixed(2)})`)
+      .join('+')
+
+    const outputPattern = join(tempDir, 'frame_%d.jpg')
+
+    await new Promise<void>((resolve, reject) => {
+      ffmpeg(videoPath)
+        .outputOptions([
+          '-vf', `select='${selectExpr}',scale=640:-1`,
+          '-vsync', 'vfr',
+          '-q:v', '2',
+          '-y'
+        ])
+        .output(outputPattern)
+        .on('end', () => resolve())
+        .on('error', (err) => reject(err))
+        .run()
+    })
+
+    // 收集生成的帧文件
+    const frames: string[] = []
+    for (let i = 1; i <= sliceCount; i++) {
+      const framePath = join(tempDir, `frame_${i}.jpg`)
+      if (existsSync(framePath)) {
+        frames.push(framePath)
       }
     }
 
@@ -133,7 +136,7 @@ async function extractVideoFrames(videoPath: string, sliceCount: number): Promis
       throw new Error('No frames could be extracted from video')
     }
 
-    console.log(`[Analyzer] Extracted ${frames.length} frames`)
+    console.log(`[Analyzer] Extracted ${frames.length} frames in one pass`)
     return frames
   } catch (error) {
     await rm(tempDir, { recursive: true, force: true }).catch(() => {})
