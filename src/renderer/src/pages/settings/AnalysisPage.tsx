@@ -4,19 +4,12 @@ import { Play, Square, Sparkles, Clock, CheckCircle, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select'
 
 export default function AnalysisPage() {
   const [userStats, setUserStats] = useState<UserAnalysisStats[]>([])
   const [totalStats, setTotalStats] = useState<TotalAnalysisStats>({ total: 0, analyzed: 0, unanalyzed: 0 })
-  const [selectedUser, setSelectedUser] = useState<string>('all')
   const [isRunning, setIsRunning] = useState(false)
+  const [currentSecUid, setCurrentSecUid] = useState<string | null>(null)
   const [progress, setProgress] = useState<AnalysisProgress | null>(null)
 
   useEffect(() => {
@@ -27,6 +20,7 @@ export default function AnalysisPage() {
       setProgress(p)
       if (p.status === 'completed' || p.status === 'failed' || p.status === 'stopped') {
         setIsRunning(false)
+        setCurrentSecUid(null)
         loadData()
       }
     })
@@ -48,15 +42,16 @@ export default function AnalysisPage() {
     setIsRunning(running)
   }
 
-  const handleStart = async () => {
+  const handleStart = async (secUid?: string) => {
     try {
       setIsRunning(true)
+      setCurrentSecUid(secUid || null)
       setProgress(null)
-      const secUid = selectedUser === 'all' ? undefined : selectedUser
       await window.api.analysis.start(secUid)
     } catch (error) {
       toast.error((error as Error).message)
       setIsRunning(false)
+      setCurrentSecUid(null)
     }
   }
 
@@ -68,11 +63,6 @@ export default function AnalysisPage() {
       toast.error((error as Error).message)
     }
   }
-
-  const selectedUnanalyzedCount =
-    selectedUser === 'all'
-      ? totalStats.unanalyzed
-      : userStats.find((u) => u.sec_uid === selectedUser)?.unanalyzed || 0
 
   const progressPercent = progress?.totalPosts
     ? Math.round(((progress.analyzedCount + progress.failedCount) / progress.totalPosts) * 100)
@@ -118,76 +108,52 @@ export default function AnalysisPage() {
         </div>
       </div>
 
-      {/* Analysis Control */}
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-lg">分析控制</CardTitle>
-          <CardDescription>选择用户并启动视频内容分析</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex items-center gap-4">
-            <div className="flex-1">
-              <Select value={selectedUser} onValueChange={setSelectedUser} disabled={isRunning}>
-                <SelectTrigger>
-                  <SelectValue placeholder="选择用户" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      <span>全部用户</span>
-                      <span className="text-muted-foreground">({totalStats.unanalyzed} 待分析)</span>
-                    </div>
-                  </SelectItem>
-                  {userStats.map((user) => (
-                    <SelectItem key={user.sec_uid} value={user.sec_uid}>
-                      <div className="flex items-center gap-2">
-                        <span>{user.nickname}</span>
-                        <span className="text-muted-foreground">({user.unanalyzed} 待分析)</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {isRunning ? (
-              <Button variant="destructive" onClick={handleStop}>
+      {/* Progress Card - 只在运行时显示 */}
+      {isRunning && progress && (
+        <Card>
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg">正在分析</CardTitle>
+                <CardDescription>{progress.message}</CardDescription>
+              </div>
+              <Button variant="destructive" size="sm" onClick={handleStop}>
                 <Square className="h-4 w-4 mr-2" />
-                停止分析
+                停止
               </Button>
-            ) : (
-              <Button onClick={handleStart} disabled={selectedUnanalyzedCount === 0}>
-                <Play className="h-4 w-4 mr-2" />
-                开始分析
-              </Button>
-            )}
-          </div>
-
-          {progress && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">{progress.message}</span>
-                <span className="font-medium">{progressPercent}%</span>
-              </div>
-              <Progress value={progressPercent} className="h-2" />
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>
-                  {progress.currentIndex} / {progress.totalPosts}
-                </span>
-                <span>
-                  成功: {progress.analyzedCount} | 失败: {progress.failedCount}
-                </span>
-              </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">
+                {progress.currentIndex} / {progress.totalPosts}
+              </span>
+              <span className="font-medium">{progressPercent}%</span>
+            </div>
+            <Progress value={progressPercent} className="h-2" />
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>成功: {progress.analyzedCount}</span>
+              <span>失败: {progress.failedCount}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* User Stats List */}
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="text-lg">用户分析统计</CardTitle>
-          <CardDescription>各用户的视频分析情况</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg">用户分析统计</CardTitle>
+              <CardDescription>点击分析按钮开始分析对应用户的视频</CardDescription>
+            </div>
+            {!isRunning && totalStats.unanalyzed > 0 && (
+              <Button onClick={() => handleStart()} size="sm">
+                <Play className="h-4 w-4 mr-2" />
+                分析全部
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {userStats.length === 0 ? (
@@ -198,36 +164,52 @@ export default function AnalysisPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {userStats.map((user) => (
-                <div
-                  key={user.sec_uid}
-                  className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-sm font-medium">
-                      {user.nickname.charAt(0)}
+              {userStats.map((user) => {
+                const isCurrentUser = isRunning && currentSecUid === user.sec_uid
+                return (
+                  <div
+                    key={user.sec_uid}
+                    className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
+                      isCurrentUser ? 'bg-primary/5 border-primary/30' : 'hover:bg-muted/50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-sm font-medium">
+                        {user.nickname.charAt(0)}
+                      </div>
+                      <span className="font-medium">{user.nickname}</span>
+                      {isCurrentUser && (
+                        <span className="text-xs text-primary animate-pulse">分析中...</span>
+                      )}
                     </div>
-                    <span className="font-medium">{user.nickname}</span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="text-green-600">{user.analyzed} 已分析</span>
-                      <span className="text-muted-foreground">/</span>
-                      <span className="text-yellow-600">{user.unanalyzed} 待分析</span>
-                      <span className="text-muted-foreground">/</span>
-                      <span className="text-muted-foreground">{user.total} 总计</span>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-green-600">{user.analyzed} 已分析</span>
+                        <span className="text-muted-foreground">/</span>
+                        <span className="text-yellow-600">{user.unanalyzed} 待分析</span>
+                        <span className="text-muted-foreground">/</span>
+                        <span className="text-muted-foreground">{user.total} 总计</span>
+                      </div>
+                      {isCurrentUser ? (
+                        <Button size="sm" variant="destructive" onClick={handleStop}>
+                          <Square className="h-4 w-4 mr-1" />
+                          停止
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleStart(user.sec_uid)}
+                          disabled={isRunning || user.unanalyzed === 0}
+                        >
+                          <Play className="h-4 w-4 mr-1" />
+                          分析
+                        </Button>
+                      )}
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setSelectedUser(user.sec_uid)}
-                      disabled={isRunning || user.unanalyzed === 0}
-                    >
-                      分析
-                    </Button>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>
