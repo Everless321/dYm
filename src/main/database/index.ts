@@ -173,13 +173,6 @@ export function initDatabase(): void {
     }
   }
 
-  // 迁移：重命名 analysis_sexy_level 为 analysis_content_level
-  try {
-    database.exec(`ALTER TABLE posts RENAME COLUMN analysis_sexy_level TO analysis_content_level`)
-  } catch {
-    // 列不存在或已重命名
-  }
-
   // 初始化默认设置
   const defaultSettings = [
     { key: 'douyin_cookie', value: '' },
