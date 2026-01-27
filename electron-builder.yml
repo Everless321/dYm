@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: dymanager
+appId: com.electron.dym
+productName: dYm
 directories:
   buildResources: build
 files:
@@ -14,7 +14,7 @@ asarUnpack:
   - node_modules/@ffmpeg-installer/**
   - node_modules/@ffprobe-installer/**
 win:
-  executableName: dymanager
+  executableName: dym
   forceCodeSigning: false
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
