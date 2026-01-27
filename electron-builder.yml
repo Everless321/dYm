@@ -15,6 +15,7 @@ asarUnpack:
   - node_modules/@ffprobe-installer/**
 win:
   executableName: dymanager
+  sign: false
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -34,7 +35,6 @@ dmg:
 linux:
   target:
     - AppImage
-    - snap
     - deb
   maintainer: electronjs.org
   category: Utility
