@@ -1,4 +1,4 @@
-appId: com.electron.dym
+appId: dev.everless.dym
 productName: dYm
 directories:
   buildResources: build
