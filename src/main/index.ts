@@ -57,6 +57,7 @@ interface MediaFiles {
   video?: string
   images?: string[]
   cover?: string
+  music?: string
 }
 
 function findMediaFiles(secUid: string, folderName: string, awemeType: number): MediaFiles | null {
@@ -91,16 +92,20 @@ function findMediaFiles(secUid: string, folderName: string, awemeType: number): 
     const coverFile = files.find((f) => f.includes('_cover.'))
     const cover = coverFile ? join(targetFolder, coverFile) : undefined
 
+    // 查找音乐文件
+    const musicFile = files.find((f) => /\.(mp3|m4a|aac|wav|ogg)$/i.test(f))
+    const music = musicFile ? join(targetFolder, musicFile) : undefined
+
     // 图集类型: awemeType === 68
     if (awemeType === 68) {
       const images = files
         .filter((f) => /\.(webp|jpg|jpeg|png)$/i.test(f) && !f.includes('_cover'))
         .map((f) => join(targetFolder!, f))
         .sort()
-      return { type: 'images', images, cover }
+      return { type: 'images', images, cover, music }
     }
 
-    // 视频类型
+    // 视频类型（视频自带音轨，不需要额外音乐）
     const videoFile = files.find((f) => /\.(mp4|mov|avi)$/i.test(f))
     const video = videoFile ? join(targetFolder, videoFile) : undefined
     return { type: 'video', video, cover }

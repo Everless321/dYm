@@ -163,6 +163,7 @@ declare global {
     video?: string
     images?: string[]
     cover?: string
+    music?: string
   }
 
   interface PostAuthor {

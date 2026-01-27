@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { ChevronLeft, ChevronRight, X, Images, Video } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { ChevronLeft, ChevronRight, X, Images, Video, Volume2, VolumeX } from 'lucide-react'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 
@@ -13,6 +13,8 @@ export function MediaViewer({ post, open, onOpenChange }: MediaViewerProps) {
   const [media, setMedia] = useState<MediaFiles | null>(null)
   const [loading, setLoading] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(0)
+  const [isMuted, setIsMuted] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     if (open && post) {
@@ -20,8 +22,22 @@ export function MediaViewer({ post, open, onOpenChange }: MediaViewerProps) {
     } else {
       setMedia(null)
       setCurrentIndex(0)
+      // 关闭时停止音乐
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current.currentTime = 0
+      }
     }
   }, [open, post])
+
+  // 当有音乐且是图集时自动播放
+  useEffect(() => {
+    if (media?.music && media.type === 'images' && audioRef.current) {
+      audioRef.current.play().catch(() => {
+        // 自动播放被阻止，忽略错误
+      })
+    }
+  }, [media])
 
   const loadMedia = async () => {
     if (!post) return
@@ -84,9 +100,26 @@ export function MediaViewer({ post, open, onOpenChange }: MediaViewerProps) {
               </span>
             )}
           </div>
-          <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}>
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            {/* 图集有音乐时显示静音按钮 */}
+            {isImages && media?.music && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  setIsMuted(!isMuted)
+                  if (audioRef.current) {
+                    audioRef.current.muted = !isMuted
+                  }
+                }}
+              >
+                {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Content */}
@@ -122,6 +155,15 @@ export function MediaViewer({ post, open, onOpenChange }: MediaViewerProps) {
                       <ChevronRight className="h-6 w-6" />
                     </Button>
                   </>
+                )}
+                {/* 图集背景音乐 */}
+                {media.music && (
+                  <audio
+                    ref={audioRef}
+                    src={`local://${media.music}`}
+                    loop
+                    muted={isMuted}
+                  />
                 )}
               </>
             ) : media.video ? (
