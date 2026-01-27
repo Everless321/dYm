@@ -752,16 +752,16 @@ export interface UserAnalysisStats {
 export function getUserAnalysisStats(): UserAnalysisStats[] {
   const database = getDatabase()
 
-  // 获取可见用户
-  const visibleUsers = database
-    .prepare('SELECT sec_uid, nickname FROM users WHERE show_in_home = 1 ORDER BY nickname')
+  // 获取所有用户（分析页面不受 show_in_home 限制）
+  const allUsers = database
+    .prepare('SELECT sec_uid, nickname FROM users ORDER BY nickname')
     .all() as { sec_uid: string; nickname: string }[]
 
-  if (visibleUsers.length === 0) return []
+  if (allUsers.length === 0) return []
 
   const result: UserAnalysisStats[] = []
 
-  for (const user of visibleUsers) {
+  for (const user of allUsers) {
     const stats = database
       .prepare(`
         SELECT
@@ -788,16 +788,7 @@ export function getUserAnalysisStats(): UserAnalysisStats[] {
 export function getTotalAnalysisStats(): { total: number; analyzed: number; unanalyzed: number } {
   const database = getDatabase()
 
-  // 获取可见用户
-  const visibleUsers = database
-    .prepare('SELECT sec_uid FROM users WHERE show_in_home = 1')
-    .all() as { sec_uid: string }[]
-
-  if (visibleUsers.length === 0) return { total: 0, analyzed: 0, unanalyzed: 0 }
-
-  const placeholders = visibleUsers.map(() => '?').join(',')
-  const secUids = visibleUsers.map((u) => u.sec_uid)
-
+  // 获取所有帖子的分析统计（分析页面不受 show_in_home 限制）
   const stats = database
     .prepare(`
       SELECT
@@ -805,9 +796,8 @@ export function getTotalAnalysisStats(): { total: number; analyzed: number; unan
         SUM(CASE WHEN analyzed_at IS NOT NULL THEN 1 ELSE 0 END) as analyzed,
         SUM(CASE WHEN analyzed_at IS NULL THEN 1 ELSE 0 END) as unanalyzed
       FROM posts
-      WHERE sec_uid IN (${placeholders})
     `)
-    .get(...secUids) as { total: number; analyzed: number; unanalyzed: number }
+    .get() as { total: number; analyzed: number; unanalyzed: number }
 
   return stats || { total: 0, analyzed: 0, unanalyzed: 0 }
 }
