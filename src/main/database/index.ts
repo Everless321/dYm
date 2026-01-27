@@ -183,7 +183,7 @@ export function initDatabase(): void {
     // 分析相关设置
     { key: 'analysis_concurrency', value: '2' },
     { key: 'analysis_rpm', value: '10' },
-    { key: 'analysis_model', value: 'grok-2-vision-latest' },
+    { key: 'analysis_model', value: 'grok-4-fast' },
     { key: 'analysis_slices', value: '4' },
     { key: 'analysis_prompt', value: DEFAULT_ANALYSIS_PROMPT }
   ]
@@ -448,9 +448,12 @@ export function getTaskById(id: number): DbTaskWithUsers | undefined {
   const task = database.prepare('SELECT * FROM download_tasks WHERE id = ?').get(id) as DbTask | undefined
   if (!task) return undefined
 
+  // 动态统计 downloaded_count
   const users = database.prepare(`
-    SELECT u.* FROM users u
+    SELECT u.*, COALESCE(p.cnt, 0) as downloaded_count
+    FROM users u
     INNER JOIN task_users tu ON u.id = tu.user_id
+    LEFT JOIN (SELECT user_id, COUNT(*) as cnt FROM posts GROUP BY user_id) p ON u.id = p.user_id
     WHERE tu.task_id = ?
   `).all(id) as DbUser[]
 
@@ -462,9 +465,12 @@ export function getAllTasks(): DbTaskWithUsers[] {
   const tasks = database.prepare('SELECT * FROM download_tasks ORDER BY created_at DESC').all() as DbTask[]
 
   return tasks.map(task => {
+    // 动态统计 downloaded_count
     const users = database.prepare(`
-      SELECT u.* FROM users u
+      SELECT u.*, COALESCE(p.cnt, 0) as downloaded_count
+      FROM users u
       INNER JOIN task_users tu ON u.id = tu.user_id
+      LEFT JOIN (SELECT user_id, COUNT(*) as cnt FROM posts GROUP BY user_id) p ON u.id = p.user_id
       WHERE tu.task_id = ?
     `).all(task.id) as DbUser[]
     return { ...task, users }

@@ -15,7 +15,8 @@ import {
   ChevronRight,
   Pencil,
   Settings2,
-  Download
+  Download,
+  ArrowUpDown
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -45,6 +46,8 @@ import { Badge } from '@/components/ui/badge'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 
+type SortOption = 'default' | 'undownloaded' | 'total'
+
 export default function UsersPage() {
   const [users, setUsers] = useState<DbUser[]>([])
   const [open, setOpen] = useState(false)
@@ -55,6 +58,7 @@ export default function UsersPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [sortBy, setSortBy] = useState<SortOption>('default')
   const [clipboardStatus, setClipboardStatus] = useState<{
     detected: boolean
     type: 'user' | 'video' | 'unknown' | null
@@ -83,17 +87,30 @@ export default function UsersPage() {
     loadUsers()
   }, [])
 
-  // 搜索过滤
+  // 搜索过滤和排序
   const filteredUsers = useMemo(() => {
-    if (!searchTerm.trim()) return users
-    const term = searchTerm.toLowerCase()
-    return users.filter(
-      (u) =>
-        u.nickname?.toLowerCase().includes(term) ||
-        u.unique_id?.toLowerCase().includes(term) ||
-        u.short_id?.toLowerCase().includes(term)
-    )
-  }, [users, searchTerm])
+    let result = users
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase()
+      result = result.filter(
+        (u) =>
+          u.nickname?.toLowerCase().includes(term) ||
+          u.unique_id?.toLowerCase().includes(term) ||
+          u.short_id?.toLowerCase().includes(term)
+      )
+    }
+    // 排序
+    if (sortBy === 'undownloaded') {
+      result = [...result].sort((a, b) => {
+        const aUndownloaded = a.aweme_count - a.downloaded_count
+        const bUndownloaded = b.aweme_count - b.downloaded_count
+        return bUndownloaded - aUndownloaded
+      })
+    } else if (sortBy === 'total') {
+      result = [...result].sort((a, b) => b.aweme_count - a.aweme_count)
+    }
+    return result
+  }, [users, searchTerm, sortBy])
 
   // 分页
   const totalPages = Math.ceil(filteredUsers.length / pageSize)
@@ -102,10 +119,10 @@ export default function UsersPage() {
     return filteredUsers.slice(start, start + pageSize)
   }, [filteredUsers, currentPage, pageSize])
 
-  // 搜索词或分页大小变化时重置页码
+  // 搜索词、分页大小或排序变化时重置页码
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm, pageSize])
+  }, [searchTerm, pageSize, sortBy])
 
   // 检测剪贴板中的抖音链接
   const checkClipboard = useCallback(async () => {
@@ -514,6 +531,18 @@ export default function UsersPage() {
                   placeholder="搜索用户名或抖音号..."
                   className="pl-9 w-64"
                 />
+              </div>
+              <div className="flex items-center gap-2">
+                <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SortOption)}
+                  className="h-9 px-3 text-sm border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="default">默认排序</option>
+                  <option value="undownloaded">未下载优先</option>
+                  <option value="total">总数优先</option>
+                </select>
               </div>
               {users.length > 0 && (
                 <Badge variant="secondary" className="px-3 py-1">

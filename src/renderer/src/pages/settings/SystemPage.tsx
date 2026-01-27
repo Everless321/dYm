@@ -14,11 +14,12 @@ export default function SystemPage() {
   const [apiUrl, setApiUrl] = useState('https://api.x.ai/v1')
   const [downloadPath, setDownloadPath] = useState('')
   const [maxDownloadCount, setMaxDownloadCount] = useState('50')
+  const [videoDownloadConcurrency, setVideoDownloadConcurrency] = useState('3')
   const [fetchingCookie, setFetchingCookie] = useState(false)
   const [verifyingApi, setVerifyingApi] = useState(false)
   const [analysisConcurrency, setAnalysisConcurrency] = useState('2')
   const [analysisRpm, setAnalysisRpm] = useState('10')
-  const [analysisModel, setAnalysisModel] = useState('grok-2-vision-latest')
+  const [analysisModel, setAnalysisModel] = useState('grok-4-fast')
   const [analysisSlices, setAnalysisSlices] = useState('4')
   const [analysisPrompt, setAnalysisPrompt] = useState('')
 
@@ -32,10 +33,11 @@ export default function SystemPage() {
     setApiKey(settings.grok_api_key || '')
     setApiUrl(settings.grok_api_url || 'https://api.x.ai/v1')
     setDownloadPath(settings.download_path || '')
-    setMaxDownloadCount(settings.max_download_count || '50')
+    setMaxDownloadCount(settings.max_download_count || '0')
+    setVideoDownloadConcurrency(settings.video_download_concurrency || '3')
     setAnalysisConcurrency(settings.analysis_concurrency || '2')
     setAnalysisRpm(settings.analysis_rpm || '10')
-    setAnalysisModel(settings.analysis_model || 'grok-2-vision-latest')
+    setAnalysisModel(settings.analysis_model || 'grok-4-fast')
     setAnalysisSlices(settings.analysis_slices || '4')
     setAnalysisPrompt(settings.analysis_prompt || '')
   }
@@ -104,6 +106,7 @@ export default function SystemPage() {
   const handleSaveDownload = async () => {
     try {
       await window.api.settings.set('max_download_count', maxDownloadCount)
+      await window.api.settings.set('video_download_concurrency', videoDownloadConcurrency)
       toast.success('下载设置已保存')
     } catch {
       toast.error('保存失败')
@@ -289,19 +292,35 @@ export default function SystemPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="max-download">单次最大下载数量</Label>
-            <Input
-              id="max-download"
-              type="number"
-              min="0"
-              max="500"
-              value={maxDownloadCount}
-              onChange={(e) => setMaxDownloadCount(e.target.value)}
-              placeholder="50"
-              className="max-w-xs"
-            />
-            <p className="text-xs text-muted-foreground">每个用户最多下载的视频数量，0 表示不限制</p>
+          <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label htmlFor="max-download">单次最大下载数量</Label>
+              <Input
+                id="max-download"
+                type="number"
+                min="0"
+                max="500"
+                value={maxDownloadCount}
+                onChange={(e) => setMaxDownloadCount(e.target.value)}
+                placeholder="0"
+                className="max-w-xs"
+              />
+              <p className="text-xs text-muted-foreground">每个用户最多下载的视频数量，0 表示不限制</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="video-concurrency">视频下载并发数</Label>
+              <Input
+                id="video-concurrency"
+                type="number"
+                min="1"
+                max="10"
+                value={videoDownloadConcurrency}
+                onChange={(e) => setVideoDownloadConcurrency(e.target.value)}
+                placeholder="3"
+                className="max-w-xs"
+              />
+              <p className="text-xs text-muted-foreground">同时下载的视频数量</p>
+            </div>
           </div>
           <Separator />
           <div className="flex justify-end">

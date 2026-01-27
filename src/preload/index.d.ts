@@ -184,6 +184,7 @@ declare global {
     getAllTags: () => Promise<string[]>
     getCoverPath: (secUid: string, folderName: string) => Promise<string | null>
     getMediaFiles: (secUid: string, folderName: string, awemeType: number) => Promise<MediaFiles | null>
+    openFolder: (secUid: string, folderName: string) => Promise<void>
   }
 
   interface AnalysisProgress {

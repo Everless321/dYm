@@ -1,11 +1,17 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Settings, Video, Play, Images, X, Filter, Tag, Flame } from 'lucide-react'
+import { Settings, Video, Play, Images, X, Filter, Tag, Flame, FolderOpen } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Slider } from '@/components/ui/slider'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger
+} from '@/components/ui/context-menu'
 import { MediaViewer } from '@/components/MediaViewer'
 
 const IMAGE_AWEME_TYPE = 68
@@ -273,71 +279,82 @@ export default function HomePage() {
             /* Video Grid */
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {posts.map((post) => (
-                <Card
-                  key={post.id}
-                  className="overflow-hidden cursor-pointer hover:shadow-lg transition-shadow group"
-                  onClick={() => handlePostClick(post)}
-                >
-                  <div className="aspect-[9/16] bg-muted relative">
-                    {getCoverUrl(post) ? (
-                      <img
-                        src={getCoverUrl(post)!}
-                        alt={post.desc}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        {isImagePost(post) ? (
-                          <Images className="h-12 w-12 text-muted-foreground/50" />
+                <ContextMenu key={post.id}>
+                  <ContextMenuTrigger asChild>
+                    <Card
+                      className="overflow-hidden cursor-pointer hover:shadow-lg transition-shadow group"
+                      onClick={() => handlePostClick(post)}
+                    >
+                      <div className="aspect-[9/16] bg-muted relative">
+                        {getCoverUrl(post) ? (
+                          <img
+                            src={getCoverUrl(post)!}
+                            alt={post.desc}
+                            className="w-full h-full object-cover"
+                          />
                         ) : (
-                          <Video className="h-12 w-12 text-muted-foreground/50" />
+                          <div className="w-full h-full flex items-center justify-center">
+                            {isImagePost(post) ? (
+                              <Images className="h-12 w-12 text-muted-foreground/50" />
+                            ) : (
+                              <Video className="h-12 w-12 text-muted-foreground/50" />
+                            )}
+                          </div>
+                        )}
+                        {/* Play/View overlay */}
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                          {isImagePost(post) ? (
+                            <Images className="h-12 w-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                          ) : (
+                            <Play className="h-12 w-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                          )}
+                        </div>
+                        {/* Type badge */}
+                        <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
+                          {isImagePost(post) ? '图集' : '视频'}
+                        </div>
+                        {/* Date badge */}
+                        {post.create_time && (
+                          <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
+                            {formatDate(post.create_time)}
+                          </div>
                         )}
                       </div>
-                    )}
-                    {/* Play/View overlay */}
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                      {isImagePost(post) ? (
-                        <Images className="h-12 w-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                      ) : (
-                        <Play className="h-12 w-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                      )}
-                    </div>
-                    {/* Type badge */}
-                    <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
-                      {isImagePost(post) ? '图集' : '视频'}
-                    </div>
-                    {/* Date badge */}
-                    {post.create_time && (
-                      <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
-                        {formatDate(post.create_time)}
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-3">
-                    <p className="text-sm font-medium line-clamp-2">{post.desc || post.caption || '无标题'}</p>
-                    <p className="text-xs text-muted-foreground mt-1">@{post.nickname}</p>
-                    {post.analysis_tags && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {parseTags(post.analysis_tags).slice(0, 3).map((tag) => (
-                          <Badge key={tag} variant="secondary" className="text-xs px-1.5 py-0">
-                            {tag}
-                          </Badge>
-                        ))}
-                        {parseTags(post.analysis_tags).length > 3 && (
-                          <Badge variant="outline" className="text-xs px-1.5 py-0">
-                            +{parseTags(post.analysis_tags).length - 3}
-                          </Badge>
+                      <div className="p-3">
+                        <p className="text-sm font-medium line-clamp-2">{post.desc || post.caption || '无标题'}</p>
+                        <p className="text-xs text-muted-foreground mt-1">@{post.nickname}</p>
+                        {post.analysis_tags && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {parseTags(post.analysis_tags).slice(0, 3).map((tag) => (
+                              <Badge key={tag} variant="secondary" className="text-xs px-1.5 py-0">
+                                {tag}
+                              </Badge>
+                            ))}
+                            {parseTags(post.analysis_tags).length > 3 && (
+                              <Badge variant="outline" className="text-xs px-1.5 py-0">
+                                +{parseTags(post.analysis_tags).length - 3}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                        {post.analysis_sexy_level !== null && post.analysis_sexy_level > 0 && (
+                          <div className="flex items-center gap-1 mt-1.5">
+                            <Flame className="h-3 w-3 text-orange-500" />
+                            <span className="text-xs text-orange-500">{post.analysis_sexy_level}</span>
+                          </div>
                         )}
                       </div>
-                    )}
-                    {post.analysis_sexy_level !== null && post.analysis_sexy_level > 0 && (
-                      <div className="flex items-center gap-1 mt-1.5">
-                        <Flame className="h-3 w-3 text-orange-500" />
-                        <span className="text-xs text-orange-500">{post.analysis_sexy_level}</span>
-                      </div>
-                    )}
-                  </div>
-                </Card>
+                    </Card>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent>
+                    <ContextMenuItem
+                      onClick={() => window.api.post.openFolder(post.sec_uid, post.folder_name)}
+                    >
+                      <FolderOpen className="h-4 w-4 mr-2" />
+                      在文件管理器中打开
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
               ))}
             </div>
           )}

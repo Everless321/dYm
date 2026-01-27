@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
@@ -43,18 +43,50 @@ export default function TaskDetailPage() {
   const [loading, setLoading] = useState(true)
   const [isRunning, setIsRunning] = useState(false)
   const [progress, setProgress] = useState<DownloadProgress | null>(null)
+  const [activeUsers, setActiveUsers] = useState<Set<string>>(new Set())
+  const lastRefreshRef = useRef<number>(0)
 
   const handleProgress = useCallback(
     (p: DownloadProgress) => {
       if (p.taskId === parseInt(id || '0')) {
         setProgress(p)
         setIsRunning(p.status === 'running')
+
+        // 更新活跃用户列表
+        if (p.status === 'running' && p.currentUser) {
+          setActiveUsers((prev) => {
+            if (prev.has(p.currentUser!)) return prev
+            const next = new Set(prev)
+            next.add(p.currentUser!)
+            return next
+          })
+        }
+
+        // 用户完成时从活跃列表移除
+        if (p.message?.includes('完成') && p.currentUser) {
+          setActiveUsers((prev) => {
+            if (!prev.has(p.currentUser!)) return prev
+            const next = new Set(prev)
+            next.delete(p.currentUser!)
+            return next
+          })
+        }
+
         if (p.status === 'completed') {
           toast.success(p.message)
+          setActiveUsers(new Set())
           loadTask(parseInt(id || '0'))
         } else if (p.status === 'failed') {
           toast.error(p.message)
+          setActiveUsers(new Set())
           loadTask(parseInt(id || '0'))
+        } else if (p.status === 'running') {
+          // 仅每 5 秒刷新一次任务数据
+          const now = Date.now()
+          if (now - lastRefreshRef.current > 5000) {
+            lastRefreshRef.current = now
+            loadTask(parseInt(id || '0'))
+          }
         }
       }
     },
@@ -72,6 +104,19 @@ export default function TaskDetailPage() {
     const unsubscribe = window.api.download.onProgress(handleProgress)
     return () => unsubscribe()
   }, [handleProgress])
+
+  // 将所有正在下载的用户置顶 (必须在所有 hooks 之后、早期 return 之前)
+  const sortedUsers = useMemo(() => {
+    if (!task) return []
+    if (!isRunning || activeUsers.size === 0) return task.users
+    return [...task.users].sort((a, b) => {
+      const aIsActive = activeUsers.has(a.nickname)
+      const bIsActive = activeUsers.has(b.nickname)
+      if (aIsActive && !bIsActive) return -1
+      if (!aIsActive && bIsActive) return 1
+      return 0
+    })
+  }, [task?.users, isRunning, activeUsers])
 
   const loadTask = async (taskId: number) => {
     setLoading(true)
@@ -140,6 +185,7 @@ export default function TaskDetailPage() {
   const status = statusConfig[task.status]
   const StatusIcon = status.icon
   const totalVideos = task.users.reduce((sum, u) => sum + u.aweme_count, 0)
+  const totalDownloaded = task.users.reduce((sum, u) => sum + (u.downloaded_count || 0), 0)
 
   return (
     <div className="space-y-4">
@@ -207,7 +253,7 @@ export default function TaskDetailPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">
-                  {task.downloaded_videos} / {task.total_videos || totalVideos}
+                  {totalDownloaded} / {totalVideos}
                 </p>
                 <p className="text-sm text-muted-foreground">下载进度</p>
               </div>
@@ -287,7 +333,7 @@ export default function TaskDetailPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {task.users.length === 0 ? (
+              {sortedUsers.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell colSpan={5} className="h-32 text-center">
                     <div className="flex flex-col items-center justify-center text-muted-foreground">
@@ -297,54 +343,74 @@ export default function TaskDetailPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                task.users.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="py-3">
-                      <div className="flex items-center gap-4">
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage src={user.avatar} className="object-cover" />
-                          <AvatarFallback>
-                            {user.nickname?.charAt(0).toUpperCase() || 'U'}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <p className="font-medium truncate">{user.nickname}</p>
-                          <p className="text-xs text-muted-foreground truncate max-w-[180px]">
-                            {user.signature || '暂无签名'}
-                          </p>
+                sortedUsers.map((user) => {
+                  const isActiveUser = isRunning && activeUsers.has(user.nickname)
+                  return (
+                    <TableRow
+                      key={user.id}
+                      className={isActiveUser ? 'bg-primary/10 border-l-2 border-l-primary' : ''}
+                    >
+                      <TableCell className="py-3">
+                        <div className="flex items-center gap-4">
+                          <div className="relative">
+                            <Avatar className="h-10 w-10">
+                              <AvatarImage src={user.avatar} className="object-cover" />
+                              <AvatarFallback>
+                                {user.nickname?.charAt(0).toUpperCase() || 'U'}
+                              </AvatarFallback>
+                            </Avatar>
+                            {isActiveUser && (
+                              <div className="absolute -right-1 -bottom-1 h-4 w-4 rounded-full bg-primary flex items-center justify-center">
+                                <Loader2 className="h-2.5 w-2.5 text-primary-foreground animate-spin" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium truncate">{user.nickname}</p>
+                              {isActiveUser && (
+                                <Badge variant="default" className="text-xs px-1.5 py-0">
+                                  下载中
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground truncate max-w-[180px]">
+                              {user.signature || '暂无签名'}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-muted-foreground font-mono">
-                        @{user.unique_id || user.short_id || '-'}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant="outline" className="font-semibold">
-                        {formatNumber(user.follower_count)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span className="font-medium">{user.aweme_count}</span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <div className="flex flex-col items-center gap-1">
-                        <span className="text-sm font-medium">
-                          {user.downloaded_count} / {user.aweme_count}
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm text-muted-foreground font-mono">
+                          @{user.unique_id || user.short_id || '-'}
                         </span>
-                        <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-foreground rounded-full transition-all"
-                            style={{
-                              width: `${user.aweme_count > 0 ? (user.downloaded_count / user.aweme_count) * 100 : 0}%`
-                            }}
-                          />
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="outline" className="font-semibold">
+                          {formatNumber(user.follower_count)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="font-medium">{user.aweme_count}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-sm font-medium">
+                            {user.downloaded_count} / {user.aweme_count}
+                          </span>
+                          <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${isActiveUser ? 'bg-primary' : 'bg-foreground'}`}
+                              style={{
+                                width: `${user.aweme_count > 0 ? (user.downloaded_count / user.aweme_count) * 100 : 0}%`
+                              }}
+                            />
+                          </div>
                         </div>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
               )}
             </TableBody>
           </Table>

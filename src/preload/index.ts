@@ -81,7 +81,9 @@ const postAPI = {
   getCoverPath: (secUid: string, folderName: string): Promise<string | null> =>
     ipcRenderer.invoke('post:getCoverPath', secUid, folderName),
   getMediaFiles: (secUid: string, folderName: string, awemeType: number): Promise<MediaFiles | null> =>
-    ipcRenderer.invoke('post:getMediaFiles', secUid, folderName, awemeType)
+    ipcRenderer.invoke('post:getMediaFiles', secUid, folderName, awemeType),
+  openFolder: (secUid: string, folderName: string): Promise<void> =>
+    ipcRenderer.invoke('post:openFolder', secUid, folderName)
 }
 
 const grokAPI = {

@@ -427,6 +427,18 @@ app.whenReady().then(() => {
   ipcMain.handle('post:getMediaFiles', (_event, secUid: string, folderName: string, awemeType: number) =>
     findMediaFiles(secUid, folderName, awemeType)
   )
+  ipcMain.handle('post:openFolder', (_event, secUid: string, folderName: string) => {
+    const folderPath = join(getDownloadPath(), secUid, folderName)
+    if (existsSync(folderPath)) {
+      shell.openPath(folderPath)
+    } else {
+      // 如果具体文件夹不存在，打开用户目录
+      const userPath = join(getDownloadPath(), secUid)
+      if (existsSync(userPath)) {
+        shell.openPath(userPath)
+      }
+    }
+  })
 
   // Database IPC handlers
   ipcMain.handle('db:execute', (_event, sql: string, params?: unknown[]) => {
