@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { Settings, Video, Play, Images, X, Filter, Tag, Flame, FolderOpen } from 'lucide-react'
+import { Settings, Video, Play, Images, X, Filter, Tag, Flame, FolderOpen, Download } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -13,6 +13,7 @@ import {
   ContextMenuTrigger
 } from '@/components/ui/context-menu'
 import { MediaViewer } from '@/components/MediaViewer'
+import { VideoDownloadDialog } from '@/components/VideoDownloadDialog'
 
 const IMAGE_AWEME_TYPE = 68
 
@@ -35,6 +36,7 @@ export default function HomePage() {
   const [sexyLevelRange, setSexyLevelRange] = useState<[number, number]>([0, 10])
   const [showFilters, setShowFilters] = useState(false)
   const [analyzedOnly, setAnalyzedOnly] = useState(false)
+  const [downloadDialogOpen, setDownloadDialogOpen] = useState(false)
   const sentinelRef = useRef<HTMLDivElement>(null)
 
   const filters = useMemo<PostFilters>(() => ({
@@ -185,7 +187,7 @@ export default function HomePage() {
       {/* Header */}
       <header className="h-14 border-b border-border flex items-center justify-between px-6">
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-semibold">dYmanager</h1>
+          <h1 className="text-xl font-semibold">dYm</h1>
           {total > 0 && (
             <span className="text-sm text-muted-foreground">
               已加载 {posts.length} / {total} 个作品
@@ -235,6 +237,9 @@ export default function HomePage() {
               清除
             </Button>
           )}
+          <Button variant="ghost" size="icon" onClick={() => setDownloadDialogOpen(true)}>
+            <Download className="h-5 w-5" />
+          </Button>
           <Link to="/settings">
             <Button variant="ghost" size="icon">
               <Settings className="h-5 w-5" />
@@ -421,6 +426,11 @@ export default function HomePage() {
         post={selectedPost}
         open={viewerOpen}
         onOpenChange={setViewerOpen}
+      />
+
+      <VideoDownloadDialog
+        open={downloadDialogOpen}
+        onOpenChange={setDownloadDialogOpen}
       />
     </div>
   )

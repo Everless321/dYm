@@ -109,6 +109,11 @@ const analysisAPI = {
   }
 }
 
+const videoAPI = {
+  getDetail: (url: string): Promise<VideoInfo> => ipcRenderer.invoke('video:getDetail', url),
+  downloadToFolder: (info: VideoInfo): Promise<void> => ipcRenderer.invoke('video:downloadToFolder', info)
+}
+
 const api = {
   db: dbAPI,
   settings: settingsAPI,
@@ -119,7 +124,8 @@ const api = {
   download: downloadAPI,
   post: postAPI,
   grok: grokAPI,
-  analysis: analysisAPI
+  analysis: analysisAPI,
+  video: videoAPI
 }
 
 if (process.contextIsolated) {

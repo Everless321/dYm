@@ -232,6 +232,21 @@ declare global {
     onProgress: (callback: (progress: AnalysisProgress) => void) => () => void
   }
 
+  interface VideoInfo {
+    awemeId: string
+    desc: string
+    nickname: string
+    coverUrl: string
+    type: 'video' | 'images'
+    videoUrl?: string
+    imageUrls?: string[]
+  }
+
+  interface VideoAPI {
+    getDetail: (url: string) => Promise<VideoInfo>
+    downloadToFolder: (info: VideoInfo) => Promise<void>
+  }
+
   interface API {
     db: DatabaseAPI
     settings: SettingsAPI
@@ -243,6 +258,7 @@ declare global {
     post: PostAPI
     grok: GrokAPI
     analysis: AnalysisAPI
+    video: VideoAPI
   }
 
   interface Window {
