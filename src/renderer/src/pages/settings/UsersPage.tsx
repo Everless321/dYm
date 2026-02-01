@@ -15,7 +15,8 @@ import {
   X,
   Play,
   Square,
-  Clock
+  Clock,
+  ExternalLink
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -571,7 +572,7 @@ export default function UsersPage() {
                     onCheckedChange={() => handleToggleShowInHome(user)}
                   />
                 </div>
-                <div className="w-36 flex justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                <div className="w-44 flex justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
                   {syncingUserId === user.id ? (
                     <Button
                       variant="ghost"
@@ -594,6 +595,15 @@ export default function UsersPage() {
                       <Play className="h-4 w-4" />
                     </Button>
                   )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-[#7A7570] hover:text-[#FE2C55]"
+                    onClick={() => window.open(user.homepage_url, '_blank')}
+                    title="打开主页"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"
