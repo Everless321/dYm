@@ -691,7 +691,7 @@ export default function UsersPage() {
 
       {/* Add User Modal */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden">
+        <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden" showCloseButton={false}>
           <div className="h-[60px] flex items-center justify-between px-6 border-b border-[#EAE6E1]">
             <h2 className="text-lg font-semibold text-[#312E2A]">添加抖音用户</h2>
             <button
