@@ -16,7 +16,8 @@ import {
   Play,
   Square,
   Clock,
-  ExternalLink
+  ExternalLink,
+  Search
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -45,7 +46,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(false)
   const [refreshingId, setRefreshingId] = useState<number | null>(null)
   const [batchRefreshing, setBatchRefreshing] = useState(false)
-  const [searchTerm] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [sortBy] = useState<SortOption>('default')
@@ -408,37 +409,25 @@ export default function UsersPage() {
       </header>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-6 space-y-5">
-        {/* Add User Card */}
-        <div className="bg-white rounded-xl border border-[#EAE6E1] p-5">
-          <h3 className="text-base font-semibold text-[#312E2A]">添加抖音用户</h3>
-          <p className="text-[13px] text-[#7A7570] mt-1">
-            输入抖音用户主页链接，系统将自动解析用户信息
-          </p>
-          <div className="flex items-center gap-3 mt-4">
-            <Input
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://www.douyin.com/user/..."
-              className="flex-1 h-10 border-[#EAE6E1]"
-            />
-            <Button
-              onClick={handleAddUser}
-              disabled={loading || !url.trim()}
-              className="bg-[#FE2C55] hover:bg-[#FE2C55]/90 text-white h-10 px-6"
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : '添加用户'}
-            </Button>
-          </div>
-        </div>
-
+      <div className="flex-1 overflow-auto p-6">
         {/* User List Card */}
         <div className="bg-white rounded-xl border border-[#EAE6E1] overflow-hidden">
           {/* List Header */}
           <div className="h-14 flex items-center justify-between px-5 border-b border-[#EAE6E1]">
-            <div className="flex items-center gap-3">
-              <span className="text-base font-semibold text-[#312E2A]">已添加用户</span>
-              <span className="text-[13px] text-[#B8B2AD]">({users.length})</span>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
+                <span className="text-base font-semibold text-[#312E2A]">已添加用户</span>
+                <span className="text-[13px] text-[#B8B2AD]">({users.length})</span>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#B8B2AD]" />
+                <Input
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="搜索用户..."
+                  className="h-9 w-48 pl-9 border-[#EAE6E1] text-sm"
+                />
+              </div>
             </div>
             <div className="flex items-center gap-3">
               {selectedIds.size > 0 && (
