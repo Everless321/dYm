@@ -62,9 +62,13 @@ function getDownloadPath(): string {
   return join(app.getPath('userData'), 'Download', 'post')
 }
 
-// 将路径转换为 URL 友好格式（Windows 反斜杠转正斜杠）
+// 将路径转换为 URL 友好格式（Windows 反斜杠转正斜杠，并添加前导斜杠）
 function toUrlPath(filePath: string): string {
-  return process.platform === 'win32' ? filePath.replace(/\\/g, '/') : filePath
+  if (process.platform === 'win32') {
+    // Windows: C:\Users\xxx -> /C:/Users/xxx (添加前导斜杠使 URL 正确解析)
+    return '/' + filePath.replace(/\\/g, '/')
+  }
+  return filePath
 }
 
 interface MediaFiles {
