@@ -6,6 +6,7 @@ import { mkdir } from 'fs/promises'
 import { pipeline } from 'stream/promises'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import trayIcon from '../../resources/trayTemplate.png?asset'
 import {
   getDatabase,
   closeDatabase,
@@ -173,13 +174,30 @@ function findCoverFile(secUid: string, folderName: string): string | null {
 }
 
 function createTray(): void {
-  // 创建托盘图标
-  const trayIcon = nativeImage.createFromPath(icon)
-  // macOS 需要设置为 template 图标
-  if (process.platform === 'darwin') {
-    trayIcon.setTemplateImage(true)
+  console.log('[Tray] Creating tray, platform:', process.platform)
+
+  // macOS 使用专用托盘图标，其他平台使用应用图标
+  const iconPath = process.platform === 'darwin' ? trayIcon : icon
+  console.log('[Tray] Icon path:', iconPath)
+
+  const image = nativeImage.createFromPath(iconPath)
+
+  if (image.isEmpty()) {
+    console.error('[Tray] Failed to load icon from:', iconPath)
+    // 回退到应用图标
+    const fallback = nativeImage.createFromPath(icon)
+    if (fallback.isEmpty()) {
+      console.error('[Tray] Fallback icon also failed')
+      return
+    }
+    tray = new Tray(fallback.resize({ width: 16, height: 16 }))
+  } else {
+    // macOS 托盘图标推荐 18x18（Retina 屏幕会自动使用 @2x）
+    const size = process.platform === 'darwin' ? 18 : 16
+    tray = new Tray(image.resize({ width: size, height: size }))
   }
-  tray = new Tray(trayIcon.resize({ width: 16, height: 16 }))
+
+  console.log('[Tray] Tray created successfully')
 
   const contextMenu = Menu.buildFromTemplate([
     {
