@@ -88,6 +88,16 @@ const syncAPI = {
   }
 }
 
+const schedulerAPI = {
+  onLog: (callback: (log: SchedulerLog) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, log: SchedulerLog): void => callback(log)
+    ipcRenderer.on('scheduler:log', handler)
+    return () => ipcRenderer.removeListener('scheduler:log', handler)
+  },
+  getLogs: (): Promise<SchedulerLog[]> => ipcRenderer.invoke('scheduler:getLogs'),
+  clearLogs: (): Promise<void> => ipcRenderer.invoke('scheduler:clearLogs')
+}
+
 const postAPI = {
   getAll: (page?: number, pageSize?: number, filters?: PostFilters): Promise<{ posts: DbPost[]; total: number; authors: PostAuthor[] }> =>
     ipcRenderer.invoke('post:getAll', page, pageSize, filters),
@@ -174,6 +184,7 @@ const api = {
   task: taskAPI,
   download: downloadAPI,
   sync: syncAPI,
+  scheduler: schedulerAPI,
   post: postAPI,
   grok: grokAPI,
   analysis: analysisAPI,

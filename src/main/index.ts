@@ -49,7 +49,7 @@ import { startDownloadTask, stopDownloadTask, isTaskRunning } from './services/d
 import { startAnalysis, stopAnalysis, isAnalysisRunning } from './services/analyzer'
 import { initUpdater, registerUpdaterHandlers } from './services/updater'
 import { startUserSync, stopUserSync, isUserSyncing, getAnyUserSyncing } from './services/syncer'
-import { initScheduler, stopScheduler, scheduleUser, unscheduleUser, scheduleTask, unscheduleTask, validateCronExpression } from './services/scheduler'
+import { initScheduler, stopScheduler, scheduleUser, unscheduleUser, scheduleTask, unscheduleTask, validateCronExpression, getSchedulerLogs, clearSchedulerLogs } from './services/scheduler'
 import {
   getUnanalyzedPostsCount,
   getUnanalyzedPostsCountByUser,
@@ -738,6 +738,10 @@ app.whenReady().then(() => {
       }
     }
   })
+
+  // Scheduler logs IPC handlers
+  ipcMain.handle('scheduler:getLogs', () => getSchedulerLogs())
+  ipcMain.handle('scheduler:clearLogs', () => clearSchedulerLogs())
 
   // Grok API verification
   ipcMain.handle('grok:verify', async (_event, apiKey: string, apiUrl: string) => {

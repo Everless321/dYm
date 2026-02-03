@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Download, Home, Users, Sparkles, Settings } from 'lucide-react'
+import { Download, Home, Users, Sparkles, Settings, ScrollText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -9,6 +9,7 @@ const navItems = [
   { path: '/users', label: '用户管理', icon: Users },
   { path: '/download', label: '下载任务', icon: Download },
   { path: '/analysis', label: '视频分析', icon: Sparkles },
+  { path: '/logs', label: '同步日志', icon: ScrollText },
   { path: '/settings', label: '系统设置', icon: Settings }
 ]
 

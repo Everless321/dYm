@@ -17,7 +17,8 @@ import {
   Square,
   Clock,
   ExternalLink,
-  Search
+  Search,
+  SlidersHorizontal
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -38,6 +39,9 @@ import { Badge } from '@/components/ui/badge'
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 
 type SortOption = 'default' | 'undownloaded' | 'total'
+type ShowInHomeFilter = 'all' | 'yes' | 'no'
+type AutoSyncFilter = 'all' | 'yes' | 'no'
+type DownloadStatusFilter = 'all' | 'completed' | 'partial' | 'none'
 
 export default function UsersPage() {
   const [users, setUsers] = useState<DbUser[]>([])
@@ -49,7 +53,10 @@ export default function UsersPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
-  const [sortBy] = useState<SortOption>('default')
+  const [sortBy, setSortBy] = useState<SortOption>('default')
+  const [showInHomeFilter, setShowInHomeFilter] = useState<ShowInHomeFilter>('all')
+  const [autoSyncFilter, setAutoSyncFilter] = useState<AutoSyncFilter>('all')
+  const [downloadStatusFilter, setDownloadStatusFilter] = useState<DownloadStatusFilter>('all')
   const [, setClipboardStatus] = useState<{
     detected: boolean
     type: 'user' | 'video' | 'unknown' | null
@@ -97,6 +104,8 @@ export default function UsersPage() {
 
   const filteredUsers = useMemo(() => {
     let result = users
+
+    // 文本搜索
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase()
       result = result.filter(
@@ -106,6 +115,37 @@ export default function UsersPage() {
           u.short_id?.toLowerCase().includes(term)
       )
     }
+
+    // 首页显示筛选
+    if (showInHomeFilter !== 'all') {
+      result = result.filter((u) =>
+        showInHomeFilter === 'yes' ? !!u.show_in_home : !u.show_in_home
+      )
+    }
+
+    // 自动同步筛选
+    if (autoSyncFilter !== 'all') {
+      result = result.filter((u) =>
+        autoSyncFilter === 'yes' ? !!u.auto_sync : !u.auto_sync
+      )
+    }
+
+    // 下载状态筛选
+    if (downloadStatusFilter !== 'all') {
+      result = result.filter((u) => {
+        const downloaded = u.downloaded_count
+        const total = u.aweme_count
+        if (downloadStatusFilter === 'completed') {
+          return total > 0 && downloaded >= total
+        } else if (downloadStatusFilter === 'partial') {
+          return downloaded > 0 && downloaded < total
+        } else {
+          return downloaded === 0
+        }
+      })
+    }
+
+    // 排序
     if (sortBy === 'undownloaded') {
       result = [...result].sort((a, b) => {
         const aUndownloaded = a.aweme_count - a.downloaded_count
@@ -115,8 +155,9 @@ export default function UsersPage() {
     } else if (sortBy === 'total') {
       result = [...result].sort((a, b) => b.aweme_count - a.aweme_count)
     }
+
     return result
-  }, [users, searchTerm, sortBy])
+  }, [users, searchTerm, sortBy, showInHomeFilter, autoSyncFilter, downloadStatusFilter])
 
   const totalPages = Math.ceil(filteredUsers.length / pageSize)
   const paginatedUsers = useMemo(() => {
@@ -126,7 +167,7 @@ export default function UsersPage() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm, pageSize, sortBy])
+  }, [searchTerm, pageSize, sortBy, showInHomeFilter, autoSyncFilter, downloadStatusFilter])
 
   const checkClipboard = useCallback(async () => {
     try {
@@ -413,22 +454,25 @@ export default function UsersPage() {
         {/* User List Card */}
         <div className="bg-white rounded-xl border border-[#EAE6E1] overflow-hidden">
           {/* List Header */}
-          <div className="h-14 flex items-center justify-between px-5 border-b border-[#EAE6E1]">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-3">
-                <span className="text-base font-semibold text-[#312E2A]">已添加用户</span>
-                <span className="text-[13px] text-[#B8B2AD]">({users.length})</span>
+          <div className="flex flex-col border-b border-[#EAE6E1]">
+            <div className="h-14 flex items-center justify-between px-5">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-base font-semibold text-[#312E2A]">已添加用户</span>
+                  <span className="text-[13px] text-[#B8B2AD]">
+                    ({filteredUsers.length}/{users.length})
+                  </span>
+                </div>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#B8B2AD]" />
+                  <Input
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="搜索用户..."
+                    className="h-9 w-48 pl-9 border-[#EAE6E1] text-sm"
+                  />
+                </div>
               </div>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#B8B2AD]" />
-                <Input
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="搜索用户..."
-                  className="h-9 w-48 pl-9 border-[#EAE6E1] text-sm"
-                />
-              </div>
-            </div>
             <div className="flex items-center gap-3">
               {selectedIds.size > 0 && (
                 <>
@@ -467,6 +511,52 @@ export default function UsersPage() {
                 刷新全部
               </Button>
             </div>
+            </div>
+
+            {/* Filter Row */}
+            <div className="h-11 flex items-center gap-4 px-5 bg-[#F7F5F3]/50">
+              <div className="flex items-center gap-1.5 text-[#7A7570]">
+                <SlidersHorizontal className="h-4 w-4" />
+                <span className="text-xs font-medium">筛选</span>
+              </div>
+              <select
+                value={showInHomeFilter}
+                onChange={(e) => setShowInHomeFilter(e.target.value as ShowInHomeFilter)}
+                className="h-7 px-2 text-xs border border-[#EAE6E1] rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-[#FE2C55]/20"
+              >
+                <option value="all">首页显示: 全部</option>
+                <option value="yes">首页显示: 是</option>
+                <option value="no">首页显示: 否</option>
+              </select>
+              <select
+                value={autoSyncFilter}
+                onChange={(e) => setAutoSyncFilter(e.target.value as AutoSyncFilter)}
+                className="h-7 px-2 text-xs border border-[#EAE6E1] rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-[#FE2C55]/20"
+              >
+                <option value="all">自动同步: 全部</option>
+                <option value="yes">自动同步: 开启</option>
+                <option value="no">自动同步: 关闭</option>
+              </select>
+              <select
+                value={downloadStatusFilter}
+                onChange={(e) => setDownloadStatusFilter(e.target.value as DownloadStatusFilter)}
+                className="h-7 px-2 text-xs border border-[#EAE6E1] rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-[#FE2C55]/20"
+              >
+                <option value="all">下载状态: 全部</option>
+                <option value="completed">下载状态: 已完成</option>
+                <option value="partial">下载状态: 部分下载</option>
+                <option value="none">下载状态: 未开始</option>
+              </select>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
+                className="h-7 px-2 text-xs border border-[#EAE6E1] rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-[#FE2C55]/20"
+              >
+                <option value="default">排序: 默认</option>
+                <option value="undownloaded">排序: 未下载数</option>
+                <option value="total">排序: 总作品数</option>
+              </select>
+            </div>
           </div>
 
           {/* Table Header */}
@@ -480,9 +570,10 @@ export default function UsersPage() {
             <div className="flex-1">用户</div>
             <div className="w-28 text-center">粉丝</div>
             <div className="w-32 text-center">下载进度</div>
+            <div className="w-16 text-center">限制</div>
             <div className="w-24 text-center">同步</div>
             <div className="w-20 text-center">首页</div>
-            <div className="w-36 text-right">操作</div>
+            <div className="w-44 text-right">操作</div>
           </div>
 
           {/* Table Body */}
@@ -540,6 +631,11 @@ export default function UsersPage() {
                       }}
                     />
                   </div>
+                </div>
+                <div className="w-16 text-center">
+                  <span className="text-sm text-[#7A7570]">
+                    {user.max_download_count > 0 ? user.max_download_count : '-'}
+                  </span>
                 </div>
                 <div className="w-24 flex flex-col items-center gap-1">
                   {syncingUserId === user.id && syncProgress ? (

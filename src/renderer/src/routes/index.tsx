@@ -6,6 +6,7 @@ import DownloadPage from '@/pages/settings/DownloadPage'
 import TaskDetailPage from '@/pages/settings/TaskDetailPage'
 import AnalysisPage from '@/pages/settings/AnalysisPage'
 import SystemPage from '@/pages/settings/SystemPage'
+import LogsPage from '@/pages/settings/LogsPage'
 
 export const router = createHashRouter([
   {
@@ -35,6 +36,10 @@ export const router = createHashRouter([
       {
         path: 'settings',
         element: <SystemPage />
+      },
+      {
+        path: 'logs',
+        element: <LogsPage />
       }
     ]
   },

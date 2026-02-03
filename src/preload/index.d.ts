@@ -184,6 +184,20 @@ declare global {
     onProgress: (callback: (progress: SyncProgress) => void) => () => void
   }
 
+  interface SchedulerLog {
+    timestamp: number
+    level: 'info' | 'warn' | 'error'
+    message: string
+    type: 'user' | 'task' | 'system'
+    targetName?: string
+  }
+
+  interface SchedulerAPI {
+    onLog: (callback: (log: SchedulerLog) => void) => () => void
+    getLogs: () => Promise<SchedulerLog[]>
+    clearLogs: () => Promise<void>
+  }
+
   interface DbPost {
     id: number
     aweme_id: string
@@ -352,6 +366,7 @@ declare global {
     task: TaskAPI
     download: DownloadAPI
     sync: SyncAPI
+    scheduler: SchedulerAPI
     post: PostAPI
     grok: GrokAPI
     analysis: AnalysisAPI
