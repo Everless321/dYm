@@ -7,6 +7,8 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+### 我的证书噶了，所以Mac用户请自行执行命令签名 sudo xattr -cr /Applications/dYm.app/
+
 ## 功能特性
 
 - **用户管理** - 添加、管理抖音用户，支持批量刷新用户信息
