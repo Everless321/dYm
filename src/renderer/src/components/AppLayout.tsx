@@ -1,6 +1,8 @@
-import { Link, Outlet, useLocation } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Download, Home, Users, Sparkles, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 
 const navItems = [
   { path: '/', label: '首页', icon: Home },
@@ -12,6 +14,50 @@ const navItems = [
 
 export function AppLayout() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const [pendingLink, setPendingLink] = useState<string | null>(null)
+  const [isAdding, setIsAdding] = useState(false)
+
+  // 监听剪贴板中的抖音链接
+  useEffect(() => {
+    const cleanup = window.api.clipboard.onDouyinLink((link) => {
+      // 显示提示
+      toast('检测到抖音链接', {
+        description: link.length > 50 ? link.substring(0, 50) + '...' : link,
+        duration: 8000,
+        action: {
+          label: '添加用户',
+          onClick: () => {
+            setPendingLink(link)
+          }
+        }
+      })
+    })
+
+    return cleanup
+  }, [])
+
+  // 处理添加用户
+  useEffect(() => {
+    if (!pendingLink || isAdding) return
+
+    const addUser = async () => {
+      setIsAdding(true)
+      try {
+        const user = await window.api.user.add(pendingLink)
+        toast.success(`已添加用户: ${user.nickname}`)
+        // 导航到用户管理页面
+        navigate('/users')
+      } catch (error) {
+        toast.error(`添加失败: ${(error as Error).message}`)
+      } finally {
+        setIsAdding(false)
+        setPendingLink(null)
+      }
+    }
+
+    addUser()
+  }, [pendingLink, isAdding, navigate])
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/'

@@ -142,6 +142,14 @@ const migrationAPI = {
     ipcRenderer.invoke('migration:getCount', oldPath)
 }
 
+const clipboardAPI = {
+  onDouyinLink: (callback: (link: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, link: string): void => callback(link)
+    ipcRenderer.on('clipboard-douyin-link', handler)
+    return () => ipcRenderer.removeListener('clipboard-douyin-link', handler)
+  }
+}
+
 const updaterAPI = {
   check: (): Promise<UpdateInfo | undefined> => ipcRenderer.invoke('updater:check'),
   download: (): Promise<void> => ipcRenderer.invoke('updater:download'),
@@ -172,7 +180,8 @@ const api = {
   video: videoAPI,
   system: systemAPI,
   updater: updaterAPI,
-  migration: migrationAPI
+  migration: migrationAPI,
+  clipboard: clipboardAPI
 }
 
 if (process.contextIsolated) {

@@ -1,4 +1,4 @@
-# dYmanager
+# dYm
 
 抖音视频下载与智能分析管理工具
 
@@ -14,6 +14,8 @@
 - **智能分析** - 使用 AI (Grok Vision API) 自动分析视频内容，生成标签、分类和摘要
 - **内容筛选** - 按作者、标签、内容分级等多维度筛选视频
 - **本地存储** - 使用 SQLite 数据库本地存储所有数据
+- **剪贴板检测** - 自动检测复制的抖音链接，一键添加用户
+- **系统托盘** - 最小化到托盘，后台静默运行
 
 ## 截图预览
 
@@ -114,11 +116,11 @@ npm run build:unpack
 ## 项目结构
 
 ```
-dYmanager/
+dYm/
 ├── src/
 │   ├── main/           # Electron 主进程
 │   │   ├── database/   # SQLite 数据库操作
-│   │   ├── services/   # 业务服务（下载、分析等）
+│   │   ├── services/   # 业务服务（下载、分析、调度等）
 │   │   └── index.ts    # 主进程入口
 │   ├── preload/        # 预加载脚本
 │   └── renderer/       # React 渲染进程
@@ -126,7 +128,7 @@ dYmanager/
 │       │   ├── components/  # UI 组件
 │       │   └── pages/       # 页面
 │       └── index.html
-├── build/              # 构建资源
+├── build/              # 构建资源（图标等）
 ├── resources/          # 应用资源
 └── electron-builder.yml  # 打包配置
 ```

@@ -339,6 +339,10 @@ declare global {
     getCount: (oldPath: string) => Promise<number>
   }
 
+  interface ClipboardAPI {
+    onDouyinLink: (callback: (link: string) => void) => () => void
+  }
+
   interface API {
     db: DatabaseAPI
     settings: SettingsAPI
@@ -355,6 +359,7 @@ declare global {
     system: SystemAPI
     updater: UpdaterAPI
     migration: MigrationAPI
+    clipboard: ClipboardAPI
   }
 
   interface Window {

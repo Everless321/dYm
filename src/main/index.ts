@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, protocol, net, dialog, Tray, Menu, nativeImage } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, protocol, net, dialog, Tray, Menu, nativeImage, clipboard } from 'electron'
 import os from 'os'
 import { join } from 'path'
 import { existsSync, readdirSync, createWriteStream, createReadStream, statSync, cpSync, rmSync } from 'fs'
@@ -63,6 +63,29 @@ import {
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let isQuitting = false
+let lastDetectedLink = '' // 记录上次检测的抖音链接
+let lastDetectedTime = 0 // 上次检测时间
+let clipboardCheckTimer: NodeJS.Timeout | null = null // 防抖计时器
+const LINK_COOLDOWN = 30000 // 同一链接30秒内不重复提示
+const DEBOUNCE_DELAY = 500 // 防抖延迟500ms
+
+// 抖音链接正则匹配
+const douyinLinkPatterns = [
+  /https?:\/\/v\.douyin\.com\/\S+/i,
+  /https?:\/\/www\.douyin\.com\/user\/\S+/i,
+  /https?:\/\/www\.douyin\.com\/video\/\S+/i,
+  /https?:\/\/www\.iesdouyin\.com\/share\/user\/\S+/i,
+  /https?:\/\/www\.iesdouyin\.com\/share\/video\/\S+/i
+]
+
+// 检测文本中是否包含抖音链接
+function extractDouyinLink(text: string): string | null {
+  for (const pattern of douyinLinkPatterns) {
+    const match = text.match(pattern)
+    if (match) return match[0]
+  }
+  return null
+}
 
 function getDownloadPath(): string {
   return join(app.getPath('userData'), 'Download', 'post')
@@ -276,6 +299,31 @@ function createWindow(): BrowserWindow {
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
+  })
+
+  // 监听窗口获得焦点，检测剪贴板中的抖音链接
+  mainWindow.on('focus', () => {
+    // 防抖：清除之前的计时器，延迟500ms后检测
+    if (clipboardCheckTimer) {
+      clearTimeout(clipboardCheckTimer)
+    }
+    clipboardCheckTimer = setTimeout(() => {
+      const clipboardText = clipboard.readText()
+      if (!clipboardText) return
+
+      const douyinLink = extractDouyinLink(clipboardText)
+      if (douyinLink) {
+        const now = Date.now()
+        // 同一链接在冷却时间内不重复提示
+        if (douyinLink === lastDetectedLink && now - lastDetectedTime < LINK_COOLDOWN) {
+          return
+        }
+        lastDetectedLink = douyinLink
+        lastDetectedTime = now
+        // 通知渲染进程检测到抖音链接
+        mainWindow?.webContents.send('clipboard-douyin-link', douyinLink)
+      }
+    }, DEBOUNCE_DELAY)
   })
 
   // HMR for renderer base on electron-vite cli.
