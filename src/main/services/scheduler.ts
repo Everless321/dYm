@@ -1,7 +1,7 @@
 import cron, { type ScheduledTask as CronScheduledTask } from 'node-cron'
 import { BrowserWindow } from 'electron'
 import { getAutoSyncUsers, getAutoSyncTasks, updateTaskLastSyncAt, type DbUser, type DbTaskWithUsers } from '../database'
-import { startUserSync, isUserSyncing, getAnyUserSyncing } from './syncer'
+import { startUserSync, isUserSyncing } from './syncer'
 import { startDownloadTask, isTaskRunning } from './downloader'
 
 export interface SchedulerLog {
@@ -70,12 +70,6 @@ function isValidCron(expression: string): boolean {
 async function executeUserSync(user: DbUser): Promise<void> {
   if (isUserSyncing(user.id)) {
     sendSchedulerLog({ level: 'warn', message: '用户正在同步中，跳过', type: 'user', targetName: user.nickname })
-    return
-  }
-
-  const currentSyncing = getAnyUserSyncing()
-  if (currentSyncing !== null) {
-    sendSchedulerLog({ level: 'warn', message: '其他用户正在同步，跳过', type: 'user', targetName: user.nickname })
     return
   }
 
