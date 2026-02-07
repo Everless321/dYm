@@ -78,9 +78,18 @@ export default function UsersPage() {
   const [batchEditOpen, setBatchEditOpen] = useState(false)
   const [batchForm, setBatchForm] = useState({
     max_download_count: 0,
-    show_in_home: true
+    show_in_home: true,
+    auto_sync: false,
+    sync_cron: ''
+  })
+  const [batchEnabled, setBatchEnabled] = useState({
+    max_download_count: false,
+    show_in_home: false,
+    auto_sync: false,
+    sync_cron: false
   })
   const [batchLoading, setBatchLoading] = useState(false)
+  const [batchCronValid, setBatchCronValid] = useState(true)
 
   const [syncingUserId, setSyncingUserId] = useState<number | null>(null)
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null)
@@ -367,17 +376,39 @@ export default function UsersPage() {
       toast.error('请先选择用户')
       return
     }
-    setBatchForm({ max_download_count: 0, show_in_home: true })
+    setBatchForm({ max_download_count: 0, show_in_home: true, auto_sync: false, sync_cron: '' })
+    setBatchEnabled({ max_download_count: false, show_in_home: false, auto_sync: false, sync_cron: false })
+    setBatchCronValid(true)
     setBatchEditOpen(true)
   }
 
   const handleSaveBatchEdit = async () => {
+    const hasEnabled = Object.values(batchEnabled).some(Boolean)
+    if (!hasEnabled) {
+      toast.error('请至少勾选一个要修改的设置项')
+      return
+    }
+    if (batchEnabled.auto_sync && batchForm.auto_sync && batchEnabled.sync_cron && batchForm.sync_cron) {
+      const valid = await window.api.sync.validateCron(batchForm.sync_cron)
+      if (!valid) {
+        setBatchCronValid(false)
+        toast.error('Cron 表达式无效')
+        return
+      }
+    }
     setBatchLoading(true)
     try {
-      await window.api.user.batchUpdateSettings(Array.from(selectedIds), {
-        max_download_count: batchForm.max_download_count,
-        show_in_home: batchForm.show_in_home
-      })
+      const input: Record<string, unknown> = {}
+      if (batchEnabled.max_download_count) input.max_download_count = batchForm.max_download_count
+      if (batchEnabled.show_in_home) input.show_in_home = batchForm.show_in_home
+      if (batchEnabled.auto_sync) input.auto_sync = batchForm.auto_sync
+      if (batchEnabled.sync_cron) input.sync_cron = batchForm.sync_cron
+      await window.api.user.batchUpdateSettings(Array.from(selectedIds), input)
+      if (batchEnabled.auto_sync || batchEnabled.sync_cron) {
+        for (const id of selectedIds) {
+          await window.api.sync.updateUserSchedule(id)
+        }
+      }
       toast.success(`已更新 ${selectedIds.size} 个用户`)
       setBatchEditOpen(false)
       setSelectedIds(new Set())
@@ -959,11 +990,23 @@ export default function UsersPage() {
             <DialogDescription>批量修改 {selectedIds.size} 个用户的设置</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            <p className="text-xs text-[#6E6E73]">勾选需要修改的设置项，未勾选的将保持原值不变</p>
             <div className="space-y-2">
-              <Label>单次下载限制</Label>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={batchEnabled.max_download_count}
+                  onCheckedChange={(checked) =>
+                    setBatchEnabled((e) => ({ ...e, max_download_count: !!checked }))
+                  }
+                />
+                <Label className={!batchEnabled.max_download_count ? 'text-[#A1A1A6]' : ''}>
+                  单次下载限制
+                </Label>
+              </div>
               <Input
                 type="number"
                 min={0}
+                disabled={!batchEnabled.max_download_count}
                 value={batchForm.max_download_count}
                 onChange={(e) =>
                   setBatchForm((f) => ({
@@ -975,14 +1018,75 @@ export default function UsersPage() {
               />
             </div>
             <div className="flex items-center justify-between">
-              <Label>在首页显示</Label>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={batchEnabled.show_in_home}
+                  onCheckedChange={(checked) =>
+                    setBatchEnabled((e) => ({ ...e, show_in_home: !!checked }))
+                  }
+                />
+                <Label className={!batchEnabled.show_in_home ? 'text-[#A1A1A6]' : ''}>
+                  在首页显示
+                </Label>
+              </div>
               <Switch
+                disabled={!batchEnabled.show_in_home}
                 checked={batchForm.show_in_home}
                 onCheckedChange={(checked) =>
                   setBatchForm((f) => ({ ...f, show_in_home: checked }))
                 }
               />
             </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={batchEnabled.auto_sync}
+                  onCheckedChange={(checked) =>
+                    setBatchEnabled((e) => ({ ...e, auto_sync: !!checked }))
+                  }
+                />
+                <Label className={!batchEnabled.auto_sync ? 'text-[#A1A1A6]' : ''}>
+                  自动同步
+                </Label>
+              </div>
+              <Switch
+                disabled={!batchEnabled.auto_sync}
+                checked={batchForm.auto_sync}
+                onCheckedChange={(checked) =>
+                  setBatchForm((f) => ({ ...f, auto_sync: checked }))
+                }
+              />
+            </div>
+            {batchEnabled.auto_sync && batchForm.auto_sync && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={batchEnabled.sync_cron}
+                    onCheckedChange={(checked) =>
+                      setBatchEnabled((e) => ({ ...e, sync_cron: !!checked }))
+                    }
+                  />
+                  <Label className={!batchEnabled.sync_cron ? 'text-[#A1A1A6]' : ''}>
+                    同步计划 (Cron)
+                  </Label>
+                </div>
+                <Input
+                  disabled={!batchEnabled.sync_cron}
+                  value={batchForm.sync_cron}
+                  onChange={(e) => {
+                    setBatchForm((f) => ({ ...f, sync_cron: e.target.value }))
+                    setBatchCronValid(true)
+                  }}
+                  placeholder="0 8 * * *"
+                  className={!batchCronValid ? 'border-red-500' : ''}
+                />
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p className="font-mono">0 8 * * * - 每天 8:00</p>
+                  <p className="font-mono">0 */6 * * * - 每 6 小时</p>
+                </div>
+                {!batchCronValid && <p className="text-xs text-red-500">Cron 表达式无效</p>}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button

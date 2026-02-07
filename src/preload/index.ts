@@ -48,7 +48,7 @@ const userAPI = {
   ): Promise<DbUser | undefined> => ipcRenderer.invoke('user:updateSettings', id, input),
   batchUpdateSettings: (
     ids: number[],
-    input: { show_in_home?: boolean; max_download_count?: number }
+    input: { show_in_home?: boolean; max_download_count?: number; auto_sync?: boolean; sync_cron?: string }
   ): Promise<void> => ipcRenderer.invoke('user:batchUpdateSettings', ids, input)
 }
 

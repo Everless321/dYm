@@ -472,6 +472,14 @@ export function batchUpdateUserSettings(ids: number[], input: Omit<UpdateUserSet
     fields.push('max_download_count = ?')
     values.push(input.max_download_count)
   }
+  if (input.auto_sync !== undefined) {
+    fields.push('auto_sync = ?')
+    values.push(input.auto_sync ? 1 : 0)
+  }
+  if (input.sync_cron !== undefined) {
+    fields.push('sync_cron = ?')
+    values.push(input.sync_cron)
+  }
 
   if (fields.length === 0) return
 
