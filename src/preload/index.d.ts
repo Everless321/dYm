@@ -11,6 +11,7 @@ declare global {
     get: (key: string) => Promise<string | null>
     set: (key: string, value: string) => Promise<void>
     getAll: () => Promise<Record<string, string>>
+    getDefaultDownloadPath: () => Promise<string>
   }
 
   interface CookieAPI {
@@ -319,6 +320,8 @@ declare global {
 
   interface SystemAPI {
     getResourceUsage: () => Promise<SystemResourceInfo>
+    openDirectoryDialog: () => Promise<string | null>
+    openDataDirectory: () => Promise<void>
   }
 
   interface UpdateInfo {

@@ -14,7 +14,8 @@ const dbAPI = {
 const settingsAPI = {
   get: (key: string): Promise<string | null> => ipcRenderer.invoke('settings:get', key),
   set: (key: string, value: string): Promise<void> => ipcRenderer.invoke('settings:set', key, value),
-  getAll: (): Promise<Record<string, string>> => ipcRenderer.invoke('settings:getAll')
+  getAll: (): Promise<Record<string, string>> => ipcRenderer.invoke('settings:getAll'),
+  getDefaultDownloadPath: (): Promise<string> => ipcRenderer.invoke('settings:getDefaultDownloadPath')
 }
 
 const cookieAPI = {
@@ -139,7 +140,9 @@ const videoAPI = {
 }
 
 const systemAPI = {
-  getResourceUsage: (): Promise<SystemResourceInfo> => ipcRenderer.invoke('system:getResourceUsage')
+  getResourceUsage: (): Promise<SystemResourceInfo> => ipcRenderer.invoke('system:getResourceUsage'),
+  openDirectoryDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:openDirectory'),
+  openDataDirectory: (): Promise<void> => ipcRenderer.invoke('system:openDataDirectory')
 }
 
 const migrationAPI = {

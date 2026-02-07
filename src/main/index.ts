@@ -55,8 +55,9 @@ import {
   getUnanalyzedPostsCountByUser,
   getUserAnalysisStats,
   getTotalAnalysisStats,
-  getPostsForMigration,
-  updatePostPaths
+  getMigrationCount,
+  getMigrationSecUids,
+  batchReplacePaths
 } from './database'
 
 // 全局变量
@@ -88,6 +89,10 @@ function extractDouyinLink(text: string): string | null {
 }
 
 function getDownloadPath(): string {
+  const customPath = getSetting('download_path')
+  if (customPath && customPath.trim()) {
+    return customPath
+  }
   return join(app.getPath('userData'), 'Download', 'post')
 }
 
@@ -853,6 +858,26 @@ app.whenReady().then(() => {
     shell.openPath(folderPath)
   })
 
+  // Open data directory
+  ipcMain.handle('system:openDataDirectory', () => {
+    shell.openPath(app.getPath('userData'))
+  })
+
+  // Download path IPC handler
+  ipcMain.handle('settings:getDefaultDownloadPath', () => {
+    return join(app.getPath('userData'), 'Download', 'post')
+  })
+
+  // Dialog IPC handlers
+  ipcMain.handle('dialog:openDirectory', async () => {
+    const result = await dialog.showOpenDialog({
+      title: '选择下载目录',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    if (result.canceled || !result.filePaths[0]) return null
+    return result.filePaths[0]
+  })
+
   // System resource IPC handlers
   let lastCpuInfo = os.cpus()
 
@@ -910,64 +935,61 @@ app.whenReady().then(() => {
       oldPath: string,
       newPath: string
     ): Promise<{ success: number; failed: number; total: number }> => {
-      const posts = getPostsForMigration(oldPath)
-      const result = { success: 0, failed: 0, total: posts.length }
+      const secUids = getMigrationSecUids(oldPath)
+      const result = { success: 0, failed: 0, total: secUids.length }
 
-      if (posts.length === 0) {
-        return result
-      }
+      if (secUids.length === 0) return result
 
-      // Ensure new path exists
+      const { rename: fsRename } = await import('fs/promises')
       await mkdir(newPath, { recursive: true })
 
-      for (const post of posts) {
-        try {
-          // Calculate new paths
-          const newVideoPath = post.video_path?.replace(oldPath, newPath) || null
-          const newCoverPath = post.cover_path?.replace(oldPath, newPath) || null
-          const newMusicPath = post.music_path?.replace(oldPath, newPath) || null
+      for (const secUid of secUids) {
+        const sourceDir = join(oldPath, secUid)
+        const targetDir = join(newPath, secUid)
 
-          // Get source folder (use video_path as reference)
-          const sourcePath = post.video_path || post.cover_path || post.music_path
-          if (!sourcePath) {
+        try {
+          if (!existsSync(sourceDir)) {
             result.failed++
             continue
           }
 
-          const targetPath = sourcePath.replace(oldPath, newPath)
-          const sourceDir = sourcePath
-          const targetDir = targetPath
-
-          // Move folder if source exists
-          if (existsSync(sourceDir)) {
-            const targetParent = join(targetDir, '..')
-            await mkdir(targetParent, { recursive: true })
-
+          if (existsSync(targetDir)) {
+            // Target exists: move individual post folders
+            const entries = readdirSync(sourceDir, { withFileTypes: true })
+            for (const entry of entries) {
+              if (!entry.isDirectory()) continue
+              const src = join(sourceDir, entry.name)
+              const dst = join(targetDir, entry.name)
+              if (existsSync(dst)) continue
+              try {
+                await fsRename(src, dst)
+              } catch {
+                cpSync(src, dst, { recursive: true })
+                rmSync(src, { recursive: true, force: true })
+              }
+            }
+            // Clean up empty source dir
+            const remaining = readdirSync(sourceDir)
+            if (remaining.length === 0) rmSync(sourceDir, { force: true })
+          } else {
+            // Move entire author directory
             try {
-              // Try rename first (fast, same filesystem)
-              const { rename } = await import('fs/promises')
-              await rename(sourceDir, targetDir)
+              await fsRename(sourceDir, targetDir)
             } catch {
-              // Fall back to copy + delete (cross-filesystem)
               cpSync(sourceDir, targetDir, { recursive: true })
               rmSync(sourceDir, { recursive: true, force: true })
             }
           }
 
-          // Update database
-          updatePostPaths(
-            post.id,
-            newVideoPath || '',
-            newCoverPath || '',
-            newMusicPath || ''
-          )
-
           result.success++
         } catch (error) {
-          console.error(`[Migration] Failed to migrate post ${post.id}:`, error)
+          console.error(`[Migration] Failed to migrate ${secUid}:`, error)
           result.failed++
         }
       }
+
+      // Batch update all paths in database
+      batchReplacePaths(oldPath, newPath)
 
       return result
     }
@@ -975,7 +997,7 @@ app.whenReady().then(() => {
 
   // Migration count handler
   ipcMain.handle('migration:getCount', (_event, oldPath: string) => {
-    return getPostsForMigration(oldPath).length
+    return getMigrationCount(oldPath)
   })
 
   // 创建托盘图标

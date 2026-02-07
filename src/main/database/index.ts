@@ -971,29 +971,62 @@ export function updatePostAnalysis(id: number, result: AnalysisResult): void {
   )
 }
 
-// 获取所有需要迁移的帖子（按旧路径前缀）
-export function getPostsForMigration(oldBasePath: string): DbPost[] {
-  const database = getDatabase()
-  return database
-    .prepare(
-      `SELECT * FROM posts WHERE video_path LIKE ? OR cover_path LIKE ? OR music_path LIKE ?`
-    )
-    .all(`${oldBasePath}%`, `${oldBasePath}%`, `${oldBasePath}%`) as DbPost[]
+// 标准化路径前缀（确保尾部有 /）
+function normalizeDirPrefix(p: string): string {
+  return p.endsWith('/') ? p : p + '/'
 }
 
-// 批量更新帖子路径
-export function updatePostPaths(
-  id: number,
-  videoPath: string,
-  coverPath: string,
-  musicPath: string
-): void {
+// 获取需要迁移的帖子数量
+export function getMigrationCount(oldBasePath: string): number {
+  const prefix = normalizeDirPrefix(oldBasePath)
   const database = getDatabase()
-  database
+  const row = database
+    .prepare(`SELECT COUNT(*) as cnt FROM posts WHERE video_path LIKE ?`)
+    .get(`${prefix}%`) as { cnt: number }
+  return row.cnt
+}
+
+// 批量替换路径前缀
+export function batchReplacePaths(oldBasePath: string, newBasePath: string): number {
+  const oldPrefix = normalizeDirPrefix(oldBasePath)
+  const newPrefix = normalizeDirPrefix(newBasePath)
+  const database = getDatabase()
+  const len = oldPrefix.length + 1
+  const like = `${oldPrefix}%`
+  const result = database
     .prepare(
-      `UPDATE posts SET video_path = ?, cover_path = ?, music_path = ? WHERE id = ?`
+      `UPDATE posts SET
+        video_path = CASE WHEN video_path LIKE ? THEN ? || substr(video_path, ?) ELSE video_path END,
+        cover_path = CASE WHEN cover_path LIKE ? THEN ? || substr(cover_path, ?) ELSE cover_path END,
+        music_path = CASE WHEN music_path LIKE ? THEN ? || substr(music_path, ?) ELSE music_path END
+      WHERE video_path LIKE ? OR cover_path LIKE ? OR music_path LIKE ?`
     )
-    .run(videoPath, coverPath, musicPath, id)
+    .run(
+      like, newPrefix, len,
+      like, newPrefix, len,
+      like, newPrefix, len,
+      like, like, like
+    )
+  return result.changes
+}
+
+// 获取需要迁移的不重复作者目录
+export function getMigrationSecUids(oldBasePath: string): string[] {
+  const prefix = normalizeDirPrefix(oldBasePath)
+  const database = getDatabase()
+  const rows = database
+    .prepare(`SELECT DISTINCT video_path FROM posts WHERE video_path LIKE ?`)
+    .all(`${prefix}%`) as { video_path: string }[]
+
+  const secUids = new Set<string>()
+  for (const row of rows) {
+    const relative = row.video_path.slice(prefix.length)
+    const slashIdx = relative.indexOf('/')
+    if (slashIdx > 0) {
+      secUids.add(relative.slice(0, slashIdx))
+    }
+  }
+  return [...secUids]
 }
 
 export function closeDatabase(): void {

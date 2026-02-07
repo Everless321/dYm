@@ -8,6 +8,8 @@ import {
   Download,
   RefreshCw,
   FolderSync,
+  FolderOpen,
+  Database,
   X
 } from 'lucide-react'
 
@@ -31,6 +33,7 @@ export default function SystemPage() {
   const [showMigrationDialog, setShowMigrationDialog] = useState(false)
   const [migrationCount, setMigrationCount] = useState(0)
   const [pendingNewPath, setPendingNewPath] = useState('')
+  const [pendingOldPath, setPendingOldPath] = useState('')
   const [migrating, setMigrating] = useState(false)
 
   // 分析
@@ -150,14 +153,14 @@ export default function SystemPage() {
   // Download handlers
   const handleSaveDownload = async () => {
     try {
-      const oldPath = originalDownloadPath.current
+      const oldPath = originalDownloadPath.current || await window.api.settings.getDefaultDownloadPath()
       const newPath = downloadPath
 
-      // Check if path changed and old path has files
-      if (oldPath && newPath && oldPath !== newPath) {
+      if (newPath && oldPath !== newPath) {
         const count = await window.api.migration.getCount(oldPath)
         if (count > 0) {
           setMigrationCount(count)
+          setPendingOldPath(oldPath)
           setPendingNewPath(newPath)
           setShowMigrationDialog(true)
           return
@@ -181,8 +184,7 @@ export default function SystemPage() {
   const handleMigrate = async () => {
     setMigrating(true)
     try {
-      const oldPath = originalDownloadPath.current
-      const result = await window.api.migration.execute(oldPath, pendingNewPath)
+      const result = await window.api.migration.execute(pendingOldPath, pendingNewPath)
 
       await saveDownloadSettings()
       setShowMigrationDialog(false)
@@ -397,13 +399,26 @@ export default function SystemPage() {
                       <p className="text-sm text-[#1D1D1F]">下载路径</p>
                       <p className="text-xs text-[#A1A1A6] mt-1">视频下载保存位置</p>
                     </div>
-                    <input
-                      type="text"
-                      value={downloadPath}
-                      onChange={(e) => setDownloadPath(e.target.value)}
-                      placeholder="/Users/downloads/douyin"
-                      className="w-full md:w-[320px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
-                    />
+                    <div className="flex items-center gap-2 w-full md:w-[320px]">
+                      <input
+                        type="text"
+                        value={downloadPath}
+                        onChange={(e) => setDownloadPath(e.target.value)}
+                        placeholder="/Users/downloads/douyin"
+                        className="flex-1 h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const path = await window.api.system.openDirectoryDialog()
+                          if (path) setDownloadPath(path)
+                        }}
+                        className="h-10 w-10 flex-shrink-0 flex items-center justify-center rounded-lg border border-[#E5E5E7] bg-[#F5F5F7] hover:bg-[#E8E8ED] transition-colors"
+                        title="选择目录"
+                      >
+                        <FolderOpen className="h-4 w-4 text-[#6E6E73]" />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Max Download Count */}
@@ -702,6 +717,20 @@ export default function SystemPage() {
                     >
                       Everless321/dYm
                     </a>
+                  </div>
+
+                  <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-sm text-[#1D1D1F]">数据目录</p>
+                      <p className="text-xs text-[#A1A1A6] mt-1">数据库及配置文件所在位置</p>
+                    </div>
+                    <button
+                      onClick={() => window.api.system.openDataDirectory()}
+                      className="h-9 px-4 rounded-lg border border-[#E5E5E7] text-sm text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center gap-2"
+                    >
+                      <Database className="h-4 w-4" />
+                      打开目录
+                    </button>
                   </div>
                 </div>
               </div>

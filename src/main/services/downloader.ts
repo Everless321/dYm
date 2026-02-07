@@ -58,6 +58,10 @@ function sendProgress(progress: DownloadProgress): void {
 }
 
 function getDownloadPath(): string {
+  const customPath = getSetting('download_path')
+  if (customPath && customPath.trim()) {
+    return customPath
+  }
   return join(app.getPath('userData'), 'Download', 'post')
 }
 
