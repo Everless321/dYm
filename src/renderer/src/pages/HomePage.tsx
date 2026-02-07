@@ -244,7 +244,7 @@ export default function HomePage() {
 
       {/* Filters */}
       <div className="px-6 py-4 bg-[#F5F5F7] border-b border-[#E5E5E7]">
-        <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm">
           <div className="h-[56px] flex items-center justify-between px-5">
             <div className="flex items-center gap-3">
               <span className="text-xs font-medium text-[#6E6E73] uppercase tracking-wide">
