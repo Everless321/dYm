@@ -91,6 +91,33 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+:where(button, a, input, textarea, select, summary, [role='button']) {
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease,
+    opacity 150ms ease;
+}
+
+:where(button, a, summary, [role='button']):focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+:where(input, textarea, select):focus-visible {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(button, a, input, textarea, select, summary, [role='button']) {
+    transition: none !important;
+  }
+}
+
 #root {
   min-height: 100vh;
 }

@@ -281,30 +281,32 @@ export default function SystemPage() {
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
               {/* Cookie Card */}
               <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-6">
-                <h2 className="text-base font-semibold text-[#1D1D1F] mb-4">抖音 Cookie</h2>
-                <p className="text-xs text-[#A1A1A6] mb-4">设置抖音登录 Cookie 用于获取视频数据</p>
-
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleFetchCookie}
-                      disabled={fetchingCookie}
-                      className="h-9 px-4 rounded-lg border border-[#E5E5E7] text-sm text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center gap-2 disabled:opacity-50"
-                    >
-                      {fetchingCookie ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Chrome className="h-4 w-4" />
-                      )}
-                      从浏览器获取
-                    </button>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="space-y-1">
+                    <h2 className="text-base font-semibold text-[#1D1D1F]">抖音 Cookie</h2>
+                    <p className="text-xs text-[#A1A1A6]">设置抖音登录 Cookie 用于获取视频数据</p>
                   </div>
+                  <button
+                    onClick={handleFetchCookie}
+                    disabled={fetchingCookie}
+                    className="h-9 px-4 rounded-lg border border-[#E5E5E7] text-sm text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 w-full sm:w-auto"
+                  >
+                    {fetchingCookie ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Chrome className="h-4 w-4" />
+                    )}
+                    从浏览器获取
+                  </button>
+                </div>
+
+                <div className="space-y-3 mt-4">
                   <textarea
                     value={cookie}
                     onChange={(e) => setCookie(e.target.value)}
                     placeholder="粘贴 Cookie 或点击上方按钮自动获取..."
                     rows={3}
-                    className="w-full px-3 py-2 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono resize-none focus:outline-none focus:border-[#0A84FF]"
+                    className="w-full px-3 py-2 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono resize-none transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
                   />
                   <div className="flex justify-end">
                     <button
@@ -333,7 +335,7 @@ export default function SystemPage() {
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
                       placeholder="xai-**********************"
-                      className="w-full md:w-[360px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono focus:outline-none focus:border-[#0A84FF]"
+                      className="w-full md:w-[360px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
                     />
                   </div>
 
@@ -347,7 +349,7 @@ export default function SystemPage() {
                       value={apiUrl}
                       onChange={(e) => setApiUrl(e.target.value)}
                       placeholder="https://api.x.ai/v1"
-                      className="w-full md:w-[360px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono focus:outline-none focus:border-[#0A84FF]"
+                      className="w-full md:w-[360px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
                     />
                   </div>
 
@@ -400,7 +402,7 @@ export default function SystemPage() {
                       value={downloadPath}
                       onChange={(e) => setDownloadPath(e.target.value)}
                       placeholder="/Users/downloads/douyin"
-                      className="w-full md:w-[320px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] focus:outline-none focus:border-[#0A84FF]"
+                      className="w-full md:w-[320px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
                     />
                   </div>
 
@@ -414,7 +416,7 @@ export default function SystemPage() {
                       type="number"
                       value={maxDownloadCount}
                       onChange={(e) => setMaxDownloadCount(e.target.value)}
-                      className="w-full md:w-[140px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] focus:outline-none focus:border-[#0A84FF] text-center"
+                      className="w-full md:w-[140px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20 text-center"
                     />
                   </div>
 
@@ -558,7 +560,7 @@ export default function SystemPage() {
                       type="number"
                       value={analysisRpm}
                       onChange={(e) => setAnalysisRpm(e.target.value)}
-                      className="w-full md:w-[140px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] focus:outline-none focus:border-[#0A84FF] text-center"
+                      className="w-full md:w-[140px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20 text-center"
                     />
                   </div>
 
@@ -610,7 +612,7 @@ export default function SystemPage() {
                       onChange={(e) => setAnalysisPrompt(e.target.value)}
                       placeholder="自定义分析提示词..."
                       rows={4}
-                      className="w-full px-3 py-2 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] resize-none focus:outline-none focus:border-[#0A84FF]"
+                      className="w-full px-3 py-2 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] resize-none transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
                     />
                   </div>
                 </div>
