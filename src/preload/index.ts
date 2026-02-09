@@ -34,7 +34,7 @@ const douyinAPI = {
 const userAPI = {
   getAll: (): Promise<DbUser[]> => ipcRenderer.invoke('user:getAll'),
   add: (url: string): Promise<DbUser> => ipcRenderer.invoke('user:add', url),
-  delete: (id: number): Promise<void> => ipcRenderer.invoke('user:delete', id),
+  delete: (id: number, deleteFiles?: boolean): Promise<void> => ipcRenderer.invoke('user:delete', id, deleteFiles),
   refresh: (id: number, url: string): Promise<DbUser> => ipcRenderer.invoke('user:refresh', id, url),
   batchRefresh: (
     users: { id: number; homepage_url: string; nickname: string }[]
@@ -178,6 +178,18 @@ const updaterAPI = {
   }
 }
 
+const filesAPI = {
+  getUserPosts: (userId: number, page?: number, pageSize?: number): Promise<{ posts: DbPost[]; total: number }> =>
+    ipcRenderer.invoke('files:getUserPosts', userId, page, pageSize),
+  getFileSizes: (secUid: string): Promise<{ totalSize: number; folderCount: number }> =>
+    ipcRenderer.invoke('files:getFileSizes', secUid),
+  getPostSize: (secUid: string, folderName: string): Promise<number> =>
+    ipcRenderer.invoke('files:getPostSize', secUid, folderName),
+  deletePost: (postId: number): Promise<boolean> => ipcRenderer.invoke('files:deletePost', postId),
+  deleteUserFiles: (userId: number, secUid: string): Promise<number> =>
+    ipcRenderer.invoke('files:deleteUserFiles', userId, secUid)
+}
+
 const api = {
   db: dbAPI,
   settings: settingsAPI,
@@ -195,7 +207,8 @@ const api = {
   system: systemAPI,
   updater: updaterAPI,
   migration: migrationAPI,
-  clipboard: clipboardAPI
+  clipboard: clipboardAPI,
+  files: filesAPI
 }
 
 if (process.contextIsolated) {

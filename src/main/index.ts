@@ -33,7 +33,10 @@ import {
   type DbTask,
   type CreateTaskInput,
   type UpdateUserSettingsInput,
-  type PostFilters
+  type PostFilters,
+  deletePost,
+  getPostsByUserId,
+  deletePostsByUserId
 } from './database'
 import { fetchDouyinCookie, refreshDouyinCookieSilent, isCookieRefreshing } from './services/cookie'
 import {
@@ -572,7 +575,18 @@ app.whenReady().then(() => {
 
     return dbUser
   })
-  ipcMain.handle('user:delete', (_event, id: number) => deleteUser(id))
+  ipcMain.handle('user:delete', (_event, id: number, deleteFiles?: boolean) => {
+    const result = deleteUser(id)
+    if (deleteFiles && result) {
+      const downloadPath = getDownloadPath()
+      const userDir = join(downloadPath, result.sec_uid)
+      if (existsSync(userDir)) {
+        rmSync(userDir, { recursive: true, force: true })
+        console.log(`[User:delete] Removed files: ${userDir}`)
+      }
+    }
+    return result
+  })
   ipcMain.handle('user:setShowInHome', (_event, id: number, show: boolean) => setUserShowInHome(id, show))
   ipcMain.handle('user:updateSettings', (_event, id: number, input: UpdateUserSettingsInput) =>
     updateUserSettings(id, input)
@@ -689,6 +703,66 @@ app.whenReady().then(() => {
         shell.openPath(userPath)
       }
     }
+  })
+
+  // Files management IPC handlers
+  ipcMain.handle('files:getUserPosts', (_event, userId: number, page?: number, pageSize?: number) =>
+    getPostsByUserId(userId, page, pageSize)
+  )
+
+  ipcMain.handle('files:getFileSizes', (_event, secUid: string) => {
+    const basePath = join(getDownloadPath(), secUid)
+    if (!existsSync(basePath)) return { totalSize: 0, folderCount: 0 }
+    let totalSize = 0
+    let folderCount = 0
+    try {
+      const folders = readdirSync(basePath)
+      for (const folder of folders) {
+        const folderPath = join(basePath, folder)
+        const stat = statSync(folderPath)
+        if (!stat.isDirectory()) continue
+        folderCount++
+        const files = readdirSync(folderPath)
+        for (const file of files) {
+          try {
+            totalSize += statSync(join(folderPath, file)).size
+          } catch { /* skip */ }
+        }
+      }
+    } catch { /* skip */ }
+    return { totalSize, folderCount }
+  })
+
+  ipcMain.handle('files:getPostSize', (_event, secUid: string, folderName: string) => {
+    const folderPath = join(getDownloadPath(), secUid, folderName)
+    if (!existsSync(folderPath)) return 0
+    let total = 0
+    try {
+      const files = readdirSync(folderPath)
+      for (const file of files) {
+        try { total += statSync(join(folderPath, file)).size } catch { /* skip */ }
+      }
+    } catch { /* skip */ }
+    return total
+  })
+
+  ipcMain.handle('files:deletePost', (_event, postId: number) => {
+    const post = deletePost(postId)
+    if (!post) return false
+    const folderPath = join(getDownloadPath(), post.sec_uid, post.folder_name)
+    if (existsSync(folderPath)) {
+      rmSync(folderPath, { recursive: true, force: true })
+    }
+    return true
+  })
+
+  ipcMain.handle('files:deleteUserFiles', (_event, userId: number, secUid: string) => {
+    const count = deletePostsByUserId(userId)
+    const userDir = join(getDownloadPath(), secUid)
+    if (existsSync(userDir)) {
+      rmSync(userDir, { recursive: true, force: true })
+    }
+    return count
   })
 
   // Database IPC handlers

@@ -88,7 +88,7 @@ declare global {
   interface UserAPI {
     getAll: () => Promise<DbUser[]>
     add: (url: string) => Promise<DbUser>
-    delete: (id: number) => Promise<void>
+    delete: (id: number, deleteFiles?: boolean) => Promise<void>
     refresh: (id: number, url: string) => Promise<DbUser>
     batchRefresh: (
       users: { id: number; homepage_url: string; nickname: string }[]
@@ -360,6 +360,14 @@ declare global {
     onDouyinLink: (callback: (link: string) => void) => () => void
   }
 
+  interface FilesAPI {
+    getUserPosts: (userId: number, page?: number, pageSize?: number) => Promise<{ posts: DbPost[]; total: number }>
+    getFileSizes: (secUid: string) => Promise<{ totalSize: number; folderCount: number }>
+    getPostSize: (secUid: string, folderName: string) => Promise<number>
+    deletePost: (postId: number) => Promise<boolean>
+    deleteUserFiles: (userId: number, secUid: string) => Promise<number>
+  }
+
   interface API {
     db: DatabaseAPI
     settings: SettingsAPI
@@ -378,6 +386,7 @@ declare global {
     updater: UpdaterAPI
     migration: MigrationAPI
     clipboard: ClipboardAPI
+    files: FilesAPI
   }
 
   interface Window {

@@ -7,6 +7,7 @@ import TaskDetailPage from '@/pages/settings/TaskDetailPage'
 import AnalysisPage from '@/pages/settings/AnalysisPage'
 import SystemPage from '@/pages/settings/SystemPage'
 import LogsPage from '@/pages/settings/LogsPage'
+import FilesPage from '@/pages/settings/FilesPage'
 
 export const router = createHashRouter([
   {
@@ -28,6 +29,10 @@ export const router = createHashRouter([
       {
         path: 'download/:id',
         element: <TaskDetailPage />
+      },
+      {
+        path: 'files',
+        element: <FilesPage />
       },
       {
         path: 'analysis',
