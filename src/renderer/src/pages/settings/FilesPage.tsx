@@ -113,11 +113,11 @@ export default function FilesPage() {
   const loadUsers = async () => {
     setLoading(true)
     try {
-      const allUsers = await window.api.user.getAll()
+      const allUsers = (await window.api.user.getAll()) ?? []
       const withSize: UserWithSize[] = await Promise.all(
         allUsers.map(async (u) => {
-          const { totalSize, folderCount } = await window.api.files.getFileSizes(u.sec_uid)
-          return { ...u, fileSize: totalSize, folderCount }
+          const sizes = await window.api.files.getFileSizes(u.sec_uid)
+          return { ...u, fileSize: sizes?.totalSize ?? 0, folderCount: sizes?.folderCount ?? 0 }
         })
       )
       const sorted = withSize
@@ -139,13 +139,14 @@ export default function FilesPage() {
     else setLoadingMore(true)
     try {
       const result = await window.api.files.getUserPosts(user.id, pageNum, PAGE_SIZE)
+      const newPosts = result?.posts ?? []
       if (reset) {
-        setPosts(result.posts)
+        setPosts(newPosts)
       } else {
-        setPosts((prev) => [...prev, ...result.posts])
+        setPosts((prev) => [...prev, ...newPosts])
       }
-      setPostTotal(result.total)
-      setHasMore(result.posts.length === PAGE_SIZE)
+      setPostTotal(result?.total ?? 0)
+      setHasMore(newPosts.length === PAGE_SIZE)
       loadCoverPaths(result.posts)
     } catch {
       toast.error('加载作品失败')
