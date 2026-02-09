@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "./dist",
+    "declaration": true,
+    "resolveJsonModule": true,
+    "paths": {
+      "@dym/shared": ["../shared/src/types.ts"]
+    }
+  },
+  "include": ["src", "../shared/src"]
+}

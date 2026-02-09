@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "./dist",
+    "resolveJsonModule": true,
+    "paths": {
+      "@/*": ["./src/*"],
+      "@dym/shared": ["../shared/src/types"]
+    }
+  },
+  "include": ["src", "../shared/src"]
+}

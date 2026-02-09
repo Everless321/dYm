@@ -11,3 +11,8 @@ out
 /blob-report/
 /playwright/.cache/
 .ace-tool/
+
+# Web migration
+packages/server/data/
+packages/web/dist/
+*.tsbuildinfo

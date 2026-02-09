@@ -1,0 +1,123 @@
+@theme {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+}
+
+:root {
+  /* Apple-inspired minimal palette */
+  --accent-primary: #0A84FF;
+  --accent-secondary: #5AC8FA;
+  --bg-primary: #F5F5F7;
+  --bg-surface: #FFFFFF;
+  --bg-active: #E8F0FE;
+  --bg-hover: #F2F2F4;
+  --border-color: #E5E5E7;
+  --text-primary: #1D1D1F;
+  --text-secondary: #6E6E73;
+  --text-muted: #A1A1A6;
+
+  /* shadcn/ui 变量映射 */
+  --background: 240 10% 97%;
+  --foreground: 240 4% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 4% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 4% 12%;
+  --primary: 209 100% 52%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 6% 95%;
+  --secondary-foreground: 240 4% 16%;
+  --muted: 240 6% 95%;
+  --muted-foreground: 240 4% 44%;
+  --accent: 214 100% 95%;
+  --accent-foreground: 209 100% 52%;
+  --destructive: 4 100% 59%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 6% 90%;
+  --input: 240 6% 90%;
+  --ring: 209 100% 52%;
+  --radius: 0.75rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  line-height: 1.5;
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    'SF Pro Text',
+    'SF Pro Display',
+    'Segoe UI',
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    'Fira Sans',
+    'Droid Sans',
+    'Helvetica Neue',
+    sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:where(button, a, input, textarea, select, summary, [role='button']) {
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease,
+    opacity 150ms ease;
+}
+
+:where(button, a, summary, [role='button']):focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+:where(input, textarea, select):focus-visible {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(button, a, input, textarea, select, summary, [role='button']) {
+    transition: none !important;
+  }
+}
+
+#root {
+  min-height: 100vh;
+}
