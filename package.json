@@ -2,7 +2,7 @@
   "name": "dym",
   "version": "1.2.3",
   "description": "An Electron application with React and TypeScript",
-  "license": "CC-BY-NC-SA-4.0",
+  "license": "GPL-3.0",
   "main": "./out/main/index.js",
   "author": "example.com",
   "homepage": "https://electron-vite.org",

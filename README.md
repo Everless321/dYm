@@ -5,7 +5,7 @@
 [![Electron](https://img.shields.io/badge/Electron-39.x-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-19.x-61DAFB?logo=react&logoColor=white)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![License](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
 ### 我的证书噶了，所以Mac用户请自行执行命令签名 sudo xattr -cr /Applications/dYm.app/
 
@@ -172,7 +172,7 @@ A: 请确认：
 
 ## 许可证
 
-本项目采用 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) 协议，**禁止商用**。
+本项目采用 [GPL v3](https://www.gnu.org/licenses/gpl-3.0.html) 协议。自由使用，再分发须开源且沿用同协议。
 
 ## 免责声明
 
