@@ -735,7 +735,7 @@ export function getPostsByUserId(userId: number, page = 1, pageSize = 50): { pos
   const database = getDatabase()
   const offset = (page - 1) * pageSize
   const posts = database
-    .prepare('SELECT * FROM posts WHERE user_id = ? ORDER BY downloaded_at DESC LIMIT ? OFFSET ?')
+    .prepare('SELECT * FROM posts WHERE user_id = ? ORDER BY create_time DESC LIMIT ? OFFSET ?')
     .all(userId, pageSize, offset) as DbPost[]
   const row = database
     .prepare('SELECT COUNT(*) as count FROM posts WHERE user_id = ?')
