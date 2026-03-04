@@ -8,6 +8,7 @@ import {
   getPostByAwemeId,
   updateUserSyncStatus
 } from '../database'
+import { convertFolderImagesToJpg } from './downloader'
 
 export interface SyncProgress {
   userId: number
@@ -72,7 +73,8 @@ export async function startUserSync(userId: number): Promise<void> {
   const downloadPath = getDownloadPath()
   const userPath = join(downloadPath, user.sec_uid)
 
-  const maxDownloadCount = user.max_download_count > 0 ? user.max_download_count : globalMaxDownloadCount
+  const maxDownloadCount =
+    user.max_download_count > 0 ? user.max_download_count : globalMaxDownloadCount
 
   let downloadedCount = 0
   let skippedCount = 0
@@ -175,7 +177,9 @@ export async function startUserSync(userId: number): Promise<void> {
       return
     }
 
-    console.log(`[Syncer] Fetch complete. Videos to download: ${videosToDownload.length}, skipped: ${skippedCount}`)
+    console.log(
+      `[Syncer] Fetch complete. Videos to download: ${videosToDownload.length}, skipped: ${skippedCount}`
+    )
 
     if (videosToDownload.length === 0) {
       console.log(`[Syncer] No new videos to download for ${user.nickname}`)
@@ -233,6 +237,14 @@ export async function startUserSync(userId: number): Promise<void> {
 
           try {
             await downloader.createDownloadTasks(awemeData, userPath)
+
+            // 图文作品转 JPG
+            if (
+              (awemeData.awemeType || 0) === 68 &&
+              getSetting('convert_images_to_jpg') === 'true'
+            ) {
+              await convertFolderImagesToJpg(join(userPath, awemeId))
+            }
 
             createPost({
               aweme_id: awemeId,

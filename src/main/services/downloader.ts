@@ -1,5 +1,12 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
+import { existsSync, readdirSync, unlinkSync } from 'fs'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
+import ffmpegInstaller from '@ffmpeg-installer/ffmpeg'
+
+const execFileAsync = promisify(execFile)
+const ffmpegPath = ffmpegInstaller.path.replace('app.asar', 'app.asar.unpacked')
 import { DouyinHandler } from 'dy-downloader'
 import { DouyinDownloader } from 'dy-downloader'
 import {
@@ -113,14 +120,23 @@ export async function startDownloadTask(taskId: number): Promise<void> {
     })
 
     // 使用并发控制下载用户视频
-    const userTasks = task.users.map(
-      (user, index) => () => {
-        // 优先使用用户级别的下载限制，如果为0则使用全局设置
-        const userMaxCount = (user as DbUser & { max_download_count?: number }).max_download_count
-        const maxDownloadCount = userMaxCount && userMaxCount > 0 ? userMaxCount : globalMaxDownloadCount
-        return downloadUserVideos(taskId, task, user, index, downloadPath, cookie, maxDownloadCount, historicalDownloads, videoDownloadConcurrency)
-      }
-    )
+    const userTasks = task.users.map((user, index) => () => {
+      // 优先使用用户级别的下载限制，如果为0则使用全局设置
+      const userMaxCount = (user as DbUser & { max_download_count?: number }).max_download_count
+      const maxDownloadCount =
+        userMaxCount && userMaxCount > 0 ? userMaxCount : globalMaxDownloadCount
+      return downloadUserVideos(
+        taskId,
+        task,
+        user,
+        index,
+        downloadPath,
+        cookie,
+        maxDownloadCount,
+        historicalDownloads,
+        videoDownloadConcurrency
+      )
+    })
 
     const results = await runWithConcurrency(userTasks, concurrency)
     totalDownloaded = results.reduce((sum, count) => sum + count, 0)
@@ -338,6 +354,14 @@ async function downloadUserVideos(
           try {
             await downloader.createDownloadTasks(awemeData, userPath)
 
+            // 图文作品转 JPG
+            if (
+              (awemeData.awemeType || 0) === 68 &&
+              getSetting('convert_images_to_jpg') === 'true'
+            ) {
+              await convertFolderImagesToJpg(join(userPath, folderName))
+            }
+
             // 入库
             createPost({
               aweme_id: awemeId,
@@ -433,4 +457,26 @@ export function stopDownloadTask(taskId: number): void {
 
 export function isTaskRunning(taskId: number): boolean {
   return runningTasks.has(taskId)
+}
+
+export async function convertFolderImagesToJpg(folderPath: string): Promise<void> {
+  if (!existsSync(folderPath)) return
+  try {
+    const files = readdirSync(folderPath)
+    for (const file of files) {
+      if (file.includes('_cover')) continue
+      const ext = file.split('.').pop()?.toLowerCase()
+      if (ext !== 'webp' && ext !== 'png') continue
+      const filePath = join(folderPath, file)
+      const newPath = filePath.replace(/\.(webp|png)$/i, '.jpg')
+      try {
+        await execFileAsync(ffmpegPath, ['-i', filePath, '-q:v', '1', '-y', newPath])
+        unlinkSync(filePath)
+      } catch (e) {
+        console.error(`[Downloader] Failed to convert ${file}:`, e)
+      }
+    }
+  } catch (error) {
+    console.error('[Downloader] Image conversion failed:', error)
+  }
 }

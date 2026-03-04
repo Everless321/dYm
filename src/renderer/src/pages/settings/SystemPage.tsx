@@ -26,6 +26,7 @@ export default function SystemPage() {
   const [downloadPath, setDownloadPath] = useState('')
   const [maxDownloadCount, setMaxDownloadCount] = useState('0')
   const [videoDownloadConcurrency, setVideoDownloadConcurrency] = useState('3')
+  const [convertToJpg, setConvertToJpg] = useState(false)
   const originalDownloadPath = useRef('')
 
   // 迁移
@@ -41,7 +42,6 @@ export default function SystemPage() {
   const [analysisModel, setAnalysisModel] = useState('grok-4-fast')
   const [analysisSlices, setAnalysisSlices] = useState('4')
   const [analysisPrompt, setAnalysisPrompt] = useState('')
-
 
   // 更新
   const [currentVersion, setCurrentVersion] = useState('')
@@ -83,6 +83,7 @@ export default function SystemPage() {
     originalDownloadPath.current = savedPath
     setMaxDownloadCount(settings.max_download_count || '0')
     setVideoDownloadConcurrency(settings.video_download_concurrency || '3')
+    setConvertToJpg(settings.convert_images_to_jpg === 'true')
     setAnalysisConcurrency(settings.analysis_concurrency || '2')
     setAnalysisRpm(settings.analysis_rpm || '10')
     setAnalysisModel(settings.analysis_model || 'grok-4-fast')
@@ -147,7 +148,8 @@ export default function SystemPage() {
   // Download handlers
   const handleSaveDownload = async () => {
     try {
-      const oldPath = originalDownloadPath.current || await window.api.settings.getDefaultDownloadPath()
+      const oldPath =
+        originalDownloadPath.current || (await window.api.settings.getDefaultDownloadPath())
       const newPath = downloadPath
 
       if (newPath && oldPath !== newPath) {
@@ -171,6 +173,7 @@ export default function SystemPage() {
     await window.api.settings.set('download_path', downloadPath)
     await window.api.settings.set('max_download_count', maxDownloadCount)
     await window.api.settings.set('video_download_concurrency', videoDownloadConcurrency)
+    await window.api.settings.set('convert_images_to_jpg', convertToJpg ? 'true' : 'false')
     originalDownloadPath.current = downloadPath
     toast.success('下载设置已保存')
   }
@@ -249,7 +252,6 @@ export default function SystemPage() {
   const handleInstallUpdate = () => {
     window.api.updater.install()
   }
-
 
   return (
     <div className="flex flex-col h-full">
@@ -439,6 +441,28 @@ export default function SystemPage() {
                       min="1"
                       className="w-20 h-9 px-3 rounded-md bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono text-center focus:outline-none focus:border-[#0A84FF]"
                     />
+                  </div>
+                  {/* Convert Images to JPG */}
+                  <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-sm text-[#1D1D1F]">图片转 JPG</p>
+                      <p className="text-xs text-[#A1A1A6] mt-1">
+                        下载图文作品时自动转换为 JPG 格式
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setConvertToJpg(!convertToJpg)}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                        convertToJpg ? 'bg-[#0A84FF]' : 'bg-[#D1D1D6]'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                          convertToJpg ? 'translate-x-[22px]' : 'translate-x-0.5'
+                        }`}
+                      />
+                    </button>
                   </div>
                 </div>
 
