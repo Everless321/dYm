@@ -174,6 +174,7 @@ const videoAPI = {
 const systemAPI = {
   getResourceUsage: (): Promise<SystemResourceInfo> =>
     ipcRenderer.invoke('system:getResourceUsage'),
+  getWebServerInfo: (): Promise<WebServerInfo> => ipcRenderer.invoke('system:getWebServerInfo'),
   openDirectoryDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:openDirectory'),
   openDataDirectory: (): Promise<void> => ipcRenderer.invoke('system:openDataDirectory'),
   openInAppBrowser: (url: string, title?: string): Promise<void> =>

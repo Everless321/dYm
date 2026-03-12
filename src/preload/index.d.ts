@@ -242,6 +242,7 @@ declare global {
     minContentLevel?: number
     maxContentLevel?: number
     analyzedOnly?: boolean
+    keyword?: string
   }
 
   interface BrokenPostInfo {
@@ -338,8 +339,17 @@ declare global {
     memoryTotal: number // GB
   }
 
+  interface WebServerInfo {
+    started: boolean
+    port: number
+    preferredPort: number
+    origin: string
+    urls: string[]
+  }
+
   interface SystemAPI {
     getResourceUsage: () => Promise<SystemResourceInfo>
+    getWebServerInfo: () => Promise<WebServerInfo>
     openDirectoryDialog: () => Promise<string | null>
     openDataDirectory: () => Promise<void>
     openInAppBrowser: (url: string, title?: string) => Promise<void>

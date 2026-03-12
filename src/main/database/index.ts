@@ -229,6 +229,7 @@ export function initDatabase(): void {
     { key: 'grok_api_url', value: 'https://api.x.ai/v1' },
     { key: 'download_path', value: '' },
     { key: 'max_download_count', value: '50' },
+    { key: 'web_server_port', value: '38595' },
     // 分析相关设置
     { key: 'analysis_concurrency', value: '2' },
     { key: 'analysis_rpm', value: '10' },
@@ -818,6 +819,7 @@ export interface PostFilters {
   minContentLevel?: number
   maxContentLevel?: number
   analyzedOnly?: boolean
+  keyword?: string
 }
 
 export function getAllPosts(
@@ -874,6 +876,12 @@ export function getAllPosts(
 
   if (filters?.analyzedOnly) {
     conditions.push('analyzed_at IS NOT NULL')
+  }
+
+  if (filters?.keyword?.trim()) {
+    conditions.push('(caption LIKE ? OR desc LIKE ? OR nickname LIKE ?)')
+    const keyword = `%${filters.keyword.trim()}%`
+    params.push(keyword, keyword, keyword)
   }
 
   const whereClause = `WHERE ${conditions.join(' AND ')}`

@@ -2,6 +2,9 @@ appId: dev.everless.dym
 productName: dYm
 directories:
   buildResources: build
+extraResources:
+  - from: resources/web
+    to: web
 files:
   - '!**/.vscode/*'
   - '!src/*'

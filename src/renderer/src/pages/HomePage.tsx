@@ -62,9 +62,10 @@ export default function HomePage() {
       tags: selectedTags.length > 0 ? selectedTags : undefined,
       minContentLevel: sexyLevelRange[0] > 0 ? sexyLevelRange[0] : undefined,
       maxContentLevel: sexyLevelRange[1] < 10 ? sexyLevelRange[1] : undefined,
-      analyzedOnly: analyzedOnly || undefined
+      analyzedOnly: analyzedOnly || undefined,
+      keyword: searchKeyword.trim() || undefined
     }),
-    [selectedSecUid, selectedTags, sexyLevelRange, analyzedOnly]
+    [selectedSecUid, selectedTags, sexyLevelRange, analyzedOnly, searchKeyword]
   )
 
   useEffect(() => {
@@ -162,6 +163,7 @@ export default function HomePage() {
     setSelectedTags([])
     setSexyLevelRange([0, 10])
     setAnalyzedOnly(false)
+    setSearchKeyword('')
   }
 
   const hasActiveFilters =
@@ -169,7 +171,8 @@ export default function HomePage() {
     selectedTags.length > 0 ||
     sexyLevelRange[0] > 0 ||
     sexyLevelRange[1] < 10 ||
-    analyzedOnly
+    analyzedOnly ||
+    searchKeyword.trim()
 
   const parseTags = (tagsStr: string | null): string[] => {
     if (!tagsStr) return []

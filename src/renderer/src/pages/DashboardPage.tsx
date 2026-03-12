@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Users, Video, Sparkles, Download, RefreshCw, ArrowRight } from 'lucide-react'
+import { Users, Video, Sparkles, Download, RefreshCw, ArrowRight, Wifi } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   AreaChart,
@@ -79,23 +79,26 @@ export default function DashboardPage() {
   const [userDist, setUserDist] = useState<UserDistItem[]>([])
   const [topTags, setTopTags] = useState<TagStatItem[]>([])
   const [levelDist, setLevelDist] = useState<LevelDistItem[]>([])
+  const [webInfo, setWebInfo] = useState<WebServerInfo | null>(null)
   const [loading, setLoading] = useState(true)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const [ov, tr, ud, tt, ld] = await Promise.all([
+      const [ov, tr, ud, tt, ld, wi] = await Promise.all([
         window.api.dashboard.getOverview(),
         window.api.dashboard.getDownloadTrend(30),
         window.api.dashboard.getUserDistribution(10),
         window.api.dashboard.getTopTags(15),
-        window.api.dashboard.getContentLevelDistribution()
+        window.api.dashboard.getContentLevelDistribution(),
+        window.api.system.getWebServerInfo()
       ])
       setOverview(ov)
       setTrend(tr)
       setUserDist(ud)
       setTopTags(tt)
       setLevelDist(ld)
+      setWebInfo(wi)
     } catch (err) {
       console.error('Failed to fetch dashboard data:', err)
     } finally {
@@ -111,6 +114,9 @@ export default function DashboardPage() {
     () => trend.map((p) => ({ ...p, label: p.date.slice(5) })),
     [trend]
   )
+  const webEntry =
+    webInfo?.urls.find((url) => !url.includes('127.0.0.1') && !url.includes('localhost')) ??
+    webInfo?.origin
 
   return (
     <div className="flex-1 overflow-y-auto bg-[#F5F5F7]">
@@ -118,6 +124,17 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between bg-white border-b border-[#E5E5E7]" style={{ height: 56, padding: '0 28px' }}>
         <h1 className="text-[16px] font-semibold text-[#1D1D1F]">数据概览</h1>
         <div className="flex items-center" style={{ gap: 8 }}>
+          {webEntry && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => window.api.system.openInAppBrowser(webEntry, '网页端视频流')}
+              className="text-[#30D158] hover:text-[#30D158]/80"
+            >
+              <Wifi className="w-3.5 h-3.5 mr-1" />
+              Web {webInfo?.port}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -141,6 +158,25 @@ export default function DashboardPage() {
       </div>
 
       <div className="flex flex-col" style={{ padding: '20px 28px 28px', gap: 16 }}>
+        {webEntry && (
+          <div className="bg-[#0F172A] rounded-2xl text-white shadow-[0_14px_30px_rgba(15,23,42,0.18)]" style={{ padding: '18px 20px' }}>
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.24em] text-white/55">LAN Feed</p>
+                <p className="text-[20px] font-semibold mt-1">网页端已经随客户端启动</p>
+                <p className="text-[13px] text-white/70 mt-1">{webEntry}</p>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => window.api.system.openInAppBrowser(webEntry, '网页端视频流')}
+                className="bg-white text-[#0F172A] hover:bg-white/90"
+              >
+                打开网页端
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Stat Cards */}
         <div className="grid grid-cols-4" style={{ gap: 14 }}>
           <StatCard label="关注用户" value={overview?.totalUsers ?? 0} icon={Users} color="#0A84FF" bgColor="#E8F0FE" />

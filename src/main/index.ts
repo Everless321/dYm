@@ -109,6 +109,12 @@ import {
   getMigrationSecUids,
   batchReplacePaths
 } from './database'
+import { findCoverFile, findMediaFiles, fromUrlPath, getDownloadPath } from './services/media'
+import {
+  getWebServerInfo,
+  startWebBrowserServer,
+  stopWebBrowserServer
+} from './services/web-browser'
 
 // 全局变量
 let mainWindow: BrowserWindow | null = null
@@ -138,119 +144,6 @@ function extractDouyinLink(text: string): string | null {
   return null
 }
 
-function getDownloadPath(): string {
-  const customPath = getSetting('download_path')
-  if (customPath && customPath.trim()) {
-    return customPath
-  }
-  return join(app.getPath('userData'), 'Download', 'post')
-}
-
-// 将路径转换为 URL 友好格式（Windows 反斜杠转正斜杠，并添加前导斜杠）
-function toUrlPath(filePath: string): string {
-  if (process.platform === 'win32') {
-    // Windows: C:\Users\xxx -> /C:/Users/xxx (添加前导斜杠使 URL 正确解析)
-    return '/' + filePath.replace(/\\/g, '/')
-  }
-  return filePath
-}
-
-interface MediaFiles {
-  type: 'video' | 'images'
-  video?: string
-  images?: string[]
-  cover?: string
-  music?: string
-}
-
-function findMediaFiles(secUid: string, folderName: string, awemeType: number): MediaFiles | null {
-  const basePath = join(getDownloadPath(), secUid)
-  if (!existsSync(basePath)) return null
-
-  // 查找实际文件夹
-  let targetFolder: string | null = null
-  const exactPath = join(basePath, folderName)
-
-  if (existsSync(exactPath)) {
-    targetFolder = exactPath
-  } else {
-    // 兼容旧格式
-    try {
-      const folders = readdirSync(basePath)
-      for (const folder of folders) {
-        if (folder.endsWith(folderName) || folder.includes(`_${folderName}`)) {
-          targetFolder = join(basePath, folder)
-          break
-        }
-      }
-    } catch {
-      return null
-    }
-  }
-
-  if (!targetFolder) return null
-
-  try {
-    const files = readdirSync(targetFolder)
-    const coverFile = files.find((f) => f.includes('_cover.'))
-    const cover = coverFile ? toUrlPath(join(targetFolder, coverFile)) : undefined
-
-    // 查找音乐文件
-    const musicFile = files.find((f) => /\.(mp3|m4a|aac|wav|ogg)$/i.test(f))
-    const music = musicFile ? toUrlPath(join(targetFolder, musicFile)) : undefined
-
-    // 图集类型: awemeType === 68
-    if (awemeType === 68) {
-      const images = files
-        .filter((f) => /\.(webp|jpg|jpeg|png)$/i.test(f) && !f.includes('_cover'))
-        .map((f) => toUrlPath(join(targetFolder!, f)))
-        .sort()
-      return { type: 'images', images, cover, music }
-    }
-
-    // 视频类型（视频自带音轨，不需要额外音乐）
-    const videoFile = files.find((f) => /\.(mp4|mov|avi)$/i.test(f))
-    const video = videoFile ? toUrlPath(join(targetFolder, videoFile)) : undefined
-    return { type: 'video', video, cover }
-  } catch {
-    return null
-  }
-}
-
-function findCoverFile(secUid: string, folderName: string): string | null {
-  const basePath = join(getDownloadPath(), secUid)
-  if (!existsSync(basePath)) return null
-
-  // folderName 现在就是 aweme_id，直接匹配
-  const exactPath = join(basePath, folderName)
-  if (existsSync(exactPath)) {
-    try {
-      const files = readdirSync(exactPath)
-      const coverFile = files.find((f) => f.includes('_cover.'))
-      if (coverFile) return toUrlPath(join(exactPath, coverFile))
-    } catch {
-      return null
-    }
-  }
-
-  // 兼容旧格式：扫描目录查找包含 aweme_id 的文件夹
-  try {
-    const folders = readdirSync(basePath)
-    for (const folder of folders) {
-      if (folder.endsWith(folderName) || folder.includes(`_${folderName}`)) {
-        const folderPath = join(basePath, folder)
-        const files = readdirSync(folderPath)
-        const coverFile = files.find((f) => f.includes('_cover.'))
-        if (coverFile) return toUrlPath(join(folderPath, coverFile))
-      }
-    }
-  } catch {
-    return null
-  }
-
-  return null
-}
-
 function createTray(): void {
   console.log('[Tray] Creating tray, platform:', process.platform)
 
@@ -277,6 +170,12 @@ function createTray(): void {
 
   console.log('[Tray] Tray created successfully')
 
+  const webInfo = getWebServerInfo()
+  const lanUrls = webInfo.urls.filter(
+    (url) => !url.includes('127.0.0.1') && !url.includes('localhost')
+  )
+  const copyUrls = lanUrls.length > 0 ? lanUrls : webInfo.urls
+
   const contextMenu = Menu.buildFromTemplate([
     {
       label: '显示主窗口',
@@ -286,6 +185,33 @@ function createTray(): void {
           mainWindow.focus()
         }
       }
+    },
+    { type: 'separator' },
+    {
+      label: `网页端端口：${webInfo.port}`,
+      enabled: false
+    },
+    {
+      label: '打开网页端',
+      enabled: webInfo.started,
+      click: () => {
+        shell.openExternal(webInfo.origin)
+      }
+    },
+    {
+      label: '复制网页地址',
+      enabled: webInfo.started,
+      click: () => {
+        clipboard.writeText(copyUrls.join('\n'))
+      }
+    },
+    {
+      label: '局域网地址',
+      enabled: copyUrls.length > 0,
+      submenu: copyUrls.map((url) => ({
+        label: url,
+        click: () => clipboard.writeText(url)
+      }))
     },
     { type: 'separator' },
     {
@@ -400,15 +326,10 @@ protocol.registerSchemesAsPrivileged([
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // 注册 local:// 协议处理器（支持 Range 请求以允许视频进度条拖动）
   protocol.handle('local', async (request) => {
-    // 解码并处理 Windows 路径（URL 中可能是正斜杠，需要在 Windows 上转换回反斜杠）
-    let filePath = decodeURIComponent(request.url.replace('local://', ''))
-    // Windows 路径处理：如果路径以盘符开头（如 /C:/），去掉开头的斜杠
-    if (process.platform === 'win32' && /^\/[A-Za-z]:/.test(filePath)) {
-      filePath = filePath.slice(1)
-    }
+    const filePath = fromUrlPath(decodeURIComponent(request.url.replace('local://', '')))
     console.log('[local://] Request URL:', request.url)
     console.log('[local://] File path:', filePath)
     console.log('[local://] File exists:', existsSync(filePath))
@@ -1190,6 +1111,7 @@ app.whenReady().then(() => {
       memoryTotal: Math.round((totalMem / 1024 / 1024 / 1024) * 10) / 10
     }
   })
+  ipcMain.handle('system:getWebServerInfo', () => getWebServerInfo())
 
   // Migration IPC handler
   ipcMain.handle(
@@ -1273,6 +1195,13 @@ app.whenReady().then(() => {
   ipcMain.handle('dashboard:getTopTags', (_event, limit?: number) => getTopTags(limit))
   ipcMain.handle('dashboard:getContentLevelDistribution', () => getContentLevelDistribution())
 
+  try {
+    const webInfo = await startWebBrowserServer()
+    console.log('[Web] Server ready on port:', webInfo.port)
+  } catch (error) {
+    console.error('[Web] Failed to start video browser server:', error)
+  }
+
   // 创建托盘图标
   createTray()
 
@@ -1302,6 +1231,9 @@ app.whenReady().then(() => {
 app.on('before-quit', () => {
   isQuitting = true
   stopScheduler()
+  void stopWebBrowserServer().catch((error) => {
+    console.error('[Web] Failed to stop video browser server:', error)
+  })
   closeDatabase()
 })
 
