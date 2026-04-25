@@ -138,7 +138,7 @@ export default function SystemPage() {
     }
     setVerifyingApi(true)
     try {
-      await window.api.grok.verify(apiKey, apiUrl)
+      await window.api.grok.verify(apiKey, apiUrl, analysisModel)
       toast.success('API Key 验证成功')
     } catch (error) {
       toast.error(`验证失败: ${(error as Error).message}`)

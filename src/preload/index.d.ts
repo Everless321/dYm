@@ -324,7 +324,7 @@ declare global {
   }
 
   interface GrokAPI {
-    verify: (apiKey: string, apiUrl: string) => Promise<boolean>
+    verify: (apiKey: string, apiUrl: string, model: string) => Promise<boolean>
   }
 
   interface AnalysisAPI {

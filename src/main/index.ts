@@ -996,7 +996,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('scheduler:clearLogs', () => clearSchedulerLogs())
 
   // Grok API verification
-  ipcMain.handle('grok:verify', async (_event, apiKey: string, apiUrl: string) => {
+  ipcMain.handle('grok:verify', async (_event, apiKey: string, apiUrl: string, model: string) => {
     const response = await fetch(`${apiUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -1004,7 +1004,7 @@ app.whenReady().then(async () => {
         Authorization: `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: 'grok-2-latest',
+        model,
         messages: [{ role: 'user', content: 'Hi' }],
         max_tokens: 5
       })

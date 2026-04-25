@@ -149,8 +149,8 @@ const postAPI = {
 }
 
 const grokAPI = {
-  verify: (apiKey: string, apiUrl: string): Promise<boolean> =>
-    ipcRenderer.invoke('grok:verify', apiKey, apiUrl)
+  verify: (apiKey: string, apiUrl: string, model: string): Promise<boolean> =>
+    ipcRenderer.invoke('grok:verify', apiKey, apiUrl, model)
 }
 
 const analysisAPI = {
