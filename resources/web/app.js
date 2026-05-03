@@ -26,7 +26,10 @@ const el = {
   authorScroll: document.getElementById('authorScroll'),
   grid: document.getElementById('grid'),
   gridLoading: document.getElementById('gridLoading'),
-  toast: document.getElementById('toast')
+  toast: document.getElementById('toast'),
+  searchInput: document.getElementById('searchInput'),
+  searchClear: document.getElementById('searchClear'),
+  analyzedToggle: document.getElementById('analyzedToggle')
 }
 
 let storyObserver = null
@@ -413,6 +416,39 @@ function closePlayer() {
 }
 
 el.playerBack.addEventListener('click', closePlayer)
+
+// ── Filters wiring ──
+
+let searchTimer = null
+
+function syncSearchClearVisibility() {
+  el.searchClear.hidden = !el.searchInput.value
+}
+
+el.searchInput.addEventListener('input', () => {
+  syncSearchClearVisibility()
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    state.filters.keyword = el.searchInput.value.trim()
+    loadGrid(true)
+  }, 280)
+})
+
+el.searchClear.addEventListener('click', () => {
+  el.searchInput.value = ''
+  syncSearchClearVisibility()
+  if (state.filters.keyword) {
+    state.filters.keyword = ''
+    loadGrid(true)
+  }
+  el.searchInput.focus()
+})
+
+el.analyzedToggle.addEventListener('click', () => {
+  state.filters.analyzedOnly = !state.filters.analyzedOnly
+  el.analyzedToggle.setAttribute('aria-pressed', String(state.filters.analyzedOnly))
+  loadGrid(true)
+})
 
 // ── Bootstrap ──
 

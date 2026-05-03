@@ -6,37 +6,68 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
     />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#0a0a12" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>dYm Feed</title>
-    <link rel="stylesheet" href="/app.css" />
+    <link rel="stylesheet" href="/app.css?v=3" />
   </head>
   <body>
-    <!-- ── Browse View (grid) ── -->
+    <div class="ambient" aria-hidden="true">
+      <span class="ambient-blob blob-a"></span>
+      <span class="ambient-blob blob-b"></span>
+      <span class="ambient-blob blob-c"></span>
+      <div class="ambient-grain"></div>
+    </div>
+
     <div id="browseView" class="view browse-view">
-      <nav class="nav-bar">
-        <span class="nav-title">Feed</span>
-      </nav>
-      <div id="authorBar" class="author-bar">
+      <header class="top-bar">
+        <div class="glass top-bar-pill">
+          <div class="brand">
+            <span class="brand-dot"></span>
+            <span class="brand-name">dYm</span>
+          </div>
+          <div class="search">
+            <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path fill="currentColor" d="M10 4a6 6 0 1 0 3.74 10.69l4.28 4.28 1.42-1.42-4.28-4.28A6 6 0 0 0 10 4Zm0 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z"/>
+            </svg>
+            <input id="searchInput" class="search-input" type="search" placeholder="搜索描述、作者、标签" autocomplete="off" />
+            <button id="searchClear" class="search-clear" type="button" aria-label="清除" hidden>
+              <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="m12 10.6 5-5 1.4 1.4-5 5 5 5-1.4 1.4-5-5-5 5L5.6 17l5-5-5-5L7 5.6l5 5Z"/></svg>
+            </button>
+          </div>
+          <button id="analyzedToggle" class="filter-pill" type="button" aria-pressed="false" title="仅看已分析作品">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <path fill="currentColor" d="M12 2 9.2 8.6 2 9.4l5.4 4.7L5.8 22 12 18l6.2 4-1.6-7.9L22 9.4l-7.2-.8L12 2Z"/>
+            </svg>
+            <span>已分析</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="author-bar">
         <div id="authorScroll" class="author-scroll"></div>
       </div>
-      <div id="grid" class="grid"></div>
-      <div id="gridLoading" class="grid-loading" style="display:none">
-        <div class="spinner"></div>
+
+      <main id="grid" class="grid"></main>
+
+      <div id="gridLoading" class="grid-loading" hidden>
+        <div class="glass spinner-pill">
+          <span class="spinner"></span>
+          <span>加载中</span>
+        </div>
       </div>
     </div>
 
-    <!-- ── Player View (fullscreen swipe) ── -->
-    <div id="playerView" class="view player-view" style="display:none">
-      <button id="playerBack" class="player-back" type="button" aria-label="返回">
+    <div id="playerView" class="view player-view" hidden>
+      <button id="playerBack" class="glass player-back" type="button" aria-label="返回">
         <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="m14.7 6.3-1.4-1.4L6.2 12l7.1 7.1 1.4-1.4L9 12l5.7-5.7Z"/></svg>
       </button>
       <div id="playerFeed" class="player-feed"></div>
     </div>
 
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="toast" class="glass toast" role="status" aria-live="polite"></div>
 
-    <script type="module" src="/app.js"></script>
+    <script type="module" src="/app.js?v=2"></script>
   </body>
 </html>
