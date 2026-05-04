@@ -9,20 +9,27 @@ interface MediaViewerProps {
   onSelectPost?: (post: DbPost) => void
 }
 
+const IMAGE_AUTO_INTERVAL = 3000
+
 export function MediaViewer({ post, open, onOpenChange, allPosts = [], onSelectPost }: MediaViewerProps) {
   const [media, setMedia] = useState<MediaFiles | null>(null)
   const [loading, setLoading] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isMuted, setIsMuted] = useState(false)
   const [recommendCovers, setRecommendCovers] = useState<Map<number, string>>(new Map())
+  const [manualOverride, setManualOverride] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const autoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     if (open && post) {
       loadMedia()
+      setManualOverride(false)
+      setCurrentIndex(0)
     } else {
       setMedia(null)
       setCurrentIndex(0)
+      setManualOverride(false)
       if (audioRef.current) {
         audioRef.current.pause()
         audioRef.current.currentTime = 0
@@ -139,12 +146,36 @@ export function MediaViewer({ post, open, onOpenChange, allPosts = [], onSelectP
   const images = media?.images || []
   const hasMultipleImages = images.length > 1
 
+  useEffect(() => {
+    if (autoTimerRef.current) {
+      clearInterval(autoTimerRef.current)
+      autoTimerRef.current = null
+    }
+    if (!open || !isImages || !hasMultipleImages || manualOverride) return
+    autoTimerRef.current = setInterval(() => {
+      setCurrentIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0))
+    }, IMAGE_AUTO_INTERVAL)
+    return () => {
+      if (autoTimerRef.current) {
+        clearInterval(autoTimerRef.current)
+        autoTimerRef.current = null
+      }
+    }
+  }, [open, isImages, hasMultipleImages, images.length, manualOverride])
+
   const handlePrev = () => {
+    setManualOverride(true)
     setCurrentIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1))
   }
 
   const handleNext = () => {
+    setManualOverride(true)
     setCurrentIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0))
+  }
+
+  const handleSelectIndex = (idx: number) => {
+    setManualOverride(true)
+    setCurrentIndex(idx)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -215,11 +246,13 @@ export function MediaViewer({ post, open, onOpenChange, allPosts = [], onSelectP
                     {/* 图片指示器 */}
                     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5">
                       {images.map((_, idx) => (
-                        <div
+                        <button
                           key={idx}
+                          onClick={() => handleSelectIndex(idx)}
                           className={`w-1.5 h-1.5 rounded-full transition-colors ${
-                            idx === currentIndex ? 'bg-white' : 'bg-white/40'
+                            idx === currentIndex ? 'bg-white' : 'bg-white/40 hover:bg-white/70'
                           }`}
+                          aria-label={`第 ${idx + 1} 张`}
                         />
                       ))}
                     </div>

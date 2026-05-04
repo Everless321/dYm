@@ -11,12 +11,16 @@ const state = {
   activePostId: null,
   playerPosts: [],
   playerStartIndex: 0,
+  imageAutoTimer: null,
+  imageManualOverride: new Set(),
   filters: {
     secUid: '',
     keyword: '',
     analyzedOnly: false
   }
 }
+
+const IMAGE_AUTO_INTERVAL = 3000
 
 const el = {
   browseView: document.getElementById('browseView'),
@@ -282,9 +286,29 @@ function storyHtml(post, index, total) {
     </article>`
 }
 
+function clearImageAutoTimer() {
+  if (state.imageAutoTimer) {
+    clearInterval(state.imageAutoTimer)
+    state.imageAutoTimer = null
+  }
+}
+
+function startImageAutoTimer(story) {
+  clearImageAutoTimer()
+  const count = Number(story.dataset.imageCount || 0)
+  if (count <= 1) return
+  const postId = Number(story.dataset.postId)
+  if (state.imageManualOverride.has(postId)) return
+  state.imageAutoTimer = setInterval(() => {
+    const idx = Number(story.dataset.imageIndex || 0)
+    updateImageStory(story, idx + 1)
+  }, IMAGE_AUTO_INTERVAL)
+}
+
 function pauseAll() {
   el.playerFeed.querySelectorAll('.js-story-video').forEach((v) => v.pause())
   el.playerFeed.querySelectorAll('.js-story-audio').forEach((a) => a.pause())
+  clearImageAutoTimer()
 }
 
 async function activateStory(story) {
@@ -316,6 +340,10 @@ async function activateStory(story) {
       audio.muted = true
       syncMute()
     }
+  }
+
+  if (story.dataset.type === 'images') {
+    startImageAutoTimer(story)
   }
 }
 
@@ -358,7 +386,19 @@ function bindStories() {
     story.querySelectorAll('[data-gallery-action]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const delta = btn.dataset.galleryAction === 'next' ? 1 : -1
+        const postId = Number(story.dataset.postId)
+        state.imageManualOverride.add(postId)
+        clearImageAutoTimer()
         updateImageStory(story, Number(story.dataset.imageIndex || 0) + delta)
+      })
+    })
+
+    story.querySelectorAll('[data-dot-index]').forEach((dot) => {
+      dot.addEventListener('click', () => {
+        const postId = Number(story.dataset.postId)
+        state.imageManualOverride.add(postId)
+        clearImageAutoTimer()
+        updateImageStory(story, Number(dot.dataset.dotIndex || 0))
       })
     })
 
@@ -411,6 +451,7 @@ function openPlayer(startIndex) {
 function closePlayer() {
   pauseAll()
   state.activePostId = null
+  state.imageManualOverride.clear()
   el.playerView.style.display = 'none'
   el.browseView.style.display = 'flex'
 }
