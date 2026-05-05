@@ -248,6 +248,7 @@ declare global {
     type: 'video' | 'images'
     video?: string
     images?: string[]
+    imageVideos?: (string | null)[]
     cover?: string
     music?: string
   }
