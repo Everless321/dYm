@@ -183,7 +183,7 @@ export default function FilesPage() {
         if (coverPath) paths[post.aweme_id] = coverPath
       }
     }
-    setCoverPaths(paths)
+    setCoverPaths((prev) => ({ ...prev, ...paths }))
   }
 
   const reloadCurrentUser = async () => {

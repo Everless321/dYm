@@ -7,6 +7,7 @@ export interface MediaFiles {
   type: 'video' | 'images'
   video?: string
   images?: string[]
+  imageVideos?: (string | null)[]
   cover?: string
   music?: string
 }
@@ -76,11 +77,25 @@ export function findMediaFiles(
     const music = musicFile ? toUrlPath(join(targetFolder, musicFile)) : undefined
 
     if (awemeType === 68) {
-      const images = files
+      const imageFiles = files
         .filter((f) => /\.(webp|jpg|jpeg|png)$/i.test(f) && !f.includes('_cover'))
-        .map((f) => toUrlPath(join(targetFolder, f)))
         .sort()
-      return { type: 'images', images, cover, music }
+      const videoFiles = files.filter((f) => /\.mp4$/i.test(f)).sort()
+      const stripExt = (f: string): string => f.replace(/\.[^.]+$/, '')
+      const videoByBase = new Map<string, string>()
+      for (const v of videoFiles) videoByBase.set(stripExt(v), v)
+
+      const images = imageFiles.map((f) => toUrlPath(join(targetFolder, f)))
+      let imageVideos: (string | null)[] = imageFiles.map((f) => {
+        const match = videoByBase.get(stripExt(f))
+        return match ? toUrlPath(join(targetFolder, match)) : null
+      })
+      // Fallback：basename 完全不匹配时，按顺序配对
+      const matchedCount = imageVideos.filter((v) => v).length
+      if (matchedCount === 0 && videoFiles.length === imageFiles.length) {
+        imageVideos = videoFiles.map((v) => toUrlPath(join(targetFolder, v)))
+      }
+      return { type: 'images', images, imageVideos, cover, music }
     }
 
     const videoFile = files.find((f) => /\.(mp4|mov|avi)$/i.test(f))

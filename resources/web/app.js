@@ -236,10 +236,14 @@ function storyHtml(post, index, total) {
       ></video>`
       : `<div class="story-image-stack">
         ${(post.media?.imageUrls || [])
-          .map(
-            (url, i) =>
-              `<img class="story-image ${i === 0 ? 'is-visible' : ''}" src="${esc(url)}" alt="" loading="lazy" data-image-index="${i}" />`
-          )
+          .map((url, i) => {
+            const videoUrl = post.media?.imageVideoUrls?.[i]
+            const visible = i === 0 ? 'is-visible' : ''
+            if (videoUrl) {
+              return `<video class="story-image js-gallery-video ${visible}" src="${esc(videoUrl)}" poster="${esc(url)}" preload="metadata" playsinline loop muted data-image-index="${i}"></video>`
+            }
+            return `<img class="story-image ${visible}" src="${esc(url)}" alt="" loading="lazy" data-image-index="${i}" />`
+          })
           .join('')}
       </div>
       ${post.media?.musicUrl ? `<audio class="js-story-audio" src="${esc(post.media.musicUrl)}" loop></audio>` : ''}`
@@ -307,6 +311,7 @@ function startImageAutoTimer(story) {
 
 function pauseAll() {
   el.playerFeed.querySelectorAll('.js-story-video').forEach((v) => v.pause())
+  el.playerFeed.querySelectorAll('.js-gallery-video').forEach((v) => v.pause())
   el.playerFeed.querySelectorAll('.js-story-audio').forEach((a) => a.pause())
   clearImageAutoTimer()
 }
@@ -343,6 +348,11 @@ async function activateStory(story) {
   }
 
   if (story.dataset.type === 'images') {
+    const firstGalleryVideo = story.querySelector('.js-gallery-video.is-visible')
+    if (firstGalleryVideo) {
+      firstGalleryVideo.currentTime = 0
+      firstGalleryVideo.play().catch(() => {})
+    }
     startImageAutoTimer(story)
   }
 }
@@ -361,7 +371,16 @@ function updateImageStory(story, nextIndex) {
   if (idx >= count) idx = 0
   story.dataset.imageIndex = idx
   story.querySelectorAll('[data-image-index]').forEach((img) => {
-    img.classList.toggle('is-visible', Number(img.dataset.imageIndex) === idx)
+    const active = Number(img.dataset.imageIndex) === idx
+    img.classList.toggle('is-visible', active)
+    if (img.tagName === 'VIDEO') {
+      if (active) {
+        img.currentTime = 0
+        img.play().catch(() => {})
+      } else {
+        img.pause()
+      }
+    }
   })
   story.querySelectorAll('[data-dot-index]').forEach((dot) => {
     dot.classList.toggle('is-active', Number(dot.dataset.dotIndex) === idx)

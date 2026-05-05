@@ -175,6 +175,7 @@ function buildWebPost(post: DbPost) {
           type: media.type,
           videoUrl: buildMediaUrl(media.video),
           imageUrls: media.images?.map((image) => buildMediaUrl(image)).filter(Boolean) ?? [],
+          imageVideoUrls: media.imageVideos?.map((v) => (v ? buildMediaUrl(v) : null)) ?? [],
           musicUrl: buildMediaUrl(media.music)
         }
       : null,
@@ -197,8 +198,12 @@ function buildFeedFilters(url: URL): PostFilters {
   return {
     secUid: url.searchParams.get('secUid') || undefined,
     tags: tags.length > 0 ? tags : undefined,
-    minContentLevel: minContentLevel ? parseInteger(minContentLevel, 0, { min: 0, max: 10 }) : undefined,
-    maxContentLevel: maxContentLevel ? parseInteger(maxContentLevel, 10, { min: 0, max: 10 }) : undefined,
+    minContentLevel: minContentLevel
+      ? parseInteger(minContentLevel, 0, { min: 0, max: 10 })
+      : undefined,
+    maxContentLevel: maxContentLevel
+      ? parseInteger(maxContentLevel, 10, { min: 0, max: 10 })
+      : undefined,
     analyzedOnly,
     keyword: url.searchParams.get('keyword') || undefined
   }
@@ -255,7 +260,9 @@ function serveStaticAsset(requestPath: string, response: ServerResponse): void {
   const assetRoot = resolveWebAssetDir()
   const normalizedPath = normalize(requestPath).replace(/^(\.\.[/\\])+/, '')
   const relativePath =
-    normalizedPath === '/' || normalizedPath === '.' ? 'index.html' : normalizedPath.replace(/^[/\\]+/, '')
+    normalizedPath === '/' || normalizedPath === '.'
+      ? 'index.html'
+      : normalizedPath.replace(/^[/\\]+/, '')
   let targetPath = resolve(assetRoot, relativePath)
 
   if (!targetPath.startsWith(resolve(assetRoot))) {

@@ -1,5 +1,15 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { ChevronLeft, ChevronRight, X, Play, Heart, MessageCircle, Volume2, VolumeX, Download } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  X,
+  Play,
+  Heart,
+  MessageCircle,
+  Volume2,
+  VolumeX,
+  Download
+} from 'lucide-react'
 
 interface MediaViewerProps {
   post: DbPost | null
@@ -11,7 +21,13 @@ interface MediaViewerProps {
 
 const IMAGE_AUTO_INTERVAL = 3000
 
-export function MediaViewer({ post, open, onOpenChange, allPosts = [], onSelectPost }: MediaViewerProps) {
+export function MediaViewer({
+  post,
+  open,
+  onOpenChange,
+  allPosts = [],
+  onSelectPost
+}: MediaViewerProps) {
   const [media, setMedia] = useState<MediaFiles | null>(null)
   const [loading, setLoading] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -47,7 +63,7 @@ export function MediaViewer({ post, open, onOpenChange, allPosts = [], onSelectP
   const recommendations = useMemo(() => {
     if (!post || allPosts.length === 0) return []
 
-    const currentTags = post.analysis_tags ? JSON.parse(post.analysis_tags) as string[] : []
+    const currentTags = post.analysis_tags ? (JSON.parse(post.analysis_tags) as string[]) : []
     const currentSecUid = post.sec_uid
     const result: DbPost[] = []
     const usedIds = new Set<number>([post.id])
@@ -60,7 +76,7 @@ export function MediaViewer({ post, open, onOpenChange, allPosts = [], onSelectP
       const sameTagOtherAuthor = candidates
         .filter((p) => {
           if (p.sec_uid === currentSecUid) return false
-          const tags = p.analysis_tags ? JSON.parse(p.analysis_tags) as string[] : []
+          const tags = p.analysis_tags ? (JSON.parse(p.analysis_tags) as string[]) : []
           return tags.some((t) => currentTags.includes(t))
         })
         .slice(0, 2)
@@ -127,7 +143,11 @@ export function MediaViewer({ post, open, onOpenChange, allPosts = [], onSelectP
     if (!post) return
     setLoading(true)
     try {
-      console.log('Loading media for:', { sec_uid: post.sec_uid, folder_name: post.folder_name, aweme_type: post.aweme_type })
+      console.log('Loading media for:', {
+        sec_uid: post.sec_uid,
+        folder_name: post.folder_name,
+        aweme_type: post.aweme_type
+      })
       const result = await window.api.post.getMediaFiles(
         post.sec_uid,
         post.folder_name,
@@ -144,6 +164,8 @@ export function MediaViewer({ post, open, onOpenChange, allPosts = [], onSelectP
 
   const isImages = media?.type === 'images'
   const images = media?.images || []
+  const imageVideos = media?.imageVideos || []
+  const currentImageVideo = imageVideos[currentIndex] || null
   const hasMultipleImages = images.length > 1
 
   useEffect(() => {
@@ -202,12 +224,15 @@ export function MediaViewer({ post, open, onOpenChange, allPosts = [], onSelectP
   }
 
   // 解析标签
-  const tags = post?.analysis_tags ? JSON.parse(post.analysis_tags) as string[] : []
+  const tags = post?.analysis_tags ? (JSON.parse(post.analysis_tags) as string[]) : []
 
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => onOpenChange(false)}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={() => onOpenChange(false)}
+    >
       <div
         className="flex bg-white rounded-2xl overflow-hidden shadow-xl border border-[#E5E5E7]"
         style={{ width: 780, height: 520 }}
@@ -222,13 +247,25 @@ export function MediaViewer({ post, open, onOpenChange, allPosts = [], onSelectP
           ) : media ? (
             isImages ? (
               <>
-                {images.length > 0 && (
-                  <img
-                    src={`local://${images[currentIndex]}`}
-                    alt={`Image ${currentIndex + 1}`}
-                    className="max-w-full max-h-full object-contain"
-                  />
-                )}
+                {images.length > 0 &&
+                  (currentImageVideo ? (
+                    <video
+                      key={currentImageVideo}
+                      src={`local://${currentImageVideo}`}
+                      poster={`local://${images[currentIndex]}`}
+                      className="max-w-full max-h-full object-contain"
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                    />
+                  ) : (
+                    <img
+                      src={`local://${images[currentIndex]}`}
+                      alt={`Image ${currentIndex + 1}`}
+                      className="max-w-full max-h-full object-contain"
+                    />
+                  ))}
                 {hasMultipleImages && (
                   <>
                     <button
