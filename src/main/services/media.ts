@@ -82,18 +82,46 @@ export function findMediaFiles(
         .sort()
       const videoFiles = files.filter((f) => /\.mp4$/i.test(f)).sort()
       const stripExt = (f: string): string => f.replace(/\.[^.]+$/, '')
+      const extractIndex = (f: string): string | null => {
+        const m = stripExt(f).match(/(\d+)(?!.*\d)/)
+        return m ? m[1] : null
+      }
+
       const videoByBase = new Map<string, string>()
-      for (const v of videoFiles) videoByBase.set(stripExt(v), v)
+      const videoByIndex = new Map<string, string>()
+      const usedVideos = new Set<string>()
+      for (const v of videoFiles) {
+        videoByBase.set(stripExt(v), v)
+        const idx = extractIndex(v)
+        if (idx !== null && !videoByIndex.has(idx)) videoByIndex.set(idx, v)
+      }
 
       const images = imageFiles.map((f) => toUrlPath(join(targetFolder, f)))
-      let imageVideos: (string | null)[] = imageFiles.map((f) => {
-        const match = videoByBase.get(stripExt(f))
-        return match ? toUrlPath(join(targetFolder, match)) : null
+      const imageVideos: (string | null)[] = imageFiles.map((f) => {
+        const baseMatch = videoByBase.get(stripExt(f))
+        if (baseMatch && !usedVideos.has(baseMatch)) {
+          usedVideos.add(baseMatch)
+          return toUrlPath(join(targetFolder, baseMatch))
+        }
+        const idx = extractIndex(f)
+        if (idx !== null) {
+          const idxMatch = videoByIndex.get(idx)
+          if (idxMatch && !usedVideos.has(idxMatch)) {
+            usedVideos.add(idxMatch)
+            return toUrlPath(join(targetFolder, idxMatch))
+          }
+        }
+        return null
       })
-      // Fallback：basename 完全不匹配时，按顺序配对
-      const matchedCount = imageVideos.filter((v) => v).length
-      if (matchedCount === 0 && videoFiles.length === imageFiles.length) {
-        imageVideos = videoFiles.map((v) => toUrlPath(join(targetFolder, v)))
+      // 位置兜底：仍未配对的图片，按剩余视频顺序补齐
+      const remainingVideos = videoFiles.filter((v) => !usedVideos.has(v))
+      if (remainingVideos.length > 0) {
+        let cursor = 0
+        for (let i = 0; i < imageVideos.length && cursor < remainingVideos.length; i++) {
+          if (imageVideos[i] === null) {
+            imageVideos[i] = toUrlPath(join(targetFolder, remainingVideos[cursor++]))
+          }
+        }
       }
       return { type: 'images', images, imageVideos, cover, music }
     }
