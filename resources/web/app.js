@@ -168,12 +168,17 @@ async function loadGrid(reset = false) {
     state.hasMore = Boolean(payload.hasMore)
 
     const incoming = Array.isArray(payload.posts) ? payload.posts : []
+    const existingIds = new Set(state.posts.map((p) => p.id))
+    const addedPosts = []
     if (reset) {
       state.posts = incoming
+      addedPosts.push(...incoming)
     } else {
-      const ids = new Set(state.posts.map((p) => p.id))
       for (const p of incoming) {
-        if (!ids.has(p.id)) state.posts.push(p)
+        if (!existingIds.has(p.id)) {
+          state.posts.push(p)
+          addedPosts.push(p)
+        }
       }
     }
 
@@ -187,9 +192,12 @@ async function loadGrid(reset = false) {
         </div>`
     } else {
       const fragment = document.createElement('div')
-      fragment.innerHTML = incoming.map(gridItemHtml).join('')
+      fragment.innerHTML = addedPosts.map(gridItemHtml).join('')
       while (fragment.firstElementChild) el.grid.appendChild(fragment.firstElementChild)
       bindGridItems()
+      if (!reset && addedPosts.length > 0 && el.playerView.style.display !== 'none') {
+        extendPlayer(addedPosts)
+      }
     }
 
     if (incoming.length > 0) state.page += 1
@@ -322,6 +330,7 @@ async function activateStory(story) {
   if (state.activePostId === id) return
   state.activePostId = id
   pauseAll()
+  maybeLoadMoreForPlayer(id)
 
   const video = story.querySelector('.js-story-video')
   const audio = story.querySelector('.js-story-audio')
@@ -467,12 +476,44 @@ function openPlayer(startIndex) {
   })
 }
 
+function extendPlayer(newPosts) {
+  if (!newPosts.length) return
+  const total = state.posts.length
+  el.playerFeed.querySelectorAll('.story').forEach((s, i) => {
+    s.dataset.total = total
+    const counter = s.querySelector('.story-counter')
+    if (counter) counter.textContent = `${i + 1} / ${total}`
+  })
+  const startIndex = total - newPosts.length
+  const fragment = document.createElement('div')
+  fragment.innerHTML = newPosts.map((p, i) => storyHtml(p, startIndex + i, total)).join('')
+  while (fragment.firstElementChild) el.playerFeed.appendChild(fragment.firstElementChild)
+  bindStories()
+}
+
+function maybeLoadMoreForPlayer(activeId) {
+  if (!state.hasMore || state.loading) return
+  const idx = state.posts.findIndex((p) => p.id === activeId)
+  if (idx < 0) return
+  if (idx >= state.posts.length - 3) loadGrid(false)
+}
+
 function closePlayer() {
   pauseAll()
+  const lastId = state.activePostId
   state.activePostId = null
   state.imageManualOverride.clear()
   el.playerView.style.display = 'none'
   el.browseView.style.display = 'flex'
+  if (lastId != null) {
+    requestAnimationFrame(() => {
+      const target = el.grid.querySelector(`.grid-item[data-post-id="${lastId}"]`)
+      if (!target) return
+      target.scrollIntoView({ block: 'center', behavior: 'instant' })
+      target.classList.add('is-just-viewed')
+      setTimeout(() => target.classList.remove('is-just-viewed'), 1200)
+    })
+  }
 }
 
 el.playerBack.addEventListener('click', closePlayer)

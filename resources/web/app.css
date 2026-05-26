@@ -348,6 +348,17 @@ input { border: none; outline: none; background: none; }
 
 .grid-item:active { transform: scale(0.98); }
 
+.grid-item.is-just-viewed {
+  box-shadow: 0 0 0 2px var(--glass-border-hi), 0 22px 50px -16px rgba(0, 0, 0, 0.7);
+  animation: justViewedPulse 1.2s ease-out;
+}
+
+@keyframes justViewedPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.6); }
+  60%  { box-shadow: 0 0 0 10px rgba(255, 255, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+}
+
 .grid-cover {
   position: absolute;
   inset: 0;
