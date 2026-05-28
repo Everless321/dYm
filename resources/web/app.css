@@ -807,15 +807,23 @@ input { border: none; outline: none; background: none; }
   .author-bar { max-width: 1640px; }
 }
 
+.story[data-type="video"] .story-copy {
+  bottom: calc(56px + var(--safe-bottom));
+}
+
+.story[data-type="video"] .story-rail {
+  bottom: calc(56px + var(--safe-bottom));
+}
+
 .story-progress {
   position: absolute;
-  z-index: 5;
+  z-index: 6;
   left: 16px;
   right: 16px;
-  bottom: calc(8px + var(--safe-bottom));
+  bottom: calc(10px + var(--safe-bottom));
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   opacity: 0;
   transform: translateY(4px);
   transition: opacity 200ms ease, transform 200ms ease;
@@ -829,9 +837,17 @@ input { border: none; outline: none; background: none; }
   pointer-events: auto;
 }
 
+@media (hover: none) {
+  .story-progress {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+}
+
 .story-progress-track {
   position: relative;
-  height: 14px;
+  height: 22px;
   display: flex;
   align-items: center;
   cursor: pointer;
@@ -886,6 +902,10 @@ input { border: none; outline: none; background: none; }
 .story:hover .story-progress-thumb,
 .story-progress.is-dragging .story-progress-thumb {
   opacity: 1;
+}
+
+@media (hover: none) {
+  .story-progress-thumb { opacity: 1; }
 }
 
 .story-progress-time {
