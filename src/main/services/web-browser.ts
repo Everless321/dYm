@@ -245,7 +245,7 @@ function streamFile(
         'Content-Length': end - start + 1,
         'Content-Range': `bytes ${start}-${end}/${fileSize}`
       })
-      createReadStream(filePath, { start, end }).pipe(response)
+      pipeWithCleanup(createReadStream(filePath, { start, end }), response)
       return
     }
   }
@@ -253,7 +253,25 @@ function streamFile(
   response.writeHead(200, {
     'Content-Length': fileSize
   })
-  createReadStream(filePath).pipe(response)
+  pipeWithCleanup(createReadStream(filePath), response)
+}
+
+function pipeWithCleanup(
+  stream: ReturnType<typeof createReadStream>,
+  response: ServerResponse
+): void {
+  const destroyStream = (): void => {
+    if (!stream.destroyed) stream.destroy()
+  }
+  response.on('close', destroyStream)
+  response.on('error', destroyStream)
+  stream.on('error', (error: NodeJS.ErrnoException): void => {
+    if (error.code !== 'EPIPE' && error.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+      console.error('[Web] Stream error:', error)
+    }
+    if (!response.writableEnded) response.end()
+  })
+  stream.pipe(response)
 }
 
 function serveStaticAsset(requestPath: string, response: ServerResponse): void {

@@ -64,6 +64,14 @@ function truncate(value, max = 60) {
   return !t ? '' : t.length > max ? t.slice(0, max) + '...' : t
 }
 
+function formatTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
+  const total = Math.floor(seconds)
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${m}:${s < 10 ? '0' : ''}${s}`
+}
+
 function formatDate(value) {
   if (!value) return ''
   if (/^\d{8}/.test(value)) return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`
@@ -241,7 +249,15 @@ function storyHtml(post, index, total) {
         poster="${safeCover}"
         preload="metadata"
         playsinline loop muted
-      ></video>`
+      ></video>
+      <div class="story-progress js-story-progress">
+        <div class="story-progress-track">
+          <div class="story-progress-buffer js-story-buffer"></div>
+          <div class="story-progress-fill js-story-fill"></div>
+          <div class="story-progress-thumb js-story-thumb"></div>
+        </div>
+        <div class="story-progress-time js-story-time">0:00 / 0:00</div>
+      </div>`
       : `<div class="story-image-stack">
         ${(post.media?.imageUrls || [])
           .map((url, i) => {
@@ -440,18 +456,130 @@ function bindStories() {
       }
     })
 
-    story.querySelector('.js-story-video')?.addEventListener('click', async (e) => {
-      const v = e.currentTarget
-      if (v.paused) {
-        try {
-          await v.play()
-        } catch {
-          showToast('浏览器阻止了自动播放')
-        }
-      } else {
-        v.pause()
+    const video = story.querySelector('.js-story-video')
+    if (video) {
+      bindVideoControls(story, video)
+    }
+  })
+}
+
+function bindVideoControls(story, video) {
+  const progressEl = story.querySelector('.js-story-progress')
+  const trackEl = progressEl?.querySelector('.story-progress-track')
+  const fillEl = story.querySelector('.js-story-fill')
+  const bufferEl = story.querySelector('.js-story-buffer')
+  const thumbEl = story.querySelector('.js-story-thumb')
+  const timeEl = story.querySelector('.js-story-time')
+
+  let dragging = false
+  let lastErrorTime = 0
+
+  const updateBuffer = () => {
+    if (!bufferEl || !video.duration || !Number.isFinite(video.duration)) return
+    let bufferedEnd = 0
+    for (let i = 0; i < video.buffered.length; i += 1) {
+      if (video.buffered.start(i) <= video.currentTime) {
+        bufferedEnd = Math.max(bufferedEnd, video.buffered.end(i))
       }
-    })
+    }
+    bufferEl.style.width = `${Math.min(100, (bufferedEnd / video.duration) * 100)}%`
+  }
+
+  const updateProgress = () => {
+    if (dragging || !video.duration || !Number.isFinite(video.duration)) return
+    const pct = (video.currentTime / video.duration) * 100
+    if (fillEl) fillEl.style.width = `${pct}%`
+    if (thumbEl) thumbEl.style.left = `${pct}%`
+    if (timeEl)
+      timeEl.textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`
+    updateBuffer()
+  }
+
+  const safeSeek = (target) => {
+    if (!video.duration || !Number.isFinite(video.duration)) return
+    const clamped = Math.max(0, Math.min(video.duration - 0.05, target))
+    try {
+      video.currentTime = clamped
+    } catch {
+      // ignore — error handler below will recover
+    }
+  }
+
+  const pctFromEvent = (event) => {
+    if (!trackEl) return 0
+    const rect = trackEl.getBoundingClientRect()
+    if (rect.width <= 0) return 0
+    return Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
+  }
+
+  const onPointerMove = (event) => {
+    if (!dragging) return
+    const pct = pctFromEvent(event)
+    if (fillEl) fillEl.style.width = `${pct * 100}%`
+    if (thumbEl) thumbEl.style.left = `${pct * 100}%`
+    if (timeEl && video.duration) {
+      timeEl.textContent = `${formatTime(pct * video.duration)} / ${formatTime(video.duration)}`
+    }
+  }
+
+  const onPointerUp = (event) => {
+    if (!dragging) return
+    dragging = false
+    progressEl?.classList.remove('is-dragging')
+    document.removeEventListener('pointermove', onPointerMove)
+    document.removeEventListener('pointerup', onPointerUp)
+    document.removeEventListener('pointercancel', onPointerUp)
+    if (video.duration) safeSeek(pctFromEvent(event) * video.duration)
+  }
+
+  trackEl?.addEventListener('pointerdown', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    dragging = true
+    progressEl?.classList.add('is-dragging')
+    onPointerMove(event)
+    document.addEventListener('pointermove', onPointerMove)
+    document.addEventListener('pointerup', onPointerUp)
+    document.addEventListener('pointercancel', onPointerUp)
+  })
+
+  // Block click events on the progress bar from reaching the video tap-to-pause handler.
+  progressEl?.addEventListener('click', (event) => event.stopPropagation())
+
+  video.addEventListener('timeupdate', updateProgress)
+  video.addEventListener('durationchange', updateProgress)
+  video.addEventListener('progress', updateBuffer)
+  video.addEventListener('loadedmetadata', updateProgress)
+
+  video.addEventListener('error', () => {
+    const now = Date.now()
+    if (now - lastErrorTime < 1500) return
+    lastErrorTime = now
+    const resumeAt = video.currentTime
+    const wasPlaying = !video.paused
+    const src = video.src
+    video.removeAttribute('src')
+    video.load()
+    video.src = src
+    video.load()
+    const onReady = () => {
+      video.removeEventListener('loadedmetadata', onReady)
+      safeSeek(resumeAt)
+      if (wasPlaying) video.play().catch(() => {})
+    }
+    video.addEventListener('loadedmetadata', onReady)
+  })
+
+  video.addEventListener('click', async () => {
+    if (video.paused) {
+      try {
+        await video.play()
+      } catch {
+        showToast('浏览器阻止了自动播放')
+      }
+    } else {
+      video.pause()
+    }
   })
 }
 
@@ -517,6 +645,62 @@ function closePlayer() {
 }
 
 el.playerBack.addEventListener('click', closePlayer)
+
+function getActiveVideo() {
+  if (state.activePostId == null) return null
+  const story = el.playerFeed.querySelector(`.story[data-post-id="${state.activePostId}"]`)
+  return story?.querySelector('.js-story-video') ?? null
+}
+
+function scrollToSiblingStory(delta) {
+  if (state.activePostId == null) return
+  const stories = Array.from(el.playerFeed.querySelectorAll('.story'))
+  const idx = stories.findIndex((s) => Number(s.dataset.postId) === state.activePostId)
+  if (idx < 0) return
+  const target = stories[idx + delta]
+  if (target) target.scrollIntoView({ behavior: 'smooth' })
+}
+
+document.addEventListener('keydown', (event) => {
+  if (el.playerView.hidden || el.playerView.style.display === 'none') return
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)
+    return
+
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closePlayer()
+    return
+  }
+  if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    scrollToSiblingStory(-1)
+    return
+  }
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    scrollToSiblingStory(1)
+    return
+  }
+
+  const video = getActiveVideo()
+  if (!video) return
+
+  if (event.key === ' ' || event.code === 'Space') {
+    event.preventDefault()
+    if (video.paused) video.play().catch(() => {})
+    else video.pause()
+    return
+  }
+  if (event.key === 'ArrowLeft') {
+    event.preventDefault()
+    if (video.duration) video.currentTime = Math.max(0, video.currentTime - 5)
+    return
+  }
+  if (event.key === 'ArrowRight') {
+    event.preventDefault()
+    if (video.duration) video.currentTime = Math.min(video.duration - 0.05, video.currentTime + 5)
+  }
+})
 
 // ── Filters wiring ──
 
