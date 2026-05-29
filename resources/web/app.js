@@ -591,6 +591,7 @@ function openPlayer(startIndex) {
   el.playerFeed.innerHTML = posts.map((p, i) => storyHtml(p, i, total)).join('')
   bindStories()
 
+  el.playerView.hidden = false
   el.playerView.style.display = 'flex'
   el.browseView.style.display = 'none'
 
@@ -632,6 +633,7 @@ function closePlayer() {
   state.activePostId = null
   state.imageManualOverride.clear()
   el.playerView.style.display = 'none'
+  el.playerView.hidden = true
   el.browseView.style.display = 'flex'
   if (lastId != null) {
     requestAnimationFrame(() => {
@@ -662,7 +664,7 @@ function scrollToSiblingStory(delta) {
 }
 
 document.addEventListener('keydown', (event) => {
-  if (el.playerView.hidden || el.playerView.style.display === 'none') return
+  if (el.playerView.style.display !== 'flex') return
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)
     return
 
