@@ -21,6 +21,8 @@ const state = {
 }
 
 const IMAGE_AUTO_INTERVAL = 3000
+const MEDIA_WINDOW = 3
+const MEDIA_UNMOUNT_MARGIN = 2
 
 const el = {
   browseView: document.getElementById('browseView'),
@@ -234,16 +236,10 @@ el.grid.addEventListener('scroll', () => {
 
 // ── Player View ──
 
-function storyHtml(post, index, total) {
-  const cover = coverUrl(post)
-  const safeCover = esc(cover)
-  const tags = (post.analysis?.tags || []).slice(0, 3)
-  const desc = truncate(post.desc || post.caption || post.analysis?.summary || '', 80)
-  const date = formatDate(post.createTime)
-
-  const mediaHtml =
-    post.media?.type === 'video' && post.media.videoUrl
-      ? `<video
+function mediaInnerHtml(post) {
+  if (post.media?.type === 'video' && post.media.videoUrl) {
+    const safeCover = esc(coverUrl(post))
+    return `<video
         class="story-media js-story-video"
         src="${esc(post.media.videoUrl)}"
         poster="${safeCover}"
@@ -258,7 +254,8 @@ function storyHtml(post, index, total) {
         </div>
         <div class="story-progress-time js-story-time">0:00 / 0:00</div>
       </div>`
-      : `<div class="story-image-stack">
+  }
+  return `<div class="story-image-stack">
         ${(post.media?.imageUrls || [])
           .map((url, i) => {
             const videoUrl = post.media?.imageVideoUrls?.[i]
@@ -271,6 +268,14 @@ function storyHtml(post, index, total) {
           .join('')}
       </div>
       ${post.media?.musicUrl ? `<audio class="js-story-audio" src="${esc(post.media.musicUrl)}" loop></audio>` : ''}`
+}
+
+function storyHtml(post, index, total) {
+  const cover = coverUrl(post)
+  const safeCover = esc(cover)
+  const tags = (post.analysis?.tags || []).slice(0, 3)
+  const desc = truncate(post.desc || post.caption || post.analysis?.summary || '', 80)
+  const date = formatDate(post.createTime)
 
   const imageCount = post.media?.imageUrls?.length || 0
   const galleryNav =
@@ -294,7 +299,7 @@ function storyHtml(post, index, total) {
       data-type="${esc(post.media?.type || 'unknown')}"
       data-image-count="${imageCount}" data-image-index="0">
       <div class="story-bg" style="background-image:url('${safeCover}')"></div>
-      <div class="story-media-layer">${mediaHtml}</div>
+      <div class="story-media-layer"></div>
       <div class="story-overlay"></div>
       <span class="story-counter">${index + 1} / ${total}</span>
       ${galleryNav}
@@ -312,6 +317,55 @@ function storyHtml(post, index, total) {
         </button>
       </aside>
     </article>`
+}
+
+function mountStoryMedia(story) {
+  if (story.dataset.mediaMounted === '1') return
+  const layer = story.querySelector('.story-media-layer')
+  if (!layer) return
+  const postId = Number(story.dataset.postId)
+  const post = state.posts.find((p) => p.id === postId)
+  if (!post) return
+  layer.innerHTML = mediaInnerHtml(post)
+  story.dataset.mediaMounted = '1'
+
+  if (story.dataset.type === 'images') {
+    const idx = Number(story.dataset.imageIndex || 0)
+    if (idx > 0) updateImageStory(story, idx)
+  }
+
+  const video = story.querySelector('.js-story-video')
+  if (video) bindVideoControls(story, video)
+}
+
+function unmountStoryMedia(story) {
+  if (story.dataset.mediaMounted !== '1') return
+  const layer = story.querySelector('.story-media-layer')
+  if (!layer) return
+  layer.querySelectorAll('video, audio').forEach((m) => {
+    try {
+      m.pause()
+    } catch {
+      // ignore
+    }
+    try {
+      m.removeAttribute('src')
+      m.load()
+    } catch {
+      // ignore
+    }
+  })
+  layer.innerHTML = ''
+  delete story.dataset.mediaMounted
+}
+
+function updateMediaWindow(activeIdx) {
+  const stories = Array.from(el.playerFeed.querySelectorAll('.story'))
+  stories.forEach((s, i) => {
+    const dist = Math.abs(i - activeIdx)
+    if (dist <= MEDIA_WINDOW) mountStoryMedia(s)
+    else if (dist > MEDIA_WINDOW + MEDIA_UNMOUNT_MARGIN) unmountStoryMedia(s)
+  })
 }
 
 function clearImageAutoTimer() {
@@ -347,6 +401,10 @@ async function activateStory(story) {
   state.activePostId = id
   pauseAll()
   maybeLoadMoreForPlayer(id)
+
+  const stories = Array.from(el.playerFeed.querySelectorAll('.story'))
+  const activeIdx = stories.indexOf(story)
+  if (activeIdx >= 0) updateMediaWindow(activeIdx)
 
   const video = story.querySelector('.js-story-video')
   const audio = story.querySelector('.js-story-audio')
@@ -412,6 +470,40 @@ function updateImageStory(story, nextIndex) {
   })
 }
 
+async function applyMuteToActive() {
+  const story = el.playerFeed.querySelector(`.story[data-post-id="${state.activePostId}"]`)
+  if (!story) return
+  const video = story.querySelector('.js-story-video')
+  const audio = story.querySelector('.js-story-audio')
+  if (video) {
+    video.muted = state.globalMuted
+    if (video.paused) {
+      try {
+        await video.play()
+      } catch {
+        state.globalMuted = true
+        video.muted = true
+        syncMute()
+        return
+      }
+    }
+  }
+  if (audio) {
+    if (state.globalMuted) {
+      audio.pause()
+    } else {
+      audio.muted = false
+      try {
+        await audio.play()
+      } catch {
+        state.globalMuted = true
+        audio.muted = true
+        syncMute()
+      }
+    }
+  }
+}
+
 function bindStories() {
   storyObserver?.disconnect()
   storyObserver = new IntersectionObserver(
@@ -426,6 +518,8 @@ function bindStories() {
 
   el.playerFeed.querySelectorAll('.story').forEach((story) => {
     storyObserver.observe(story)
+    if (story.dataset.bound === '1') return
+    story.dataset.bound = '1'
 
     story.querySelectorAll('[data-gallery-action]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -446,20 +540,11 @@ function bindStories() {
       })
     })
 
-    story.querySelector('[data-action="mute"]')?.addEventListener('click', async () => {
+    story.querySelector('[data-action="mute"]')?.addEventListener('click', () => {
       state.globalMuted = !state.globalMuted
       syncMute()
-      const active = el.playerFeed.querySelector(`.story[data-post-id="${state.activePostId}"]`)
-      if (active) {
-        state.activePostId = null
-        await activateStory(active)
-      }
+      void applyMuteToActive()
     })
-
-    const video = story.querySelector('.js-story-video')
-    if (video) {
-      bindVideoControls(story, video)
-    }
   })
 }
 
