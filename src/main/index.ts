@@ -83,7 +83,12 @@ import {
   downloadSinglePost
 } from './services/downloader'
 import { startAnalysis, stopAnalysis, isAnalysisRunning } from './services/analyzer'
-import { blockCustomProtocols } from './utils/block-protocols'
+import {
+  blockCustomProtocols,
+  attachProtocolGuards,
+  isBlockedProtocol,
+  isAllowedExternalProtocol
+} from './utils/block-protocols'
 import { initUpdater, registerUpdaterHandlers } from './services/updater'
 import {
   startUserSync,
@@ -300,16 +305,10 @@ function createWindow(): BrowserWindow {
     }
   })
 
-  mainWindow.webContents.on('will-navigate', (event, url) => {
-    const BLOCKED = ['bytedance:', 'snssdk:', 'aweme:']
-    if (BLOCKED.some((p) => url.startsWith(p))) {
-      event.preventDefault()
-    }
-  })
+  blockCustomProtocols(mainWindow)
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    const BLOCKED = ['bytedance:', 'snssdk:', 'aweme:']
-    if (BLOCKED.some((p) => details.url.startsWith(p))) {
+    if (isBlockedProtocol(details.url) || !isAllowedExternalProtocol(details.url)) {
       return { action: 'deny' }
     }
     shell.openExternal(details.url)
@@ -443,6 +442,11 @@ app.whenReady().then(async () => {
   // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
+  })
+
+  // 全局拦截所有 webContents（包括子窗口、iframe）的自定义协议跳转
+  app.on('web-contents-created', (_event, contents) => {
+    attachProtocolGuards(contents)
   })
 
   // 初始化数据库
