@@ -3,7 +3,17 @@ import { createReadStream, existsSync, statSync } from 'fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http'
 import os from 'os'
 import { extname, join, normalize, resolve } from 'path'
-import { getAllPosts, getAllTags, getSetting, type DbPost, type PostFilters } from '../database'
+import {
+  getAllPosts,
+  getAllTags,
+  getSetting,
+  getUserBySecUid,
+  updateUserSettings,
+  type DbPost,
+  type DbUser,
+  type PostFilters,
+  type UpdateUserSettingsInput
+} from '../database'
 import {
   findCoverFile,
   findMediaFiles,
@@ -11,6 +21,7 @@ import {
   getDownloadPath,
   isPathInDownloadRoot
 } from './media'
+import { isUserSyncing, startUserSync } from './syncer'
 
 const DEFAULT_WEB_SERVER_PORT = 38595
 const DEFAULT_PAGE_SIZE = 12
@@ -209,6 +220,53 @@ function buildFeedFilters(url: URL): PostFilters {
   }
 }
 
+function buildAuthorPayload(user: DbUser): Record<string, unknown> {
+  return {
+    secUid: user.sec_uid,
+    nickname: user.nickname,
+    signature: user.signature,
+    awemeCount: user.aweme_count,
+    homepageUrl: user.homepage_url,
+    settings: {
+      maxDownloadCount: user.max_download_count,
+      autoSync: user.auto_sync === 1,
+      syncCron: user.sync_cron,
+      remark: user.remark
+    },
+    syncStatus: user.sync_status,
+    syncing: isUserSyncing(user.id),
+    lastSyncAt: user.last_sync_at
+  }
+}
+
+function readRequestBody(request: IncomingMessage, maxBytes = 64 * 1024): Promise<string> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const chunks: Buffer[] = []
+    let size = 0
+    request.on('data', (chunk: Buffer) => {
+      size += chunk.length
+      if (size > maxBytes) {
+        rejectPromise(new Error('Request body too large'))
+        request.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    request.on('end', () => resolvePromise(Buffer.concat(chunks).toString('utf8')))
+    request.on('error', rejectPromise)
+  })
+}
+
+async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
+  const raw = await readRequestBody(request)
+  if (!raw.trim()) return {}
+  const parsed = JSON.parse(raw)
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Invalid JSON body')
+  }
+  return parsed as Record<string, unknown>
+}
+
 function getContentType(filePath: string): string {
   return mimeTypes[extname(filePath).toLowerCase()] ?? 'application/octet-stream'
 }
@@ -329,9 +387,102 @@ function serveMedia(request: IncomingMessage, response: ServerResponse, url: URL
   streamFile(request, response, resolvedPath)
 }
 
+async function handleAuthorSettings(
+  request: IncomingMessage,
+  response: ServerResponse
+): Promise<void> {
+  let body: Record<string, unknown>
+  try {
+    body = await readJsonBody(request)
+  } catch {
+    respondError(response, 400, 'Invalid request body')
+    return
+  }
+
+  const secUid = typeof body.secUid === 'string' ? body.secUid : ''
+  if (!secUid) {
+    respondError(response, 400, 'Missing secUid')
+    return
+  }
+
+  const user = getUserBySecUid(secUid)
+  if (!user) {
+    respondError(response, 404, 'Author not found')
+    return
+  }
+
+  const settings: UpdateUserSettingsInput = {}
+
+  if (body.maxDownloadCount !== undefined) {
+    const value = Number(body.maxDownloadCount)
+    if (!Number.isInteger(value) || value < 0 || value > 100000) {
+      respondError(response, 400, 'Invalid maxDownloadCount')
+      return
+    }
+    settings.max_download_count = value
+  }
+  if (body.autoSync !== undefined) {
+    settings.auto_sync = Boolean(body.autoSync)
+  }
+  if (body.syncCron !== undefined) {
+    if (typeof body.syncCron !== 'string' || body.syncCron.length > 120) {
+      respondError(response, 400, 'Invalid syncCron')
+      return
+    }
+    settings.sync_cron = body.syncCron.trim()
+  }
+  if (body.remark !== undefined) {
+    if (typeof body.remark !== 'string' || body.remark.length > 200) {
+      respondError(response, 400, 'Invalid remark')
+      return
+    }
+    settings.remark = body.remark
+  }
+
+  const updated = updateUserSettings(user.id, settings)
+  if (!updated) {
+    respondError(response, 500, 'Failed to update settings')
+    return
+  }
+  respondJson(response, 200, buildAuthorPayload(updated))
+}
+
+async function handleAuthorSync(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  let body: Record<string, unknown>
+  try {
+    body = await readJsonBody(request)
+  } catch {
+    respondError(response, 400, 'Invalid request body')
+    return
+  }
+
+  const secUid = typeof body.secUid === 'string' ? body.secUid : ''
+  if (!secUid) {
+    respondError(response, 400, 'Missing secUid')
+    return
+  }
+
+  const user = getUserBySecUid(secUid)
+  if (!user) {
+    respondError(response, 404, 'Author not found')
+    return
+  }
+
+  if (isUserSyncing(user.id)) {
+    respondJson(response, 200, { started: false, syncing: true })
+    return
+  }
+
+  // 异步触发，不阻塞响应；同步进度可通过轮询 /api/author 查询
+  void startUserSync(user.id).catch((error) => {
+    console.error('[Web] Author sync failed:', error)
+  })
+  respondJson(response, 200, { started: true, syncing: true })
+}
+
 async function handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
   const method = request.method ?? 'GET'
-  if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+  if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS' && method !== 'POST') {
     respondError(response, 405, 'Method not allowed')
     return
   }
@@ -339,7 +490,7 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse)
   if (method === 'OPTIONS') {
     response.writeHead(204, {
       'Access-Control-Allow-Headers': 'Content-Type',
-      'Access-Control-Allow-Methods': 'GET,HEAD,OPTIONS',
+      'Access-Control-Allow-Methods': 'GET,HEAD,OPTIONS,POST',
       'Access-Control-Allow-Origin': '*'
     })
     response.end()
@@ -348,6 +499,19 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse)
 
   const url = new URL(request.url ?? '/', `http://${request.headers.host ?? '127.0.0.1'}`)
   const pathname = decodeURIComponent(url.pathname)
+
+  if (method === 'POST') {
+    if (pathname === '/api/author/settings') {
+      await handleAuthorSettings(request, response)
+      return
+    }
+    if (pathname === '/api/author/sync') {
+      await handleAuthorSync(request, response)
+      return
+    }
+    respondError(response, 404, 'Not found')
+    return
+  }
 
   if (pathname === '/api/info') {
     const info = getWebServerInfo()
@@ -379,6 +543,21 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse)
       authors: result.authors,
       posts: result.posts.map(buildWebPost)
     })
+    return
+  }
+
+  if (pathname === '/api/author') {
+    const secUid = url.searchParams.get('secUid')
+    if (!secUid) {
+      respondError(response, 400, 'Missing secUid')
+      return
+    }
+    const user = getUserBySecUid(secUid)
+    if (!user) {
+      respondError(response, 404, 'Author not found')
+      return
+    }
+    respondJson(response, 200, buildAuthorPayload(user))
     return
   }
 

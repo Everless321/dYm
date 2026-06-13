@@ -13,6 +13,8 @@ const state = {
   playerStartIndex: 0,
   imageAutoTimer: null,
   imageManualOverride: new Set(),
+  author: null,
+  authorSyncTimer: null,
   filters: {
     secUid: '',
     keyword: '',
@@ -30,6 +32,7 @@ const el = {
   playerBack: document.getElementById('playerBack'),
   playerFeed: document.getElementById('playerFeed'),
   authorScroll: document.getElementById('authorScroll'),
+  authorPanel: document.getElementById('authorPanel'),
   grid: document.getElementById('grid'),
   gridLoading: document.getElementById('gridLoading'),
   toast: document.getElementById('toast'),
@@ -96,6 +99,20 @@ async function fetchJson(path) {
   return res.json()
 }
 
+async function postJson(path, body) {
+  const res = await fetch(path, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  if (!res.ok) {
+    const p = await res.json().catch(() => ({}))
+    throw new Error(p.error || `${res.status}`)
+  }
+  return res.json()
+}
+
 // ── Author Bar ──
 
 function renderAuthors() {
@@ -109,10 +126,173 @@ function renderAuthors() {
 
   el.authorScroll.querySelectorAll('.author-tab').forEach((btn) => {
     btn.addEventListener('click', () => {
-      state.filters.secUid = btn.dataset.uid || ''
-      loadGrid(true)
+      const uid = btn.dataset.uid || ''
+      if (uid) enterAuthor(uid)
+      else exitAuthor()
     })
   })
+}
+
+// ── Author Page ──
+
+function clearAuthorSyncTimer() {
+  if (state.authorSyncTimer) {
+    clearInterval(state.authorSyncTimer)
+    state.authorSyncTimer = null
+  }
+}
+
+async function enterAuthor(secUid) {
+  if (!secUid) return
+  if (el.playerView.style.display === 'flex' && !el.playerView.hidden) closePlayer()
+  state.filters.secUid = secUid
+  state.filters.keyword = ''
+  el.searchInput.value = ''
+  syncSearchClearVisibility()
+  el.grid.scrollTop = 0
+  try {
+    state.author = await fetchJson(`/api/author?secUid=${encodeURIComponent(secUid)}`)
+  } catch {
+    state.author = { secUid, nickname: '', settings: {} }
+  }
+  renderAuthorPanel()
+  loadGrid(true)
+}
+
+function exitAuthor() {
+  clearAuthorSyncTimer()
+  state.author = null
+  state.filters.secUid = ''
+  el.authorPanel.hidden = true
+  el.authorPanel.innerHTML = ''
+  el.grid.scrollTop = 0
+  loadGrid(true)
+}
+
+function renderAuthorPanel() {
+  const a = state.author
+  if (!a) {
+    el.authorPanel.hidden = true
+    return
+  }
+  const s = a.settings || {}
+  const syncing = Boolean(a.syncing) || a.syncStatus === 'syncing'
+  const lastSync = a.lastSyncAt
+    ? `上次同步 ${formatDate(new Date(a.lastSyncAt * 1000).toISOString())}`
+    : '尚未同步'
+
+  el.authorPanel.innerHTML = `
+    <div class="author-panel-head">
+      <div class="author-panel-id">
+        <div class="author-panel-name">@${esc(a.nickname || '未知作者')}</div>
+        ${a.signature ? `<div class="author-panel-sign">${esc(truncate(a.signature, 60))}</div>` : ''}
+      </div>
+      <button class="author-panel-collapse" type="button" data-author-action="exit" aria-label="返回全部">✕</button>
+    </div>
+    <div class="author-panel-stats">
+      <span>抖音作品 ${Number(a.awemeCount || 0)}</span>
+      <span>·</span>
+      <span class="js-author-downloaded">已下载 ${state.total || 0}</span>
+    </div>
+    <div class="author-panel-form">
+      <label class="author-field">
+        <span>下载数量上限<small>(0 = 用全局设置)</small></span>
+        <input class="js-author-max" type="number" min="0" inputmode="numeric" value="${Number(s.maxDownloadCount || 0)}" />
+      </label>
+      <label class="author-field">
+        <span>备注</span>
+        <input class="js-author-remark" type="text" maxlength="200" value="${esc(s.remark || '')}" placeholder="给作者加个备注" />
+      </label>
+      <label class="author-field author-field-row">
+        <span>定时自动同步</span>
+        <input class="js-author-autosync" type="checkbox" ${s.autoSync ? 'checked' : ''} />
+      </label>
+      <label class="author-field">
+        <span>同步计划<small>(cron 表达式)</small></span>
+        <input class="js-author-cron" type="text" maxlength="120" value="${esc(s.syncCron || '')}" placeholder="如 0 3 * * *" />
+      </label>
+    </div>
+    <div class="author-panel-actions">
+      <button class="author-btn author-btn-save" type="button" data-author-action="save">保存设置</button>
+      <button class="author-btn author-btn-sync ${syncing ? 'is-syncing' : ''}" type="button" data-author-action="sync" ${syncing ? 'disabled' : ''}>
+        ${syncing ? '同步中…' : '立即同步下载'}
+      </button>
+    </div>
+    <div class="author-panel-status">${esc(lastSync)}</div>
+  `
+  el.authorPanel.hidden = false
+  bindAuthorPanel()
+
+  if (syncing) startAuthorSyncPolling()
+  else clearAuthorSyncTimer()
+}
+
+function bindAuthorPanel() {
+  el.authorPanel.querySelector('[data-author-action="exit"]')?.addEventListener('click', exitAuthor)
+  el.authorPanel
+    .querySelector('[data-author-action="save"]')
+    ?.addEventListener('click', saveAuthorSettings)
+  el.authorPanel
+    .querySelector('[data-author-action="sync"]')
+    ?.addEventListener('click', triggerAuthorSync)
+}
+
+async function saveAuthorSettings() {
+  if (!state.author) return
+  const maxEl = el.authorPanel.querySelector('.js-author-max')
+  const remarkEl = el.authorPanel.querySelector('.js-author-remark')
+  const autoEl = el.authorPanel.querySelector('.js-author-autosync')
+  const cronEl = el.authorPanel.querySelector('.js-author-cron')
+  const payload = {
+    secUid: state.author.secUid,
+    maxDownloadCount: Math.max(0, Math.floor(Number(maxEl?.value) || 0)),
+    remark: remarkEl?.value ?? '',
+    autoSync: Boolean(autoEl?.checked),
+    syncCron: cronEl?.value?.trim() ?? ''
+  }
+  try {
+    state.author = await postJson('/api/author/settings', payload)
+    renderAuthorPanel()
+    showToast('已保存设置')
+  } catch (err) {
+    showToast(err.message || '保存失败')
+  }
+}
+
+async function triggerAuthorSync() {
+  if (!state.author) return
+  try {
+    const res = await postJson('/api/author/sync', { secUid: state.author.secUid })
+    if (res.started) showToast('已开始同步下载')
+    else if (res.syncing) showToast('该作者正在同步中')
+    state.author = { ...state.author, syncing: true, syncStatus: 'syncing' }
+    renderAuthorPanel()
+  } catch (err) {
+    showToast(err.message || '同步失败')
+  }
+}
+
+function startAuthorSyncPolling() {
+  clearAuthorSyncTimer()
+  state.authorSyncTimer = setInterval(async () => {
+    if (!state.author) {
+      clearAuthorSyncTimer()
+      return
+    }
+    try {
+      const next = await fetchJson(`/api/author?secUid=${encodeURIComponent(state.author.secUid)}`)
+      const wasSyncing = Boolean(state.author.syncing) || state.author.syncStatus === 'syncing'
+      state.author = next
+      const nowSyncing = Boolean(next.syncing) || next.syncStatus === 'syncing'
+      renderAuthorPanel()
+      if (wasSyncing && !nowSyncing) {
+        showToast('同步完成')
+        loadGrid(true)
+      }
+    } catch {
+      // 网络抖动忽略，下次轮询再试
+    }
+  }, 4000)
 }
 
 // ── Grid View ──
@@ -131,7 +311,7 @@ function gridItemHtml(post) {
       ${cover ? `<img class="grid-cover" src="${esc(cover)}" />` : ''}
       ${badge ? `<span class="grid-badge">${esc(badge)}</span>` : ''}
       <div class="grid-info">
-        <div class="grid-author">@${esc(post.author?.nickname || '')}</div>
+        <div class="grid-author" data-author-uid="${esc(post.author?.secUid || '')}">@${esc(post.author?.nickname || '')}</div>
         ${desc ? `<div class="grid-desc">${esc(desc)}</div>` : ''}
       </div>
     </div>
@@ -145,6 +325,13 @@ function bindGridItems() {
       const index = state.posts.findIndex((p) => p.id === postId)
       if (index >= 0) openPlayer(index)
     })
+    const authorEl = item.querySelector('.grid-author[data-author-uid]')
+    if (authorEl && authorEl.dataset.authorUid) {
+      authorEl.addEventListener('click', (event) => {
+        event.stopPropagation()
+        enterAuthor(authorEl.dataset.authorUid)
+      })
+    }
   })
 }
 
@@ -193,6 +380,11 @@ async function loadGrid(reset = false) {
     }
 
     renderAuthors()
+
+    if (state.author && !el.authorPanel.hidden) {
+      const dl = el.authorPanel.querySelector('.js-author-downloaded')
+      if (dl) dl.textContent = `已下载 ${state.total || 0}`
+    }
 
     if (state.posts.length === 0 && reset) {
       el.grid.innerHTML = `
@@ -304,7 +496,7 @@ function storyHtml(post, index, total) {
       <span class="story-counter">${index + 1} / ${total}</span>
       ${galleryNav}
       <div class="story-copy">
-        <div class="story-author">@${esc(post.author?.nickname || '未知')}</div>
+        <div class="story-author" data-author-uid="${esc(post.author?.secUid || '')}">@${esc(post.author?.nickname || '未知')}</div>
         ${desc ? `<p class="story-title">${esc(desc)}</p>` : ''}
         <div class="story-tags">
           ${date ? `<span class="story-tag">${esc(date)}</span>` : ''}
@@ -545,6 +737,14 @@ function bindStories() {
       syncMute()
       void applyMuteToActive()
     })
+
+    const authorEl = story.querySelector('.story-author[data-author-uid]')
+    if (authorEl && authorEl.dataset.authorUid) {
+      authorEl.addEventListener('click', (event) => {
+        event.stopPropagation()
+        enterAuthor(authorEl.dataset.authorUid)
+      })
+    }
   })
 }
 
