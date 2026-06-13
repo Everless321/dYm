@@ -769,6 +769,21 @@ document.addEventListener('keydown', (event) => {
     return
   }
 
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    const activeStory =
+      state.activePostId != null
+        ? el.playerFeed.querySelector(`.story[data-post-id="${state.activePostId}"]`)
+        : null
+    if (activeStory && activeStory.dataset.type === 'images') {
+      event.preventDefault()
+      const delta = event.key === 'ArrowRight' ? 1 : -1
+      state.imageManualOverride.add(Number(activeStory.dataset.postId))
+      clearImageAutoTimer()
+      updateImageStory(activeStory, Number(activeStory.dataset.imageIndex || 0) + delta)
+      return
+    }
+  }
+
   const video = getActiveVideo()
   if (!video) return
 
