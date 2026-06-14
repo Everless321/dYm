@@ -33,6 +33,7 @@ const el = {
   playerFeed: document.getElementById('playerFeed'),
   authorScroll: document.getElementById('authorScroll'),
   authorPanel: document.getElementById('authorPanel'),
+  authorModal: document.getElementById('authorModal'),
   grid: document.getElementById('grid'),
   gridLoading: document.getElementById('gridLoading'),
   toast: document.getElementById('toast'),
@@ -53,7 +54,10 @@ const icons = {
     '<svg viewBox="0 0 24 24"><path fill="currentColor" d="m14.7 6.3-1.4-1.4L6.2 12l7.1 7.1 1.4-1.4L9 12l5.7-5.7Z"/></svg>',
   chevronRight:
     '<svg viewBox="0 0 24 24"><path fill="currentColor" d="m9.3 17.7 1.4 1.4 7.1-7.1-7.1-7.1-1.4 1.4L15 12l-5.7 5.7Z"/></svg>',
-  play: '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>'
+  play: '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>',
+  gear: '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm7.4-2c0-.34-.03-.67-.07-1l2.02-1.58-2-3.46-2.39.96a7.3 7.3 0 0 0-1.73-1l-.36-2.52h-4l-.36 2.52c-.62.25-1.2.59-1.73 1l-2.39-.96-2 3.46L3.27 11a7.5 7.5 0 0 0 0 2l-2.02 1.58 2 3.46 2.39-.96c.53.41 1.11.75 1.73 1l.36 2.52h4l.36-2.52c.62-.25 1.2-.59 1.73-1l2.39.96 2-3.46L19.33 13c.04-.33.07-.66.07-1Z"/></svg>',
+  close:
+    '<svg viewBox="0 0 24 24"><path fill="currentColor" d="m12 10.6 5-5 1.4 1.4-5 5 5 5-1.4 1.4-5-5-5 5L5.6 17l5-5-5-5L7 5.6l5 5Z"/></svg>'
 }
 
 function esc(value) {
@@ -161,6 +165,7 @@ async function enterAuthor(secUid) {
 
 function exitAuthor() {
   clearAuthorSyncTimer()
+  closeAuthorModal()
   state.author = null
   state.filters.secUid = ''
   el.authorPanel.hidden = true
@@ -169,90 +174,196 @@ function exitAuthor() {
   loadGrid(true)
 }
 
+const SYNC_PRESETS = [
+  { key: 'off', label: '关闭', cron: '' },
+  { key: 'hourly', label: '每小时', cron: '0 * * * *' },
+  { key: '6h', label: '每6小时', cron: '0 */6 * * *' },
+  { key: '12h', label: '每12小时', cron: '0 */12 * * *' },
+  { key: 'daily', label: '每天', cron: '0 3 * * *' },
+  { key: 'weekly', label: '每周', cron: '0 3 * * 1' },
+  { key: 'custom', label: '自定义', cron: null }
+]
+
+function isAuthorSyncing(a) {
+  return Boolean(a?.syncing) || a?.syncStatus === 'syncing'
+}
+
+function detectSyncPreset(settings) {
+  if (!settings?.autoSync || !settings?.syncCron) return 'off'
+  const found = SYNC_PRESETS.find((p) => p.cron && p.cron === settings.syncCron)
+  return found ? found.key : 'custom'
+}
+
 function renderAuthorPanel() {
   const a = state.author
   if (!a) {
     el.authorPanel.hidden = true
     return
   }
-  const s = a.settings || {}
-  const syncing = Boolean(a.syncing) || a.syncStatus === 'syncing'
-  const lastSync = a.lastSyncAt
-    ? `上次同步 ${formatDate(new Date(a.lastSyncAt * 1000).toISOString())}`
-    : '尚未同步'
+  const syncing = isAuthorSyncing(a)
+  const initial = (a.nickname || '?').trim().charAt(0) || '?'
 
   el.authorPanel.innerHTML = `
-    <div class="author-panel-head">
-      <div class="author-panel-id">
-        <div class="author-panel-name">@${esc(a.nickname || '未知作者')}</div>
-        ${a.signature ? `<div class="author-panel-sign">${esc(truncate(a.signature, 60))}</div>` : ''}
+    <div class="author-hero">
+      <div class="author-hero-avatar">${esc(initial)}</div>
+      <div class="author-hero-main">
+        <div class="author-hero-name">@${esc(a.nickname || '未知作者')}</div>
+        ${a.signature ? `<div class="author-hero-sign">${esc(truncate(a.signature, 70))}</div>` : ''}
+        <div class="author-hero-stats">
+          <span><b>${Number(a.awemeCount || 0)}</b> 作品</span>
+          <span class="author-hero-dot">·</span>
+          <span class="js-author-downloaded"><b>${state.total || 0}</b> 已下载</span>
+          ${syncing ? '<span class="author-hero-syncing">同步中…</span>' : ''}
+        </div>
       </div>
-      <button class="author-panel-collapse" type="button" data-author-action="exit" aria-label="返回全部">✕</button>
+      <div class="author-hero-actions">
+        <button class="author-icon-btn" type="button" data-author-action="settings" aria-label="设置">${icons.gear}</button>
+        <button class="author-icon-btn" type="button" data-author-action="exit" aria-label="返回全部">${icons.close}</button>
+      </div>
     </div>
-    <div class="author-panel-stats">
-      <span>抖音作品 ${Number(a.awemeCount || 0)}</span>
-      <span>·</span>
-      <span class="js-author-downloaded">已下载 ${state.total || 0}</span>
-    </div>
-    <div class="author-panel-form">
-      <label class="author-field">
-        <span>下载数量上限<small>(0 = 用全局设置)</small></span>
-        <input class="js-author-max" type="number" min="0" inputmode="numeric" value="${Number(s.maxDownloadCount || 0)}" />
-      </label>
-      <label class="author-field">
-        <span>备注</span>
-        <input class="js-author-remark" type="text" maxlength="200" value="${esc(s.remark || '')}" placeholder="给作者加个备注" />
-      </label>
-      <label class="author-field author-field-row">
-        <span>定时自动同步</span>
-        <input class="js-author-autosync" type="checkbox" ${s.autoSync ? 'checked' : ''} />
-      </label>
-      <label class="author-field">
-        <span>同步计划<small>(cron 表达式)</small></span>
-        <input class="js-author-cron" type="text" maxlength="120" value="${esc(s.syncCron || '')}" placeholder="如 0 3 * * *" />
-      </label>
-    </div>
-    <div class="author-panel-actions">
-      <button class="author-btn author-btn-save" type="button" data-author-action="save">保存设置</button>
-      <button class="author-btn author-btn-sync ${syncing ? 'is-syncing' : ''}" type="button" data-author-action="sync" ${syncing ? 'disabled' : ''}>
-        ${syncing ? '同步中…' : '立即同步下载'}
-      </button>
-    </div>
-    <div class="author-panel-status">${esc(lastSync)}</div>
   `
   el.authorPanel.hidden = false
-  bindAuthorPanel()
+  el.authorPanel.querySelector('[data-author-action="exit"]')?.addEventListener('click', exitAuthor)
+  el.authorPanel
+    .querySelector('[data-author-action="settings"]')
+    ?.addEventListener('click', openAuthorModal)
 
   if (syncing) startAuthorSyncPolling()
   else clearAuthorSyncTimer()
+
+  if (!el.authorModal.hidden) refreshModalSyncState()
 }
 
-function bindAuthorPanel() {
-  el.authorPanel.querySelector('[data-author-action="exit"]')?.addEventListener('click', exitAuthor)
-  el.authorPanel
-    .querySelector('[data-author-action="save"]')
+function openAuthorModal() {
+  const a = state.author
+  if (!a) return
+  const s = a.settings || {}
+  const activePreset = detectSyncPreset(s)
+  const syncing = isAuthorSyncing(a)
+  const lastSync = a.lastSyncAt
+    ? formatDate(new Date(a.lastSyncAt * 1000).toISOString())
+    : '尚未同步'
+
+  el.authorModal.innerHTML = `
+    <div class="author-modal-backdrop" data-modal-close></div>
+    <div class="author-modal-card">
+      <div class="author-modal-head">
+        <h3>@${esc(a.nickname || '作者')} · 设置</h3>
+        <button class="author-icon-btn" type="button" data-modal-close aria-label="关闭">${icons.close}</button>
+      </div>
+      <div class="author-modal-body">
+        <label class="author-field">
+          <span>下载数量上限 <small>0 = 用全局设置</small></span>
+          <input class="js-m-max" type="number" min="0" inputmode="numeric" value="${Number(s.maxDownloadCount || 0)}" />
+        </label>
+        <label class="author-field">
+          <span>备注</span>
+          <input class="js-m-remark" type="text" maxlength="200" value="${esc(s.remark || '')}" placeholder="给作者加个备注" />
+        </label>
+        <div class="author-field">
+          <span>同步计划</span>
+          <div class="sync-presets js-m-presets">
+            ${SYNC_PRESETS.map(
+              (p) =>
+                `<button type="button" class="sync-chip ${p.key === activePreset ? 'is-active' : ''}" data-preset="${p.key}">${esc(p.label)}</button>`
+            ).join('')}
+          </div>
+          <input class="js-m-cron" type="text" maxlength="120" placeholder="自定义 cron，如 0 3 * * *" value="${esc(s.syncCron || '')}" ${activePreset === 'custom' ? '' : 'hidden'} />
+        </div>
+      </div>
+      <div class="author-modal-actions">
+        <button class="author-btn author-btn-sync js-m-sync ${syncing ? 'is-syncing' : ''}" type="button" data-modal-action="sync" ${syncing ? 'disabled' : ''}>${syncing ? '同步中…' : '立即同步下载'}</button>
+        <button class="author-btn author-btn-save" type="button" data-modal-action="save">保存设置</button>
+      </div>
+      <div class="author-modal-status js-m-status">上次同步 ${esc(lastSync)}</div>
+    </div>
+  `
+  el.authorModal.hidden = false
+  bindAuthorModal()
+}
+
+function closeAuthorModal() {
+  el.authorModal.hidden = true
+  el.authorModal.innerHTML = ''
+}
+
+function bindAuthorModal() {
+  el.authorModal.querySelectorAll('[data-modal-close]').forEach((node) => {
+    node.addEventListener('click', closeAuthorModal)
+  })
+  const cronInput = el.authorModal.querySelector('.js-m-cron')
+  el.authorModal.querySelectorAll('.sync-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      el.authorModal.querySelectorAll('.sync-chip').forEach((c) => c.classList.remove('is-active'))
+      chip.classList.add('is-active')
+      const isCustom = chip.dataset.preset === 'custom'
+      if (cronInput) {
+        cronInput.hidden = !isCustom
+        if (isCustom) cronInput.focus()
+      }
+    })
+  })
+  el.authorModal
+    .querySelector('[data-modal-action="save"]')
     ?.addEventListener('click', saveAuthorSettings)
-  el.authorPanel
-    .querySelector('[data-author-action="sync"]')
+  el.authorModal
+    .querySelector('[data-modal-action="sync"]')
     ?.addEventListener('click', triggerAuthorSync)
+}
+
+function refreshModalSyncState() {
+  const a = state.author
+  if (!a || el.authorModal.hidden) return
+  const syncing = isAuthorSyncing(a)
+  const btn = el.authorModal.querySelector('.js-m-sync')
+  if (btn) {
+    btn.classList.toggle('is-syncing', syncing)
+    btn.disabled = syncing
+    btn.textContent = syncing ? '同步中…' : '立即同步下载'
+  }
+  const status = el.authorModal.querySelector('.js-m-status')
+  if (status) {
+    const lastSync = a.lastSyncAt
+      ? formatDate(new Date(a.lastSyncAt * 1000).toISOString())
+      : '尚未同步'
+    status.textContent = `上次同步 ${lastSync}`
+  }
 }
 
 async function saveAuthorSettings() {
   if (!state.author) return
-  const maxEl = el.authorPanel.querySelector('.js-author-max')
-  const remarkEl = el.authorPanel.querySelector('.js-author-remark')
-  const autoEl = el.authorPanel.querySelector('.js-author-autosync')
-  const cronEl = el.authorPanel.querySelector('.js-author-cron')
+  const maxEl = el.authorModal.querySelector('.js-m-max')
+  const remarkEl = el.authorModal.querySelector('.js-m-remark')
+  const cronEl = el.authorModal.querySelector('.js-m-cron')
+  const activeChip = el.authorModal.querySelector('.sync-chip.is-active')
+  const presetKey = activeChip?.dataset.preset || 'off'
+
+  let autoSync = false
+  let syncCron = ''
+  if (presetKey === 'custom') {
+    syncCron = cronEl?.value?.trim() ?? ''
+    if (!syncCron) {
+      showToast('请填写自定义 cron 表达式')
+      return
+    }
+    autoSync = true
+  } else if (presetKey !== 'off') {
+    const preset = SYNC_PRESETS.find((p) => p.key === presetKey)
+    syncCron = preset?.cron ?? ''
+    autoSync = true
+  }
+
   const payload = {
     secUid: state.author.secUid,
     maxDownloadCount: Math.max(0, Math.floor(Number(maxEl?.value) || 0)),
     remark: remarkEl?.value ?? '',
-    autoSync: Boolean(autoEl?.checked),
-    syncCron: cronEl?.value?.trim() ?? ''
+    autoSync,
+    syncCron
   }
   try {
     state.author = await postJson('/api/author/settings', payload)
     renderAuthorPanel()
+    closeAuthorModal()
     showToast('已保存设置')
   } catch (err) {
     showToast(err.message || '保存失败')
@@ -281,9 +392,9 @@ function startAuthorSyncPolling() {
     }
     try {
       const next = await fetchJson(`/api/author?secUid=${encodeURIComponent(state.author.secUid)}`)
-      const wasSyncing = Boolean(state.author.syncing) || state.author.syncStatus === 'syncing'
+      const wasSyncing = isAuthorSyncing(state.author)
       state.author = next
-      const nowSyncing = Boolean(next.syncing) || next.syncStatus === 'syncing'
+      const nowSyncing = isAuthorSyncing(next)
       renderAuthorPanel()
       if (wasSyncing && !nowSyncing) {
         showToast('同步完成')
@@ -949,6 +1060,11 @@ function scrollToSiblingStory(delta) {
 }
 
 document.addEventListener('keydown', (event) => {
+  if (!el.authorModal.hidden && event.key === 'Escape') {
+    event.preventDefault()
+    closeAuthorModal()
+    return
+  }
   if (el.playerView.style.display !== 'flex') return
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)
     return
