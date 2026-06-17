@@ -34,10 +34,8 @@ import {
   getSetting,
   setSetting,
   getAllSettings,
-  createUser,
   getAllUsers,
   getUserById,
-  getUserBySecUid,
   deleteUser,
   setUserShowInHome,
   updateUserSettings,
@@ -57,20 +55,17 @@ import {
   deletePost,
   getPostsByUserId,
   deletePostsByUserId,
-  getPostByAwemeId,
   getDashboardOverview,
   getDownloadTrend,
   getUserVideoDistribution,
   getTopTags,
-  getContentLevelDistribution,
-  type DbUser
+  getContentLevelDistribution
 } from './database'
 import { fetchDouyinCookie, refreshDouyinCookieSilent, isCookieRefreshing } from './services/cookie'
 import {
   initDouyinHandler,
   refreshDouyinHandler,
   fetchUserProfile,
-  fetchUserProfileBySecUid,
   fetchVideoDetail,
   parseDouyinUrl,
   getSecUserId
@@ -79,9 +74,9 @@ import {
   startDownloadTask,
   stopDownloadTask,
   isTaskRunning,
-  convertFolderImagesToJpg,
-  downloadSinglePost
+  convertFolderImagesToJpg
 } from './services/downloader'
+import { addUserByUrl } from './services/user-add'
 import { startAnalysis, stopAnalysis, isAnalysisRunning } from './services/analyzer'
 import {
   blockCustomProtocols,
@@ -106,7 +101,9 @@ import {
   unscheduleTask,
   validateCronExpression,
   getSchedulerLogs,
-  clearSchedulerLogs
+  clearSchedulerLogs,
+  scheduleCollectSync,
+  executeCollectSync
 } from './services/scheduler'
 import {
   getUnanalyzedPostsCount,
@@ -123,26 +120,6 @@ import {
   startWebBrowserServer,
   stopWebBrowserServer
 } from './services/web-browser'
-
-type AddUserPostDownload =
-  | { status: 'downloading'; awemeId: string }
-  | { status: 'already-downloaded'; awemeId: string }
-  | { status: 'disabled' }
-  | { status: 'unavailable' }
-  | { status: 'not-video-link' }
-
-interface AddPostProgressPayload {
-  awemeId: string
-  nickname: string
-  status: 'success' | 'failed' | 'already-downloaded'
-  error?: string
-}
-
-function broadcastAddPostProgress(payload: AddPostProgressPayload): void {
-  for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send('user:addPostProgress', payload)
-  }
-}
 
 // 全局变量
 let mainWindow: BrowserWindow | null = null
@@ -497,148 +474,7 @@ app.whenReady().then(async () => {
 
   // User IPC handlers
   ipcMain.handle('user:getAll', () => getAllUsers())
-  ipcMain.handle('user:add', async (_event, url: string) => {
-    console.log('[User:add] Input url:', url)
-
-    const parseResult = await parseDouyinUrl(url)
-    console.log('[User:add] Link type:', parseResult.type, 'id:', parseResult.id)
-
-    let userData: Record<string, unknown>
-    let homepageUrl = url
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let awemeDataForDownload: any = null
-
-    if (parseResult.type === 'user') {
-      const profileRes = await fetchUserProfileBySecUid(parseResult.id)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      userData = (profileRes as any)._data?.user
-    } else if (parseResult.type === 'video') {
-      try {
-        const postDetail = await fetchVideoDetail(url)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const detail = postDetail as any
-
-        console.log('[User:add] PostDetail fields:', {
-          secUserId: detail.secUserId,
-          nickname: detail.nickname,
-          uid: detail.uid
-        })
-
-        const secUid = detail.secUserId
-        if (!secUid) {
-          throw new Error('作品信息中未找到作者数据')
-        }
-
-        if (typeof detail.toAwemeData === 'function') {
-          try {
-            awemeDataForDownload = detail.toAwemeData()
-          } catch (e) {
-            console.error('[User:add] toAwemeData failed:', e)
-          }
-        }
-
-        const profileRes = await fetchUserProfileBySecUid(secUid)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        userData = (profileRes as any)._data?.user
-
-        homepageUrl = `https://www.douyin.com/user/${secUid}`
-      } catch (error) {
-        console.error('[User:add] Failed to fetch video detail:', error)
-        throw new Error(
-          '获取作品详情失败，请尝试使用用户主页链接（点击作品中的作者头像，复制用户主页链接）'
-        )
-      }
-    } else {
-      throw new Error('无法识别的链接类型，请输入用户主页或作品链接')
-    }
-
-    if (!userData) {
-      throw new Error('获取用户信息失败')
-    }
-
-    console.log('[User:add] User data:', {
-      sec_uid: userData.sec_uid,
-      uid: userData.uid,
-      nickname: userData.nickname
-    })
-
-    const secUidStr = userData.sec_uid as string
-    const existing = getUserBySecUid(secUidStr)
-
-    let dbUser: DbUser
-    let isNewUser = false
-    if (existing) {
-      dbUser = existing
-    } else {
-      const input = {
-        sec_uid: secUidStr,
-        uid: (userData.uid as string) || '',
-        nickname: (userData.nickname as string) || '',
-        signature: (userData.signature as string) || '',
-        avatar:
-          (userData.avatar_larger as { url_list?: string[] })?.url_list?.[0] ||
-          (userData.avatar_medium as { url_list?: string[] })?.url_list?.[0] ||
-          '',
-        short_id: (userData.short_id as string) || '',
-        unique_id: (userData.unique_id as string) || '',
-        following_count: (userData.following_count as number) || 0,
-        follower_count: (userData.follower_count as number) || 0,
-        total_favorited: (userData.total_favorited as number) || 0,
-        aweme_count: (userData.aweme_count as number) || 0,
-        homepage_url: homepageUrl
-      }
-      console.log('[User:add] Creating user with:', JSON.stringify(input, null, 2))
-      dbUser = createUser(input)
-      isNewUser = true
-      console.log('[User:add] User created:', dbUser.id)
-    }
-
-    // 决定是否触发作品下载
-    let postDownload: AddUserPostDownload = { status: 'not-video-link' }
-
-    if (parseResult.type === 'video') {
-      const enabled = getSetting('download_post_on_add_user') !== 'false'
-      if (!enabled) {
-        postDownload = { status: 'disabled' }
-      } else if (!awemeDataForDownload || !awemeDataForDownload.awemeId) {
-        postDownload = { status: 'unavailable' }
-      } else if (getPostByAwemeId(awemeDataForDownload.awemeId)) {
-        postDownload = {
-          status: 'already-downloaded',
-          awemeId: awemeDataForDownload.awemeId
-        }
-      } else {
-        postDownload = {
-          status: 'downloading',
-          awemeId: awemeDataForDownload.awemeId
-        }
-
-        // 后台下载，不阻塞 IPC 返回
-        const awemeData = awemeDataForDownload
-        const targetUser = dbUser
-        void (async () => {
-          const result = await downloadSinglePost(targetUser, awemeData)
-          const basePayload = {
-            awemeId: awemeData.awemeId as string,
-            nickname: targetUser.nickname
-          }
-          if (result.status === 'success') {
-            broadcastAddPostProgress({ ...basePayload, status: 'success' })
-          } else if (result.status === 'already-downloaded') {
-            broadcastAddPostProgress({ ...basePayload, status: 'already-downloaded' })
-          } else {
-            broadcastAddPostProgress({
-              ...basePayload,
-              status: 'failed',
-              error: result.error
-            })
-          }
-        })()
-      }
-    }
-
-    return { user: dbUser, isNewUser, postDownload }
-  })
+  ipcMain.handle('user:add', (_event, url: string) => addUserByUrl(url))
   ipcMain.handle('user:delete', (_event, id: number, deleteFiles?: boolean) => {
     const result = deleteUser(id)
     if (deleteFiles && result) {
@@ -998,6 +834,10 @@ app.whenReady().then(async () => {
   // Scheduler logs IPC handlers
   ipcMain.handle('scheduler:getLogs', () => getSchedulerLogs())
   ipcMain.handle('scheduler:clearLogs', () => clearSchedulerLogs())
+
+  // 收藏同步：保存设置后重建定时任务 / 立即手动触发一次
+  ipcMain.handle('collect:reschedule', () => scheduleCollectSync())
+  ipcMain.handle('collect:syncNow', () => executeCollectSync())
 
   // Grok API verification
   ipcMain.handle('grok:verify', async (_event, apiKey: string, apiUrl: string, model: string) => {

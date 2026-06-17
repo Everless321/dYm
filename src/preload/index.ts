@@ -123,6 +123,11 @@ const schedulerAPI = {
   clearLogs: (): Promise<void> => ipcRenderer.invoke('scheduler:clearLogs')
 }
 
+const collectAPI = {
+  reschedule: (): Promise<void> => ipcRenderer.invoke('collect:reschedule'),
+  syncNow: (): Promise<void> => ipcRenderer.invoke('collect:syncNow')
+}
+
 const postAPI = {
   getAll: (
     page?: number,
@@ -257,6 +262,7 @@ const api = {
   download: downloadAPI,
   sync: syncAPI,
   scheduler: schedulerAPI,
+  collect: collectAPI,
   post: postAPI,
   grok: grokAPI,
   analysis: analysisAPI,

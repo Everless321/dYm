@@ -221,6 +221,11 @@ declare global {
     clearLogs: () => Promise<void>
   }
 
+  interface CollectAPI {
+    reschedule: () => Promise<void>
+    syncNow: () => Promise<void>
+  }
+
   interface DbPost {
     id: number
     aweme_id: string
@@ -470,6 +475,7 @@ declare global {
     download: DownloadAPI
     sync: SyncAPI
     scheduler: SchedulerAPI
+    collect: CollectAPI
     post: PostAPI
     grok: GrokAPI
     analysis: AnalysisAPI

@@ -44,6 +44,13 @@ export default function SystemPage() {
   const [analysisSlices, setAnalysisSlices] = useState('4')
   const [analysisPrompt, setAnalysisPrompt] = useState('')
 
+  // 收藏同步
+  const [collectEnabled, setCollectEnabled] = useState(false)
+  const [collectBaseUrl, setCollectBaseUrl] = useState('https://dymserver.everless.app')
+  const [collectToken, setCollectToken] = useState('')
+  const [collectCron, setCollectCron] = useState('*/30 * * * *')
+  const [collectSyncing, setCollectSyncing] = useState(false)
+
   // 更新
   const [currentVersion, setCurrentVersion] = useState('')
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
@@ -91,6 +98,10 @@ export default function SystemPage() {
     setAnalysisModel(settings.analysis_model || 'grok-4-fast')
     setAnalysisSlices(settings.analysis_slices || '4')
     setAnalysisPrompt(settings.analysis_prompt || '')
+    setCollectEnabled(settings.collect_sync_enabled === 'true')
+    setCollectBaseUrl(settings.collect_sync_base_url || 'https://dymserver.everless.app')
+    setCollectToken(settings.collect_sync_token || '')
+    setCollectCron(settings.collect_sync_cron || '*/30 * * * *')
   }
 
   // Cookie handlers
@@ -220,6 +231,32 @@ export default function SystemPage() {
       toast.success('分析设置已保存')
     } catch {
       toast.error('保存失败')
+    }
+  }
+
+  // 收藏同步 handlers
+  const handleSaveCollect = async () => {
+    try {
+      await window.api.settings.set('collect_sync_enabled', collectEnabled ? 'true' : 'false')
+      await window.api.settings.set('collect_sync_base_url', collectBaseUrl.trim())
+      await window.api.settings.set('collect_sync_token', collectToken.trim())
+      await window.api.settings.set('collect_sync_cron', collectCron.trim())
+      await window.api.collect.reschedule()
+      toast.success('收藏同步设置已保存')
+    } catch {
+      toast.error('保存失败')
+    }
+  }
+
+  const handleCollectSyncNow = async () => {
+    setCollectSyncing(true)
+    try {
+      await window.api.collect.syncNow()
+      toast.success('已触发收藏同步，详情见同步日志')
+    } catch (error) {
+      toast.error(`触发失败: ${(error as Error).message}`)
+    } finally {
+      setCollectSyncing(false)
     }
   }
 
@@ -593,6 +630,133 @@ export default function SystemPage() {
                     保存分析设置
                   </button>
                 </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            <div>
+              <p className="text-xs font-semibold text-[#6E6E73] uppercase tracking-widest">
+                自动化
+              </p>
+              <h2 className="text-lg font-semibold text-[#1D1D1F] mt-1">收藏同步</h2>
+            </div>
+            <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-6">
+              <p className="text-xs text-[#A1A1A6] mb-4">
+                Surge
+                拦截抖音收藏请求并上报到暂存服务，应用按计划拉取收藏的作品并自动添加作者（按上方「添加用户时下载作品」开关决定是否下载收藏的作品）。
+              </p>
+
+              <div className="divide-y divide-[#E5E5E7]">
+                {/* Enable */}
+                <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-sm text-[#1D1D1F]">启用收藏同步</p>
+                    <p className="text-xs text-[#A1A1A6] mt-1">按计划自动拉取并添加</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCollectEnabled(!collectEnabled)}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                      collectEnabled ? 'bg-[#0A84FF]' : 'bg-[#D1D1D6]'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                        collectEnabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Base URL */}
+                <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
+                  <div className="md:min-w-[120px]">
+                    <p className="text-sm text-[#1D1D1F]">服务器地址</p>
+                    <p className="text-xs text-[#A1A1A6] mt-1">暂存服务的基础 URL</p>
+                  </div>
+                  <input
+                    type="text"
+                    value={collectBaseUrl}
+                    onChange={(e) => setCollectBaseUrl(e.target.value)}
+                    placeholder="https://dymserver.everless.app"
+                    className="w-full md:w-[360px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
+                  />
+                </div>
+
+                {/* Token */}
+                <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
+                  <div className="md:min-w-[120px]">
+                    <p className="text-sm text-[#1D1D1F]">Token</p>
+                    <p className="text-xs text-[#A1A1A6] mt-1">与 Surge 模块一致的身份令牌</p>
+                  </div>
+                  <input
+                    type="password"
+                    value={collectToken}
+                    onChange={(e) => setCollectToken(e.target.value)}
+                    placeholder="收藏服务 token"
+                    className="w-full md:w-[360px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
+                  />
+                </div>
+
+                {/* Cron */}
+                <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
+                  <div className="md:min-w-[120px]">
+                    <p className="text-sm text-[#1D1D1F]">拉取计划</p>
+                    <p className="text-xs text-[#A1A1A6] mt-1">Cron 表达式</p>
+                  </div>
+                  <div className="flex flex-col gap-2 w-full md:w-[360px]">
+                    <input
+                      type="text"
+                      value={collectCron}
+                      onChange={(e) => setCollectCron(e.target.value)}
+                      placeholder="*/30 * * * *"
+                      className="h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { label: '15 分钟', cron: '*/15 * * * *' },
+                        { label: '30 分钟', cron: '*/30 * * * *' },
+                        { label: '1 小时', cron: '0 * * * *' },
+                        { label: '3 小时', cron: '0 */3 * * *' }
+                      ].map((preset) => (
+                        <button
+                          key={preset.cron}
+                          type="button"
+                          onClick={() => setCollectCron(preset.cron)}
+                          className={`h-7 px-3 rounded-md border text-xs transition-colors ${
+                            collectCron === preset.cron
+                              ? 'border-[#0A84FF] text-[#0A84FF] bg-[#E8F0FE]'
+                              : 'border-[#E5E5E7] text-[#6E6E73] hover:bg-[#F2F2F4]'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={handleCollectSyncNow}
+                  disabled={collectSyncing}
+                  className="h-9 px-4 rounded-lg border border-[#E5E5E7] text-sm text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center gap-2 disabled:opacity-50"
+                >
+                  {collectSyncing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  立即同步
+                </button>
+                <button
+                  onClick={handleSaveCollect}
+                  className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors"
+                >
+                  保存收藏同步设置
+                </button>
               </div>
             </div>
           </section>

@@ -235,7 +235,12 @@ export function initDatabase(): void {
     { key: 'analysis_rpm', value: '10' },
     { key: 'analysis_model', value: 'grok-4-fast' },
     { key: 'analysis_slices', value: '4' },
-    { key: 'analysis_prompt', value: DEFAULT_ANALYSIS_PROMPT }
+    { key: 'analysis_prompt', value: DEFAULT_ANALYSIS_PROMPT },
+    // 收藏同步（Surge 拦截收藏 → 暂存服务 → 定时拉取添加用户）
+    { key: 'collect_sync_enabled', value: 'false' },
+    { key: 'collect_sync_base_url', value: 'https://dymserver.everless.app' },
+    { key: 'collect_sync_token', value: '' },
+    { key: 'collect_sync_cron', value: '*/30 * * * *' }
   ]
 
   const insertStmt = database.prepare(`

@@ -1,6 +1,6 @@
 {
   "name": "dym",
-  "version": "1.8.13",
+  "version": "1.8.14",
   "description": "An Electron application with React and TypeScript",
   "license": "GPL-3.0",
   "main": "./out/main/index.js",
