@@ -9,7 +9,7 @@ import {
   updateUserSyncStatus
 } from '../database'
 import { convertFolderImagesToJpg } from './downloader'
-import { validateDownloadFolder, cleanupFailedDownload } from './download-validator'
+import { validateDownloadFolder, cleanupFailedDownload, expectsMusic } from './download-validator'
 
 export interface SyncProgress {
   userId: number
@@ -118,6 +118,8 @@ export async function startUserSync(userId: number): Promise<void> {
         desc?: string
         awemeType?: number
         createTime?: string
+        musicStatus?: number
+        musicPlayUrl?: string
       }
     }
     const videosToDownload: VideoToDownload[] = []
@@ -237,16 +239,18 @@ export async function startUserSync(userId: number): Promise<void> {
           if (syncState?.abort) return false
 
           try {
+            const expectMusic = expectsMusic(awemeData)
+
             await downloader.createDownloadTasks(awemeData, userPath)
 
             const folderPath = join(userPath, awemeId)
 
             // Validate download
-            if (!validateDownloadFolder(folderPath, awemeData.awemeType || 0)) {
+            if (!validateDownloadFolder(folderPath, awemeData.awemeType || 0, expectMusic)) {
               cleanupFailedDownload(folderPath)
               await downloader.createDownloadTasks(awemeData, userPath)
 
-              if (!validateDownloadFolder(folderPath, awemeData.awemeType || 0)) {
+              if (!validateDownloadFolder(folderPath, awemeData.awemeType || 0, expectMusic)) {
                 console.error(`[Syncer] Validation failed after retry for ${awemeId}`)
                 cleanupFailedDownload(folderPath)
                 return false

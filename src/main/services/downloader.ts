@@ -18,7 +18,7 @@ import {
   type DbTaskWithUsers,
   type DbUser
 } from '../database'
-import { validateDownloadFolder, cleanupFailedDownload } from './download-validator'
+import { validateDownloadFolder, cleanupFailedDownload, expectsMusic } from './download-validator'
 
 // 并发控制函数
 async function runWithConcurrency<T>(
@@ -42,6 +42,15 @@ async function runWithConcurrency<T>(
 
   await Promise.all(executing)
   return results
+}
+
+// 全局串行队列：避免多个分享链接同时下载打爆抖音 CDN 导致 mp3 被限流丢失。
+// 单作品下载逐个排队执行，互不抢占连接。
+let singlePostQueue: Promise<unknown> = Promise.resolve()
+function enqueueSinglePost<T>(work: () => Promise<T>): Promise<T> {
+  const run = singlePostQueue.then(work, work)
+  singlePostQueue = run.catch(() => {})
+  return run
 }
 
 export interface DownloadProgress {
@@ -245,6 +254,8 @@ async function downloadUserVideos(
         desc?: string
         awemeType?: number
         createTime?: string
+        musicStatus?: number
+        musicPlayUrl?: string
       }
     }
     const videosToDownload: VideoToDownload[] = []
@@ -353,17 +364,19 @@ async function downloadUserVideos(
           const folderName = formatFolderName(awemeId)
 
           try {
+            const expectMusic = expectsMusic(awemeData)
+
             await downloader.createDownloadTasks(awemeData, userPath)
 
             const folderPath = join(userPath, folderName)
 
             // Validate download
-            if (!validateDownloadFolder(folderPath, awemeData.awemeType || 0)) {
+            if (!validateDownloadFolder(folderPath, awemeData.awemeType || 0, expectMusic)) {
               // Cleanup and retry once
               cleanupFailedDownload(folderPath)
               await downloader.createDownloadTasks(awemeData, userPath)
 
-              if (!validateDownloadFolder(folderPath, awemeData.awemeType || 0)) {
+              if (!validateDownloadFolder(folderPath, awemeData.awemeType || 0, expectMusic)) {
                 console.error(`[Downloader] Validation failed after retry for ${awemeId}`)
                 cleanupFailedDownload(folderPath)
                 return false
@@ -487,10 +500,20 @@ interface SinglePostAwemeData {
   caption?: string
   desc?: string
   createTime?: string
+  musicStatus?: number
+  musicPlayUrl?: string
   [key: string]: unknown
 }
 
-export async function downloadSinglePost(
+// 公开入口：经全局串行队列排队，避免并发分享链接下载相互限流导致 mp3 丢失。
+export function downloadSinglePost(
+  user: DbUser,
+  awemeData: SinglePostAwemeData
+): Promise<SinglePostResult> {
+  return enqueueSinglePost(() => downloadSinglePostInner(user, awemeData))
+}
+
+async function downloadSinglePostInner(
   user: DbUser,
   awemeData: SinglePostAwemeData
 ): Promise<SinglePostResult> {
@@ -520,12 +543,14 @@ export async function downloadSinglePost(
       desc: true
     })
 
+    const expectMusic = expectsMusic(awemeData)
+
     await downloader.createDownloadTasks(awemeData, userPath)
 
-    if (!validateDownloadFolder(folderPath, awemeData.awemeType || 0)) {
+    if (!validateDownloadFolder(folderPath, awemeData.awemeType || 0, expectMusic)) {
       cleanupFailedDownload(folderPath)
       await downloader.createDownloadTasks(awemeData, userPath)
-      if (!validateDownloadFolder(folderPath, awemeData.awemeType || 0)) {
+      if (!validateDownloadFolder(folderPath, awemeData.awemeType || 0, expectMusic)) {
         cleanupFailedDownload(folderPath)
         return { status: 'failed', error: '下载校验失败' }
       }

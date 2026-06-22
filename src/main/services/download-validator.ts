@@ -1,7 +1,17 @@
 import { existsSync, readdirSync, statSync, unlinkSync } from 'fs'
 import { join } from 'path'
 
-export function validateDownloadFolder(folderPath: string, awemeType: number): boolean {
+// 判断该作品是否本应带原声音乐（musicStatus===1 且有播放地址）。
+// 用于让校验在并发限流导致 mp3 静默丢失时判失败并触发重试。
+export function expectsMusic(awemeData: { musicStatus?: number; musicPlayUrl?: string }): boolean {
+  return awemeData.musicStatus === 1 && !!awemeData.musicPlayUrl
+}
+
+export function validateDownloadFolder(
+  folderPath: string,
+  awemeType: number,
+  expectMusic = false
+): boolean {
   if (!existsSync(folderPath)) return false
 
   const files = readdirSync(folderPath)
@@ -14,6 +24,10 @@ export function validateDownloadFolder(folderPath: string, awemeType: number): b
     const stat = statSync(filePath)
     if (stat.size === 0) return false
   }
+
+  // When the post is expected to have music, the .mp3 must be present.
+  // 并发下载时音频 CDN 易被限流导致 mp3 静默丢失，这里强制校验以触发重试。
+  if (expectMusic && !files.some((f) => f.endsWith('.mp3'))) return false
 
   // Video types must have at least one .mp4 file
   if ([0, 4, 55, 61, 109, 201].includes(awemeType)) {
