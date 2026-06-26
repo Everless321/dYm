@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import { app } from 'electron'
 import { join } from 'path'
+import { existsSync, readFileSync } from 'fs'
 
 const DEFAULT_ANALYSIS_PROMPT = `你是视频内容分析助手。分析视频帧截图，输出标准化JSON。
 
@@ -792,12 +793,13 @@ export function getPostByAwemeId(awemeId: string): DbPost | undefined {
 export function getPostsByUserId(
   userId: number,
   page = 1,
-  pageSize = 50
+  pageSize = 50,
+  sort?: PostSortConfig
 ): { posts: DbPost[]; total: number } {
   const database = getDatabase()
   const offset = (page - 1) * pageSize
   const posts = database
-    .prepare('SELECT * FROM posts WHERE user_id = ? ORDER BY create_time DESC LIMIT ? OFFSET ?')
+    .prepare(`SELECT * FROM posts WHERE user_id = ? ${buildOrderBy(sort)} LIMIT ? OFFSET ?`)
     .all(userId, pageSize, offset) as DbPost[]
   const row = database
     .prepare('SELECT COUNT(*) as count FROM posts WHERE user_id = ?')
@@ -811,6 +813,59 @@ export function getPostCountByUserId(userId: number): number {
     .prepare('SELECT COUNT(*) as count FROM posts WHERE user_id = ?')
     .get(userId) as { count: number }
   return row.count
+}
+
+// ========== 标题修复 ==========
+// dy-downloader 返回的 desc 已被转义（特殊字符变下划线），但会额外写一份
+// {aweme_id}_desc.txt 保存原始文案。历史数据可据此回填修复。
+
+function readDescFromFile(folderPath: string | null, awemeId: string): string | null {
+  if (!folderPath) return null
+  try {
+    const descPath = join(folderPath, `${awemeId}_desc.txt`)
+    if (existsSync(descPath)) {
+      return readFileSync(descPath, 'utf-8').trim()
+    }
+  } catch (error) {
+    console.warn(`[DB] Failed to read desc file for ${awemeId}:`, error)
+  }
+  return null
+}
+
+export function fixAllPostTitles(): { fixed: number; skipped: number; failed: number } {
+  const database = getDatabase()
+  const posts = database.prepare('SELECT id, aweme_id, video_path, desc FROM posts').all() as Pick<
+    DbPost,
+    'id' | 'aweme_id' | 'video_path' | 'desc'
+  >[]
+
+  let fixed = 0
+  let skipped = 0
+  let failed = 0
+
+  const updateStmt = database.prepare('UPDATE posts SET desc = ? WHERE id = ?')
+
+  for (const post of posts) {
+    const original = readDescFromFile(post.video_path, post.aweme_id)
+    if (original === null) {
+      failed++
+      continue
+    }
+    if (post.desc === original) {
+      skipped++
+      continue
+    }
+    try {
+      updateStmt.run(original, post.id)
+      fixed++
+    } catch (error) {
+      failed++
+      console.error(`[DB] Failed to update post ${post.id}:`, error)
+    }
+  }
+
+  console.log(`[DB] fixAllPostTitles: fixed=${fixed}, skipped=${skipped}, failed=${failed}`)
+  return { fixed, skipped, failed }
 }
 
 export interface PostAuthor {
@@ -827,10 +882,37 @@ export interface PostFilters {
   keyword?: string
 }
 
+export type PostSortField =
+  | 'create_time'
+  | 'downloaded_at'
+  | 'analyzed_at'
+  | 'analysis_content_level'
+
+export interface PostSortConfig {
+  field: PostSortField
+  order: 'ASC' | 'DESC'
+}
+
+// 白名单映射，避免 ORDER BY 注入
+const SORT_COLUMNS: Record<PostSortField, string> = {
+  create_time: 'create_time',
+  downloaded_at: 'downloaded_at',
+  analyzed_at: 'analyzed_at',
+  analysis_content_level: 'analysis_content_level'
+}
+
+function buildOrderBy(sort?: PostSortConfig): string {
+  const column = sort && SORT_COLUMNS[sort.field] ? SORT_COLUMNS[sort.field] : 'create_time'
+  const order = sort?.order === 'ASC' ? 'ASC' : 'DESC'
+  // NULL 值始终排在最后，避免未分析作品挤占头部
+  return `ORDER BY ${column} ${order} NULLS LAST`
+}
+
 export function getAllPosts(
   page: number = 1,
   pageSize: number = 20,
-  filters?: PostFilters
+  filters?: PostFilters,
+  sort?: PostSortConfig
 ): { posts: DbPost[]; total: number; authors: PostAuthor[] } {
   const database = getDatabase()
   const offset = (page - 1) * pageSize
@@ -884,15 +966,19 @@ export function getAllPosts(
   }
 
   if (filters?.keyword?.trim()) {
-    conditions.push('(caption LIKE ? OR desc LIKE ? OR nickname LIKE ?)')
+    // posts.nickname 存的是净化过的文件夹名（emoji/特殊字符被转义成下划线），
+    // 故按真实作者名搜索时还需匹配 users.nickname
+    conditions.push(
+      '(caption LIKE ? OR desc LIKE ? OR nickname LIKE ? OR sec_uid IN (SELECT sec_uid FROM users WHERE nickname LIKE ?))'
+    )
     const keyword = `%${filters.keyword.trim()}%`
-    params.push(keyword, keyword, keyword)
+    params.push(keyword, keyword, keyword, keyword)
   }
 
   const whereClause = `WHERE ${conditions.join(' AND ')}`
 
   const posts = database
-    .prepare(`SELECT * FROM posts ${whereClause} ORDER BY create_time DESC LIMIT ? OFFSET ?`)
+    .prepare(`SELECT * FROM posts ${whereClause} ${buildOrderBy(sort)} LIMIT ? OFFSET ?`)
     .all(...params, pageSize, offset) as DbPost[]
 
   const countRow = database

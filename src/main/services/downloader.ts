@@ -252,6 +252,7 @@ async function downloadUserVideos(
         nickname?: string
         caption?: string
         desc?: string
+        descRaw?: string
         awemeType?: number
         createTime?: string
         musicStatus?: number
@@ -397,7 +398,8 @@ async function downloadUserVideos(
               sec_uid: user.sec_uid,
               nickname: awemeData.nickname || user.nickname,
               caption: awemeData.caption || '',
-              desc: awemeData.desc || '',
+              // descRaw 为原始未转义文案；desc 会被 dy-downloader 转义为下划线
+              desc: awemeData.descRaw || awemeData.desc || '',
               aweme_type: awemeData.awemeType || 0,
               create_time: awemeData.createTime || '',
               folder_name: folderName,
@@ -499,6 +501,7 @@ interface SinglePostAwemeData {
   nickname?: string
   caption?: string
   desc?: string
+  descRaw?: string
   createTime?: string
   musicStatus?: number
   musicPlayUrl?: string
@@ -566,7 +569,8 @@ async function downloadSinglePostInner(
       sec_uid: user.sec_uid,
       nickname: awemeData.nickname || user.nickname,
       caption: awemeData.caption || '',
-      desc: awemeData.desc || '',
+      // descRaw 为原始未转义文案；desc 会被 dy-downloader 转义为下划线
+      desc: awemeData.descRaw || awemeData.desc || '',
       aweme_type: awemeData.awemeType || 0,
       create_time: awemeData.createTime || '',
       folder_name: folderName,

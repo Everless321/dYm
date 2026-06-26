@@ -132,9 +132,10 @@ const postAPI = {
   getAll: (
     page?: number,
     pageSize?: number,
-    filters?: PostFilters
+    filters?: PostFilters,
+    sort?: PostSortConfig
   ): Promise<{ posts: DbPost[]; total: number; authors: PostAuthor[] }> =>
-    ipcRenderer.invoke('post:getAll', page, pageSize, filters),
+    ipcRenderer.invoke('post:getAll', page, pageSize, filters, sort),
   getAllTags: (): Promise<string[]> => ipcRenderer.invoke('post:getAllTags'),
   getCoverPath: (secUid: string, folderName: string): Promise<string | null> =>
     ipcRenderer.invoke('post:getCoverPath', secUid, folderName),
@@ -228,9 +229,15 @@ const filesAPI = {
   getUserPosts: (
     userId: number,
     page?: number,
-    pageSize?: number
+    pageSize?: number,
+    sort?: PostSortConfig
   ): Promise<{ posts: DbPost[]; total: number }> =>
-    ipcRenderer.invoke('files:getUserPosts', userId, page, pageSize),
+    ipcRenderer.invoke('files:getUserPosts', userId, page, pageSize, sort),
+  fixAllTitles: (): Promise<{
+    success: boolean
+    result?: { fixed: number; skipped: number; failed: number }
+    error?: string
+  }> => ipcRenderer.invoke('files:fixAllTitles'),
   getFileSizes: (secUid: string): Promise<{ totalSize: number; folderCount: number }> =>
     ipcRenderer.invoke('files:getFileSizes', secUid),
   getPostSize: (secUid: string, folderName: string): Promise<number> =>

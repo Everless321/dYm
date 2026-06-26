@@ -25,6 +25,8 @@ import {
 } from '@/components/ui/context-menu'
 import { MediaViewer } from '@/components/MediaViewer'
 import { VideoDownloadDialog } from '@/components/VideoDownloadDialog'
+import { SortSelect } from '@/components/SortSelect'
+import { getInitialSort } from '@/lib/post-sort'
 
 const IMAGE_AWEME_TYPE = 68
 const PAGE_SIZE = 50
@@ -52,6 +54,7 @@ export default function HomePage() {
   const [searchKeyword, setSearchKeyword] = useState('')
   const [showAuthorDropdown, setShowAuthorDropdown] = useState(false)
   const [authorSearch, setAuthorSearch] = useState('')
+  const [sort, setSort] = useState<PostSortConfig>(() => getInitialSort('home_post_sort'))
   const sentinelRef = useRef<HTMLDivElement>(null)
   const authorDropdownRef = useRef<HTMLDivElement>(null)
   const authorSearchInputRef = useRef<HTMLInputElement>(null)
@@ -69,11 +72,12 @@ export default function HomePage() {
   )
 
   useEffect(() => {
+    localStorage.setItem('home_post_sort', JSON.stringify(sort))
     setPosts([])
     setPage(1)
     setHasMore(true)
     loadPosts(1, true)
-  }, [filters])
+  }, [filters, sort])
 
   useEffect(() => {
     loadTags()
@@ -122,7 +126,7 @@ export default function HomePage() {
       setLoadingMore(true)
     }
     try {
-      const result = await window.api.post.getAll(pageNum, PAGE_SIZE, filters)
+      const result = await window.api.post.getAll(pageNum, PAGE_SIZE, filters, sort)
       if (reset) {
         setPosts(result.posts)
       } else {
@@ -143,7 +147,7 @@ export default function HomePage() {
     const nextPage = page + 1
     setPage(nextPage)
     loadPosts(nextPage, false)
-  }, [page, filters])
+  }, [page, filters, sort])
 
   const loadTags = async () => {
     try {
@@ -244,6 +248,7 @@ export default function HomePage() {
               className="h-10 w-[280px] pl-10 pr-4 rounded-lg border border-[#E5E5E7] bg-white text-sm placeholder:text-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-[#0A84FF]/20 focus:border-[#0A84FF]"
             />
           </div>
+          <SortSelect value={sort} onChange={setSort} />
         </div>
       </header>
 

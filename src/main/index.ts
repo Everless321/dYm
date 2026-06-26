@@ -22,7 +22,7 @@ import {
   cpSync,
   rmSync
 } from 'fs'
-import { mkdir } from 'fs/promises'
+import { mkdir, readdir, stat } from 'fs/promises'
 import { pipeline } from 'stream/promises'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -52,8 +52,10 @@ import {
   type CreateTaskInput,
   type UpdateUserSettingsInput,
   type PostFilters,
+  type PostSortConfig,
   deletePost,
   getPostsByUserId,
+  fixAllPostTitles,
   deletePostsByUserId,
   getDashboardOverview,
   getDownloadTrend,
@@ -592,8 +594,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('task:delete', (_event, id: number) => deleteTask(id))
 
   // Post IPC handlers
-  ipcMain.handle('post:getAll', (_event, page?: number, pageSize?: number, filters?: PostFilters) =>
-    getAllPosts(page, pageSize, filters)
+  ipcMain.handle(
+    'post:getAll',
+    (_event, page?: number, pageSize?: number, filters?: PostFilters, sort?: PostSortConfig) =>
+      getAllPosts(page, pageSize, filters, sort)
   )
   ipcMain.handle('post:getAllTags', () => getAllTags())
   ipcMain.handle('post:getCoverPath', (_event, secUid: string, folderName: string) =>
@@ -618,29 +622,47 @@ app.whenReady().then(async () => {
   })
 
   // Files management IPC handlers
-  ipcMain.handle('files:getUserPosts', (_event, userId: number, page?: number, pageSize?: number) =>
-    getPostsByUserId(userId, page, pageSize)
+  ipcMain.handle(
+    'files:getUserPosts',
+    (_event, userId: number, page?: number, pageSize?: number, sort?: PostSortConfig) =>
+      getPostsByUserId(userId, page, pageSize, sort)
   )
 
-  ipcMain.handle('files:getFileSizes', (_event, secUid: string) => {
+  // 批量修复历史视频标题（从 _desc.txt 回填原始文案）
+  ipcMain.handle('files:fixAllTitles', async () => {
+    try {
+      const result = fixAllPostTitles()
+      return { success: true, result }
+    } catch (error) {
+      console.error('[IPC] fixAllTitles failed:', error)
+      return { success: false, error: (error as Error).message }
+    }
+  })
+
+  ipcMain.handle('files:getFileSizes', async (_event, secUid: string) => {
     const basePath = join(getDownloadPath(), secUid)
     if (!existsSync(basePath)) return { totalSize: 0, folderCount: 0 }
     let totalSize = 0
     let folderCount = 0
     try {
-      const folders = readdirSync(basePath)
+      // 用异步 fs 遍历，避免同步 statSync 阻塞主进程事件循环导致全局卡顿
+      const folders = await readdir(basePath, { withFileTypes: true })
       for (const folder of folders) {
-        const folderPath = join(basePath, folder)
-        const stat = statSync(folderPath)
-        if (!stat.isDirectory()) continue
+        if (!folder.isDirectory()) continue
         folderCount++
-        const files = readdirSync(folderPath)
-        for (const file of files) {
-          try {
-            totalSize += statSync(join(folderPath, file)).size
-          } catch {
-            /* skip */
-          }
+        const folderPath = join(basePath, folder.name)
+        try {
+          const files = await readdir(folderPath)
+          const sizes = await Promise.all(
+            files.map((file) =>
+              stat(join(folderPath, file))
+                .then((s) => s.size)
+                .catch(() => 0)
+            )
+          )
+          totalSize += sizes.reduce((sum, size) => sum + size, 0)
+        } catch {
+          /* skip */
         }
       }
     } catch {

@@ -13,11 +13,14 @@ import {
   X,
   RefreshCw,
   ShieldAlert,
-  AlertTriangle
+  AlertTriangle,
+  Wand2
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { SortSelect } from '@/components/SortSelect'
+import { getInitialSort } from '@/lib/post-sort'
 import {
   Dialog,
   DialogContent,
@@ -75,6 +78,8 @@ export default function FilesPage() {
   const [brokenPosts, setBrokenPosts] = useState<BrokenPostInfo[]>([])
   const [showBrokenDialog, setShowBrokenDialog] = useState(false)
   const [fixingAll, setFixingAll] = useState(false)
+  const [fixingTitles, setFixingTitles] = useState(false)
+  const [sort, setSort] = useState<PostSortConfig>(() => getInitialSort('files_post_sort'))
   const dropdownRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
@@ -88,6 +93,7 @@ export default function FilesPage() {
 
   useEffect(() => {
     if (selectedUser) {
+      localStorage.setItem('files_post_sort', JSON.stringify(sort))
       setPosts([])
       setPage(1)
       setHasMore(true)
@@ -95,7 +101,7 @@ export default function FilesPage() {
       setSelectedIds(new Set())
       loadPosts(selectedUser, 1, true)
     }
-  }, [selectedUser])
+  }, [selectedUser, sort])
 
   useEffect(() => {
     const sentinel = sentinelRef.current
@@ -150,7 +156,7 @@ export default function FilesPage() {
     if (reset) setPostsLoading(true)
     else setLoadingMore(true)
     try {
-      const result = await window.api.files.getUserPosts(user.id, pageNum, PAGE_SIZE)
+      const result = await window.api.files.getUserPosts(user.id, pageNum, PAGE_SIZE, sort)
       const newPosts = result?.posts ?? []
       if (reset) {
         setPosts(newPosts)
@@ -173,7 +179,7 @@ export default function FilesPage() {
     const nextPage = page + 1
     setPage(nextPage)
     loadPosts(selectedUser, nextPage, false)
-  }, [page, selectedUser])
+  }, [page, selectedUser, sort])
 
   const loadCoverPaths = async (postList: DbPost[]) => {
     const paths: Record<string, string> = {}
@@ -226,6 +232,28 @@ export default function FilesPage() {
       toast.error('批量删除失败')
     } finally {
       setDeleteLoading(false)
+    }
+  }
+
+  const handleFixAllTitles = async (): Promise<void> => {
+    if (!confirm('确定要修复所有视频标题吗？\n\n将从 _desc.txt 文件读取原始文案并更新数据库。')) {
+      return
+    }
+    setFixingTitles(true)
+    try {
+      const res = await window.api.files.fixAllTitles()
+      if (res.success && res.result) {
+        toast.success(
+          `修复完成：成功 ${res.result.fixed} / 跳过 ${res.result.skipped} / 失败 ${res.result.failed}`
+        )
+        if (selectedUser) await loadPosts(selectedUser, 1, true)
+      } else {
+        toast.error(`修复失败: ${res.error || '未知错误'}`)
+      }
+    } catch (error) {
+      toast.error(`修复失败: ${error}`)
+    } finally {
+      setFixingTitles(false)
     }
   }
 
@@ -338,6 +366,7 @@ export default function FilesPage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {selectedUser && <SortSelect value={sort} onChange={setSort} />}
           <Button variant="outline" size="sm" onClick={handleScanBroken} disabled={scanning}>
             {scanning ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -345,6 +374,14 @@ export default function FilesPage() {
               <ShieldAlert className="h-4 w-4 mr-2" />
             )}
             {scanning ? '扫描中...' : '扫描损坏文件'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleFixAllTitles} disabled={fixingTitles}>
+            {fixingTitles ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Wand2 className="h-4 w-4 mr-2" />
+            )}
+            {fixingTitles ? '修复中...' : '修复标题'}
           </Button>
           {selectedIds.size > 0 && (
             <Button

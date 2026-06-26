@@ -4,9 +4,12 @@ import { Button } from '@/components/ui/button'
 
 type LogFilter = 'all' | 'user' | 'task' | 'system'
 
+const LOGS_PAGE_SIZE = 50
+
 export default function LogsPage() {
   const [logs, setLogs] = useState<SchedulerLog[]>([])
   const [filter, setFilter] = useState<LogFilter>('all')
+  const [visibleCount, setVisibleCount] = useState(LOGS_PAGE_SIZE)
 
   useEffect(() => {
     // 加载历史日志
@@ -18,7 +21,14 @@ export default function LogsPage() {
     return unsubscribe
   }, [])
 
+  // 切换筛选时重置可见条数
+  useEffect(() => {
+    setVisibleCount(LOGS_PAGE_SIZE)
+  }, [filter])
+
   const filteredLogs = filter === 'all' ? logs : logs.filter((log) => log.type === filter)
+  const visibleLogs = filteredLogs.slice(0, visibleCount)
+  const hasMore = filteredLogs.length > visibleCount
 
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp)
@@ -133,7 +143,7 @@ export default function LogsPage() {
                 </div>
               ) : (
                 <div className="divide-y divide-[#E5E5E7]">
-                  {filteredLogs.map((log, index) => (
+                  {visibleLogs.map((log, index) => (
                     <div
                       key={`${log.timestamp}-${index}`}
                       className="flex items-start gap-4 px-5 py-3 hover:bg-[#F2F2F4]/50 transition-colors"
@@ -157,6 +167,18 @@ export default function LogsPage() {
                       </div>
                     </div>
                   ))}
+                  {hasMore && (
+                    <div className="flex items-center justify-center py-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setVisibleCount((c) => c + LOGS_PAGE_SIZE)}
+                        className="border-[#E5E5E7] text-[#6E6E73]"
+                      >
+                        显示更多（剩余 {filteredLogs.length - visibleCount}）
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

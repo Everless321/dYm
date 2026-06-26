@@ -119,11 +119,14 @@ async function extractSingleFrame(
   return new Promise((resolve, reject) => {
     ffmpeg(videoPath)
       .inputOptions([
-        '-ss', timestamp.toFixed(2) // 在输入前 seek，利用关键帧快速定位
+        '-ss',
+        timestamp.toFixed(2) // 在输入前 seek，利用关键帧快速定位
       ])
       .outputOptions([
-        '-frames:v', '1', // 只提取一帧
-        '-q:v', '2', // 最高质量
+        '-frames:v',
+        '1', // 只提取一帧
+        '-q:v',
+        '2', // 最高质量
         '-y'
       ])
       .output(outputPath)
@@ -225,6 +228,35 @@ class RateLimiter {
   }
 }
 
+// 兼容两种响应：普通 JSON 与 SSE 流（data: {...} 多行）。
+// 部分 API 网关即使未请求 stream 也会返回 text/event-stream。
+function extractMessageContent(rawBody: string): string {
+  const trimmed = rawBody.trim()
+
+  // 非 SSE：直接当 JSON 解析
+  if (!trimmed.startsWith('data:')) {
+    const data = JSON.parse(trimmed)
+    return data.choices?.[0]?.message?.content ?? ''
+  }
+
+  // SSE：逐行拼接 delta.content（兼容个别 chunk 直接给 message.content）
+  let content = ''
+  for (const line of trimmed.split('\n')) {
+    const text = line.trim()
+    if (!text.startsWith('data:')) continue
+    const payload = text.slice(5).trim()
+    if (!payload || payload === '[DONE]') continue
+    try {
+      const chunk = JSON.parse(payload)
+      const choice = chunk.choices?.[0]
+      content += choice?.delta?.content ?? choice?.message?.content ?? ''
+    } catch {
+      // 跳过不完整/非 JSON 的 chunk
+    }
+  }
+  return content
+}
+
 async function callVisionAPI(
   images: string[],
   prompt: string,
@@ -261,8 +293,8 @@ async function callVisionAPI(
     throw new Error(`API error: ${response.status} - ${errorText}`)
   }
 
-  const data = await response.json()
-  const content = data.choices?.[0]?.message?.content
+  const rawBody = await response.text()
+  const content = extractMessageContent(rawBody)
 
   if (!content) {
     throw new Error('Empty response from API')
@@ -414,7 +446,8 @@ export async function startAnalysis(secUid?: string): Promise<void> {
         throw new Error('已停止')
       }
 
-      const postTitle = (post.desc || post.caption || '').substring(0, 30) || `${post.nickname || '未知用户'}的视频`
+      const postTitle =
+        (post.desc || post.caption || '').substring(0, 30) || `${post.nickname || '未知用户'}的视频`
 
       sendProgress({
         status: 'running',
@@ -442,7 +475,9 @@ export async function startAnalysis(secUid?: string): Promise<void> {
       if ((analyzedCount + failedCount) % 5 === 0) {
         sendProgress({
           status: 'running',
-          currentPost: (posts[index].desc || posts[index].caption || '').substring(0, 30) || `${posts[index].nickname || '未知用户'}的视频`,
+          currentPost:
+            (posts[index].desc || posts[index].caption || '').substring(0, 30) ||
+            `${posts[index].nickname || '未知用户'}的视频`,
           currentIndex: index + 1,
           totalPosts: totalCount,
           analyzedCount,

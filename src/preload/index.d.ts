@@ -272,6 +272,13 @@ declare global {
     keyword?: string
   }
 
+  type PostSortField = 'create_time' | 'downloaded_at' | 'analyzed_at' | 'analysis_content_level'
+
+  interface PostSortConfig {
+    field: PostSortField
+    order: 'ASC' | 'DESC'
+  }
+
   interface BrokenPostInfo {
     postId: number
     awemeId: string
@@ -284,7 +291,8 @@ declare global {
     getAll: (
       page?: number,
       pageSize?: number,
-      filters?: PostFilters
+      filters?: PostFilters,
+      sort?: PostSortConfig
     ) => Promise<{ posts: DbPost[]; total: number; authors: PostAuthor[] }>
     getAllTags: () => Promise<string[]>
     getCoverPath: (secUid: string, folderName: string) => Promise<string | null>
@@ -422,8 +430,14 @@ declare global {
     getUserPosts: (
       userId: number,
       page?: number,
-      pageSize?: number
+      pageSize?: number,
+      sort?: PostSortConfig
     ) => Promise<{ posts: DbPost[]; total: number }>
+    fixAllTitles: () => Promise<{
+      success: boolean
+      result?: { fixed: number; skipped: number; failed: number }
+      error?: string
+    }>
     getFileSizes: (secUid: string) => Promise<{ totalSize: number; folderCount: number }>
     getPostSize: (secUid: string, folderName: string) => Promise<number>
     deletePost: (postId: number) => Promise<boolean>
