@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Library } from 'lucide-react'
+import { Search, Library, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,6 +17,8 @@ export default function TagOverviewPage() {
   })
   const [users, setUsers] = useState<UserTagStats[]>([])
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 20
 
   const load = async () => {
     const [s, u] = await Promise.all([
@@ -36,6 +38,14 @@ export default function TagOverviewPage() {
     if (!kw) return users
     return users.filter((u) => u.nickname.toLowerCase().includes(kw))
   }, [users, search])
+
+  // 搜索变化时回到第一页
+  useEffect(() => {
+    setPage(1)
+  }, [search])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   return (
     <div className="flex flex-col h-full">
@@ -86,7 +96,7 @@ export default function TagOverviewPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto divide-y divide-[#F4F4F6]">
-            {filtered.map((u) => {
+            {pageItems.map((u) => {
               const pct = u.total ? (u.tagged / u.total) * 100 : 0
               return (
                 <div
@@ -129,6 +139,35 @@ export default function TagOverviewPage() {
               <div className="py-16 text-center text-sm text-[#A1A1A6]">暂无用户</div>
             )}
           </div>
+
+          {/* Pager */}
+          {filtered.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between px-6 py-3 border-t border-[#F0F0F2] shrink-0">
+              <span className="text-xs text-[#A1A1A6]">
+                共 {filtered.length} 个用户 · 第 {page}/{totalPages} 页
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  上一页
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  下一页
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

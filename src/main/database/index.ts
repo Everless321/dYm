@@ -1381,22 +1381,21 @@ export interface UserTagStats {
   untagged: number
 }
 
+// 单条聚合查询，避免每用户一次查询（几百用户时性能差）
 export function getUserTagStats(): UserTagStats[] {
   const database = getDatabase()
-  const users = database
-    .prepare('SELECT sec_uid, nickname, avatar, avatar_path FROM users ORDER BY nickname')
-    .all() as { sec_uid: string; nickname: string; avatar: string; avatar_path: string }[]
-  const stmt = database.prepare(
-    `SELECT COUNT(*) as total,
-       SUM(CASE WHEN analysis_tags IS NOT NULL OR manual_tags IS NOT NULL THEN 1 ELSE 0 END) as tagged
-     FROM posts WHERE sec_uid = ?`
-  )
-  return users.map((u) => {
-    const s = stmt.get(u.sec_uid) as { total: number; tagged: number } | undefined
-    const total = s?.total || 0
-    const tagged = s?.tagged || 0
-    return { ...u, total, tagged, untagged: total - tagged }
-  })
+  const rows = database
+    .prepare(
+      `SELECT u.sec_uid, u.nickname, u.avatar, u.avatar_path,
+         COUNT(p.id) as total,
+         COALESCE(SUM(CASE WHEN p.analysis_tags IS NOT NULL OR p.manual_tags IS NOT NULL THEN 1 ELSE 0 END), 0) as tagged
+       FROM users u
+       LEFT JOIN posts p ON p.sec_uid = u.sec_uid
+       GROUP BY u.sec_uid
+       ORDER BY u.nickname`
+    )
+    .all() as Omit<UserTagStats, 'untagged'>[]
+  return rows.map((r) => ({ ...r, untagged: r.total - r.tagged }))
 }
 
 export interface TagFrequencyItem {
