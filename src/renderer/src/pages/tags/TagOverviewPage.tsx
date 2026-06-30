@@ -18,7 +18,8 @@ export default function TagOverviewPage() {
   const [users, setUsers] = useState<UserTagStats[]>([])
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
-  const PAGE_SIZE = 20
+  const [pageSize, setPageSize] = useState(20)
+  const PAGE_SIZE_OPTIONS = [20, 50, 100, 200]
 
   const load = async () => {
     const [s, u] = await Promise.all([
@@ -39,13 +40,13 @@ export default function TagOverviewPage() {
     return users.filter((u) => u.nickname.toLowerCase().includes(kw))
   }, [users, search])
 
-  // 搜索变化时回到第一页
+  // 搜索 / 每页数量变化时回到第一页
   useEffect(() => {
     setPage(1)
-  }, [search])
+  }, [search, pageSize])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const pageItems = filtered.slice((page - 1) * pageSize, page * pageSize)
 
   return (
     <div className="flex flex-col h-full">
@@ -141,10 +142,29 @@ export default function TagOverviewPage() {
           </div>
 
           {/* Pager */}
-          {filtered.length > PAGE_SIZE && (
-            <div className="flex items-center justify-between px-6 py-3 border-t border-[#F0F0F2] shrink-0">
-              <span className="text-xs text-[#A1A1A6]">
-                共 {filtered.length} 个用户 · 第 {page}/{totalPages} 页
+          <div className="flex items-center justify-between px-6 py-3 border-t border-[#F0F0F2] shrink-0">
+            <div className="flex items-center gap-3 text-xs text-[#A1A1A6]">
+              <span>共 {filtered.length} 个用户</span>
+              <span className="text-[#E5E5E7]">·</span>
+              <label className="flex items-center gap-1.5">
+                每页
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="h-7 rounded-md border border-[#E5E5E7] bg-white px-1.5 text-xs text-[#1D1D1F] outline-none focus:border-[#0A84FF] cursor-pointer"
+                >
+                  {PAGE_SIZE_OPTIONS.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+                条
+              </label>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-[#A1A1A6] tabular-nums">
+                第 {page}/{totalPages} 页
               </span>
               <div className="flex items-center gap-2">
                 <Button
@@ -167,7 +187,7 @@ export default function TagOverviewPage() {
                 </Button>
               </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
