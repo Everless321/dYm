@@ -27,6 +27,7 @@ import { MediaViewer } from '@/components/MediaViewer'
 import { VideoDownloadDialog } from '@/components/VideoDownloadDialog'
 import { SortSelect } from '@/components/SortSelect'
 import { getInitialSort } from '@/lib/post-sort'
+import { getMergedTags } from '@/lib/utils'
 
 const IMAGE_AWEME_TYPE = 68
 const PAGE_SIZE = 50
@@ -177,16 +178,6 @@ export default function HomePage() {
     sexyLevelRange[1] < 10 ||
     analyzedOnly ||
     searchKeyword.trim()
-
-  const parseTags = (tagsStr: string | null): string[] => {
-    if (!tagsStr) return []
-    try {
-      const tags = JSON.parse(tagsStr)
-      return Array.isArray(tags) ? tags : []
-    } catch {
-      return []
-    }
-  }
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return ''
@@ -562,9 +553,9 @@ export default function HomePage() {
                             {post.desc || post.caption || '无标题'}
                           </p>
                           <p className="text-xs text-[#6E6E73] mt-1">@{post.nickname}</p>
-                          {post.analysis_tags && (
+                          {getMergedTags(post).length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-2">
-                              {parseTags(post.analysis_tags)
+                              {getMergedTags(post)
                                 .slice(0, 3)
                                 .map((tag) => (
                                   <Badge
@@ -575,12 +566,12 @@ export default function HomePage() {
                                     {tag}
                                   </Badge>
                                 ))}
-                              {parseTags(post.analysis_tags).length > 3 && (
+                              {getMergedTags(post).length > 3 && (
                                 <Badge
                                   variant="outline"
                                   className="text-xs px-1.5 py-0 border-[#E5E5E7] text-[#A1A1A6]"
                                 >
-                                  +{parseTags(post.analysis_tags).length - 3}
+                                  +{getMergedTags(post).length - 3}
                                 </Badge>
                               )}
                             </div>

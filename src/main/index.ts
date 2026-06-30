@@ -79,7 +79,13 @@ import {
   convertFolderImagesToJpg
 } from './services/downloader'
 import { addUserByUrl } from './services/user-add'
-import { startAnalysis, stopAnalysis, isAnalysisRunning } from './services/analyzer'
+import {
+  startAnalysis,
+  stopAnalysis,
+  isAnalysisRunning,
+  reanalyzePost,
+  reanalyzePosts
+} from './services/analyzer'
 import {
   blockCustomProtocols,
   attachProtocolGuards,
@@ -114,14 +120,35 @@ import {
   getTotalAnalysisStats,
   getMigrationCount,
   getMigrationSecUids,
-  batchReplacePaths
+  batchReplacePaths,
+  getTagOverviewStats,
+  getUserTagStats,
+  getTagLibraryStats,
+  getTagsWithFrequency,
+  getTagCategories,
+  getPostsBySecUidForTags,
+  getPostById,
+  setPostTags,
+  clearTags,
+  renameTag,
+  mergeTags,
+  addCustomTag,
+  type ClearTagScope
 } from './database'
 import { findCoverFile, findMediaFiles, fromUrlPath, getDownloadPath } from './services/media'
+import { refreshUserProfile, getBatchRefreshDelay, sleep } from './services/user-refresh'
 import {
   getWebServerInfo,
   startWebBrowserServer,
   stopWebBrowserServer
 } from './services/web-browser'
+
+// 放开 Node fetch(undici)的 TLS 证书校验。
+// 原因：本地 HTTPS 代理（如 Surge）开启 MITM 解密时会注入自签名根证书，
+// Node 默认证书库不信任它，导致抖音 API 请求报 SELF_SIGNED_CERT_IN_CHAIN / 网络连接失败。
+// 经用户确认接受此安全代价，换取在抓包/代理环境下也能正常请求。
+// 必须在任何网络请求发生前设置。
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 
 // 全局变量
 let mainWindow: BrowserWindow | null = null
@@ -500,62 +527,40 @@ app.whenReady().then(async () => {
     (_event, ids: number[], input: Omit<UpdateUserSettingsInput, 'remark'>) =>
       batchUpdateUserSettings(ids, input)
   )
-  ipcMain.handle('user:refresh', async (_event, id: number, url: string) => {
-    const profileRes = await fetchUserProfile(url)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const user = (profileRes as any)._data?.user
-    if (!user) {
-      throw new Error('获取用户信息失败')
+  ipcMain.handle('user:refresh', async (_event, id: number) => {
+    const outcome = await refreshUserProfile(id)
+    if (outcome.status === 'failed') {
+      throw new Error(outcome.error || '获取用户信息失败')
     }
-
-    const { updateUser } = await import('./database')
-    return updateUser(id, {
-      nickname: user.nickname,
-      signature: user.signature,
-      avatar: user.avatar_larger?.url_list?.[0] || user.avatar_medium?.url_list?.[0] || '',
-      following_count: user.following_count,
-      follower_count: user.follower_count,
-      total_favorited: user.total_favorited,
-      aweme_count: user.aweme_count
-    })
+    return outcome.user
   })
   ipcMain.handle(
     'user:batchRefresh',
     async (_event, users: { id: number; homepage_url: string; nickname: string }[]) => {
-      const { updateUser } = await import('./database')
       const results: { success: number; failed: number; details: string[] } = {
         success: 0,
         failed: 0,
         details: []
       }
 
-      for (const u of users) {
-        try {
-          const profileRes = await fetchUserProfile(u.homepage_url)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const user = (profileRes as any)._data?.user
-          if (user) {
-            updateUser(u.id, {
-              nickname: user.nickname,
-              signature: user.signature,
-              avatar: user.avatar_larger?.url_list?.[0] || user.avatar_medium?.url_list?.[0] || '',
-              following_count: user.following_count,
-              follower_count: user.follower_count,
-              total_favorited: user.total_favorited,
-              aweme_count: user.aweme_count
-            })
-            results.success++
-            results.details.push(`✅ ${u.nickname}`)
-          } else {
-            results.failed++
-            results.details.push(`⚠️ ${u.nickname}: 获取失败，已跳过`)
-          }
-        } catch (error) {
+      for (let i = 0; i < users.length; i++) {
+        const u = users[i]
+        const outcome = await refreshUserProfile(u.id)
+        if (outcome.status === 'success') {
+          results.success++
+          results.details.push(`✅ ${outcome.user?.nickname || u.nickname}`)
+        } else if (outcome.status === 'degraded') {
+          // 疑似封号/冻结：已保留原昵称与头像
+          results.success++
+          results.details.push(`⚠️ ${u.nickname}: 疑似封号/冻结，已保留原名称与头像`)
+        } else {
           results.failed++
-          results.details.push(`❌ ${u.nickname}: ${(error as Error).message}`)
+          results.details.push(`❌ ${u.nickname}: ${outcome.error || '获取失败'}`)
         }
-        // 延迟避免请求过快
-        await new Promise((resolve) => setTimeout(resolve, 300))
+        // 限速：串行 + 随机间隔，规避风控（最后一个不再等待）
+        if (i < users.length - 1) {
+          await sleep(getBatchRefreshDelay())
+        }
       }
 
       return results
@@ -892,6 +897,39 @@ app.whenReady().then(async () => {
   ipcMain.handle('analysis:getUnanalyzedCountByUser', () => getUnanalyzedPostsCountByUser())
   ipcMain.handle('analysis:getUserStats', () => getUserAnalysisStats())
   ipcMain.handle('analysis:getTotalStats', () => getTotalAnalysisStats())
+  ipcMain.handle('analysis:reanalyzePost', (_event, postId: number) => reanalyzePost(postId))
+  ipcMain.handle('analysis:reanalyzePosts', (_event, postIds: number[]) => reanalyzePosts(postIds))
+
+  // Tag management IPC handlers
+  ipcMain.handle('tag:getOverviewStats', () => getTagOverviewStats())
+  ipcMain.handle('tag:getUserStats', () => getUserTagStats())
+  ipcMain.handle('tag:getLibraryStats', () => getTagLibraryStats())
+  ipcMain.handle('tag:getTagsWithFrequency', () => getTagsWithFrequency())
+  ipcMain.handle('tag:getCategories', () => getTagCategories())
+  ipcMain.handle('tag:getPost', (_event, postId: number) => getPostById(postId))
+  ipcMain.handle(
+    'tag:getPostsByUser',
+    (
+      _event,
+      secUid: string,
+      filters?: { tags?: string[]; keyword?: string },
+      page?: number,
+      pageSize?: number
+    ) => getPostsBySecUidForTags(secUid, filters, page, pageSize)
+  )
+  ipcMain.handle(
+    'tag:setPostTags',
+    (_event, postId: number, input: { aiTags?: string[]; manualTags?: string[] }) =>
+      setPostTags(postId, input)
+  )
+  ipcMain.handle('tag:clear', (_event, postIds: number[], scope: ClearTagScope) =>
+    clearTags(postIds, scope)
+  )
+  ipcMain.handle('tag:rename', (_event, oldName: string, newName: string) =>
+    renameTag(oldName, newName)
+  )
+  ipcMain.handle('tag:merge', (_event, names: string[], into: string) => mergeTags(names, into))
+  ipcMain.handle('tag:addCustomTag', (_event, name: string) => addCustomTag(name))
 
   // Video IPC handlers
   ipcMain.handle('video:getDetail', async (_event, url: string) => {

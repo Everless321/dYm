@@ -34,6 +34,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { getAvatarUrl } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 
 type SortOption = 'default' | 'undownloaded' | 'total'
@@ -262,7 +263,7 @@ export default function UsersPage() {
   const handleRefresh = async (user: DbUser) => {
     setRefreshingId(user.id)
     try {
-      await window.api.user.refresh(user.id, user.homepage_url)
+      await window.api.user.refresh(user.id)
       toast.success('用户信息已更新')
       loadUsers()
     } catch {
@@ -686,7 +687,7 @@ export default function UsersPage() {
                   </div>
                   <div className="flex-1 flex items-center gap-3">
                     <Avatar className="h-10 w-10">
-                      <AvatarImage src={user.avatar} className="object-cover" />
+                      <AvatarImage src={getAvatarUrl(user)} className="object-cover" />
                       <AvatarFallback className="bg-[#E8F0FE] text-[#0A84FF]">
                         {user.nickname?.charAt(0).toUpperCase() || 'U'}
                       </AvatarFallback>

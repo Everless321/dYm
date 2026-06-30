@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { getAvatarUrl } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 
 const statusConfig = {
@@ -350,7 +351,7 @@ export default function TaskDetailPage() {
                     <div className="flex-1 flex items-center gap-3">
                       <div className="relative">
                         <Avatar className="h-10 w-10">
-                          <AvatarImage src={user.avatar} className="object-cover" />
+                          <AvatarImage src={getAvatarUrl(user)} className="object-cover" />
                           <AvatarFallback className="bg-[#E8F0FE] text-[#0A84FF]">
                             {user.nickname?.charAt(0).toUpperCase() || 'U'}
                           </AvatarFallback>

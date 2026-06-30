@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import { Sparkles, ChevronDown, Square, Play, Search } from 'lucide-react'
 import { MediaViewer } from '@/components/MediaViewer'
+import { getMergedTags } from '@/lib/utils'
 
 export default function AnalysisPage() {
   // Users
@@ -159,16 +160,9 @@ export default function AnalysisPage() {
   const tagCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const post of allAnalyzedPosts) {
-      if (post.analysis_tags) {
-        try {
-          const tags = JSON.parse(post.analysis_tags) as string[]
-          tags.forEach((tag) => {
-            counts[tag] = (counts[tag] || 0) + 1
-          })
-        } catch {
-          // ignore
-        }
-      }
+      getMergedTags(post).forEach((tag) => {
+        counts[tag] = (counts[tag] || 0) + 1
+      })
     }
     return Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
@@ -519,9 +513,7 @@ export default function AnalysisPage() {
                     {recentPosts.length > 0 ? (
                       <div className="space-y-3">
                         {recentPosts.map((post, idx) => {
-                          const postTags = post.analysis_tags
-                            ? (JSON.parse(post.analysis_tags) as string[])
-                            : []
+                          const postTags = getMergedTags(post)
                           return (
                             <button
                               key={post.id}

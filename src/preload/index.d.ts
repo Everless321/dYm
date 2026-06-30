@@ -52,6 +52,7 @@ declare global {
     nickname: string
     signature: string
     avatar: string
+    avatar_path: string
     short_id: string
     unique_id: string
     following_count: number
@@ -109,7 +110,7 @@ declare global {
     getAll: () => Promise<DbUser[]>
     add: (url: string) => Promise<AddUserResult>
     delete: (id: number, deleteFiles?: boolean) => Promise<void>
-    refresh: (id: number, url: string) => Promise<DbUser>
+    refresh: (id: number) => Promise<DbUser>
     batchRefresh: (
       users: { id: number; homepage_url: string; nickname: string }[]
     ) => Promise<BatchRefreshResult>
@@ -247,6 +248,7 @@ declare global {
     analysis_scene: string | null
     analysis_content_level: number | null
     analyzed_at: number | null
+    manual_tags: string | null
   }
 
   interface MediaFiles {
@@ -315,6 +317,7 @@ declare global {
     analyzedCount: number
     failedCount: number
     message: string
+    lastResult?: { postId: number; ok: boolean; title: string }
   }
 
   interface UnanalyzedUserCount {
@@ -349,7 +352,67 @@ declare global {
     getUnanalyzedCountByUser: () => Promise<UnanalyzedUserCount[]>
     getUserStats: () => Promise<UserAnalysisStats[]>
     getTotalStats: () => Promise<TotalAnalysisStats>
+    reanalyzePost: (postId: number) => Promise<void>
+    reanalyzePosts: (postIds: number[]) => Promise<void>
     onProgress: (callback: (progress: AnalysisProgress) => void) => () => void
+  }
+
+  interface TagOverviewStats {
+    totalVideos: number
+    tagged: number
+    untagged: number
+    tagKinds: number
+  }
+
+  interface UserTagStats {
+    sec_uid: string
+    nickname: string
+    avatar: string
+    avatar_path: string
+    total: number
+    tagged: number
+    untagged: number
+  }
+
+  interface TagFrequencyItem {
+    tag: string
+    count: number
+    source: 'ai' | 'manual' | 'both'
+  }
+
+  interface TagLibraryStats {
+    totalTags: number
+    categories: number
+    usedTags: number
+    unusedTags: number
+  }
+
+  interface TagCategoryItem {
+    category: string
+    count: number
+  }
+
+  interface TagAPI {
+    getOverviewStats: () => Promise<TagOverviewStats>
+    getUserStats: () => Promise<UserTagStats[]>
+    getLibraryStats: () => Promise<TagLibraryStats>
+    getTagsWithFrequency: () => Promise<TagFrequencyItem[]>
+    getCategories: () => Promise<TagCategoryItem[]>
+    getPost: (postId: number) => Promise<DbPost | undefined>
+    getPostsByUser: (
+      secUid: string,
+      filters?: { tags?: string[]; keyword?: string },
+      page?: number,
+      pageSize?: number
+    ) => Promise<{ posts: DbPost[]; total: number }>
+    setPostTags: (
+      postId: number,
+      input: { aiTags?: string[]; manualTags?: string[] }
+    ) => Promise<void>
+    clear: (postIds: number[], scope: 'all' | 'ai' | 'manual') => Promise<number>
+    rename: (oldName: string, newName: string) => Promise<number>
+    merge: (names: string[], into: string) => Promise<number>
+    addCustomTag: (name: string) => Promise<void>
   }
 
   interface VideoInfo {
@@ -493,6 +556,7 @@ declare global {
     post: PostAPI
     grok: GrokAPI
     analysis: AnalysisAPI
+    tag: TagAPI
     video: VideoAPI
     system: SystemAPI
     updater: UpdaterAPI

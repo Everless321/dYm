@@ -39,8 +39,7 @@ const userAPI = {
   add: (url: string): Promise<AddUserResult> => ipcRenderer.invoke('user:add', url),
   delete: (id: number, deleteFiles?: boolean): Promise<void> =>
     ipcRenderer.invoke('user:delete', id, deleteFiles),
-  refresh: (id: number, url: string): Promise<DbUser> =>
-    ipcRenderer.invoke('user:refresh', id, url),
+  refresh: (id: number): Promise<DbUser> => ipcRenderer.invoke('user:refresh', id),
   batchRefresh: (
     users: { id: number; homepage_url: string; nickname: string }[]
   ): Promise<{ success: number; failed: number; details: string[] }> =>
@@ -169,12 +168,45 @@ const analysisAPI = {
     ipcRenderer.invoke('analysis:getUnanalyzedCountByUser'),
   getUserStats: (): Promise<UserAnalysisStats[]> => ipcRenderer.invoke('analysis:getUserStats'),
   getTotalStats: (): Promise<TotalAnalysisStats> => ipcRenderer.invoke('analysis:getTotalStats'),
+  reanalyzePost: (postId: number): Promise<void> =>
+    ipcRenderer.invoke('analysis:reanalyzePost', postId),
+  reanalyzePosts: (postIds: number[]): Promise<void> =>
+    ipcRenderer.invoke('analysis:reanalyzePosts', postIds),
   onProgress: (callback: (progress: AnalysisProgress) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, progress: AnalysisProgress): void =>
       callback(progress)
     ipcRenderer.on('analysis:progress', handler)
     return () => ipcRenderer.removeListener('analysis:progress', handler)
   }
+}
+
+const tagAPI = {
+  getOverviewStats: (): Promise<TagOverviewStats> => ipcRenderer.invoke('tag:getOverviewStats'),
+  getUserStats: (): Promise<UserTagStats[]> => ipcRenderer.invoke('tag:getUserStats'),
+  getLibraryStats: (): Promise<TagLibraryStats> => ipcRenderer.invoke('tag:getLibraryStats'),
+  getTagsWithFrequency: (): Promise<TagFrequencyItem[]> =>
+    ipcRenderer.invoke('tag:getTagsWithFrequency'),
+  getCategories: (): Promise<TagCategoryItem[]> => ipcRenderer.invoke('tag:getCategories'),
+  getPost: (postId: number): Promise<DbPost | undefined> =>
+    ipcRenderer.invoke('tag:getPost', postId),
+  getPostsByUser: (
+    secUid: string,
+    filters?: { tags?: string[]; keyword?: string },
+    page?: number,
+    pageSize?: number
+  ): Promise<{ posts: DbPost[]; total: number }> =>
+    ipcRenderer.invoke('tag:getPostsByUser', secUid, filters, page, pageSize),
+  setPostTags: (
+    postId: number,
+    input: { aiTags?: string[]; manualTags?: string[] }
+  ): Promise<void> => ipcRenderer.invoke('tag:setPostTags', postId, input),
+  clear: (postIds: number[], scope: 'all' | 'ai' | 'manual'): Promise<number> =>
+    ipcRenderer.invoke('tag:clear', postIds, scope),
+  rename: (oldName: string, newName: string): Promise<number> =>
+    ipcRenderer.invoke('tag:rename', oldName, newName),
+  merge: (names: string[], into: string): Promise<number> =>
+    ipcRenderer.invoke('tag:merge', names, into),
+  addCustomTag: (name: string): Promise<void> => ipcRenderer.invoke('tag:addCustomTag', name)
 }
 
 const videoAPI = {
@@ -273,6 +305,7 @@ const api = {
   post: postAPI,
   grok: grokAPI,
   analysis: analysisAPI,
+  tag: tagAPI,
   video: videoAPI,
   system: systemAPI,
   updater: updaterAPI,

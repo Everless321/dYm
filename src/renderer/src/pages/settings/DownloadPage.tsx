@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { getAvatarUrl } from '@/lib/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
@@ -260,7 +261,7 @@ export default function DownloadPage() {
                       <div className="flex -space-x-2">
                         {task.users.slice(0, 3).map((user) => (
                           <Avatar key={user.id} className="h-7 w-7 border-2 border-white">
-                            <AvatarImage src={user.avatar} />
+                            <AvatarImage src={getAvatarUrl(user)} />
                             <AvatarFallback className="text-xs bg-[#E8F0FE] text-[#0A84FF]">
                               {user.nickname?.charAt(0) || 'U'}
                             </AvatarFallback>
@@ -443,7 +444,7 @@ export default function DownloadPage() {
                           disabled={loading}
                         />
                         <Avatar className="h-8 w-8">
-                          <AvatarImage src={user.avatar} />
+                          <AvatarImage src={getAvatarUrl(user)} />
                           <AvatarFallback className="bg-[#E8F0FE] text-[#0A84FF]">
                             {user.nickname?.charAt(0) || 'U'}
                           </AvatarFallback>

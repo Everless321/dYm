@@ -9,6 +9,10 @@ import AnalysisPage from '@/pages/settings/AnalysisPage'
 import SystemPage from '@/pages/settings/SystemPage'
 import LogsPage from '@/pages/settings/LogsPage'
 import FilesPage from '@/pages/settings/FilesPage'
+import TagOverviewPage from '@/pages/tags/TagOverviewPage'
+import UserTagLibraryPage from '@/pages/tags/UserTagLibraryPage'
+import VideoTagEditPage from '@/pages/tags/VideoTagEditPage'
+import TagLibraryPage from '@/pages/tags/TagLibraryPage'
 
 export const router = createHashRouter([
   {
@@ -42,6 +46,22 @@ export const router = createHashRouter([
       {
         path: 'analysis',
         element: <AnalysisPage />
+      },
+      {
+        path: 'tags',
+        element: <TagOverviewPage />
+      },
+      {
+        path: 'tags/library',
+        element: <TagLibraryPage />
+      },
+      {
+        path: 'tags/user/:secUid',
+        element: <UserTagLibraryPage />
+      },
+      {
+        path: 'tags/video/:postId',
+        element: <VideoTagEditPage />
       },
       {
         path: 'settings',

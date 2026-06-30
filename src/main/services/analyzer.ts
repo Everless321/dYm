@@ -9,7 +9,7 @@ import ffprobeInstaller from '@ffprobe-installer/ffprobe'
 import {
   getSetting,
   getUnanalyzedPosts,
-  getUnanalyzedPostsCount,
+  getPostById,
   updatePostAnalysis,
   type DbPost,
   type AnalysisResult
@@ -53,6 +53,8 @@ export interface AnalysisProgress {
   analyzedCount: number
   failedCount: number
   message: string
+  // 单条完成结果，供重新标记进度页逐视频展示 + 失败重试
+  lastResult?: { postId: number; ok: boolean; title: string }
 }
 
 let isAnalyzing = false
@@ -398,33 +400,50 @@ async function runWithConcurrency<T>(
   return results
 }
 
-export async function startAnalysis(secUid?: string): Promise<void> {
-  if (isAnalyzing) {
-    throw new Error('分析任务正在进行中')
-  }
+interface AnalysisConfig {
+  apiKey: string
+  apiUrl: string
+  model: string
+  prompt: string
+  concurrency: number
+  rpm: number
+  sliceCount: number
+}
 
+function loadAnalysisConfig(): AnalysisConfig {
   const apiKey = getSetting('grok_api_key')
   if (!apiKey) {
     throw new Error('请先配置 Grok API Key')
   }
-
-  const apiUrl = getSetting('grok_api_url') || 'https://api.x.ai/v1'
-  const model = getSetting('analysis_model') || 'grok-4-fast'
   const prompt = getSetting('analysis_prompt') || ''
-  const concurrency = parseInt(getSetting('analysis_concurrency') || '2') || 2
-  const rpm = parseInt(getSetting('analysis_rpm') || '10') || 10
-  const sliceCount = parseInt(getSetting('analysis_slices') || '4') || 4
-
   if (!prompt) {
     throw new Error('请先配置分析提示词')
   }
+  return {
+    apiKey,
+    apiUrl: getSetting('grok_api_url') || 'https://api.x.ai/v1',
+    model: getSetting('analysis_model') || 'grok-4-fast',
+    prompt,
+    concurrency: parseInt(getSetting('analysis_concurrency') || '2') || 2,
+    rpm: parseInt(getSetting('analysis_rpm') || '10') || 10,
+    sliceCount: parseInt(getSetting('analysis_slices') || '4') || 4
+  }
+}
+
+const postTitleOf = (post: DbPost): string =>
+  (post.desc || post.caption || '').substring(0, 30) || `${post.nickname || '未知用户'}的视频`
+
+// 分析指定的一批 posts（被 startAnalysis / reanalyze* 共用）
+async function runAnalysisForPosts(posts: DbPost[]): Promise<void> {
+  if (isAnalyzing) {
+    throw new Error('分析任务正在进行中')
+  }
+  const config = loadAnalysisConfig()
 
   isAnalyzing = true
   shouldStop = false
 
-  const totalCount = getUnanalyzedPostsCount(secUid)
-  const posts = getUnanalyzedPosts(secUid)
-
+  const totalCount = posts.length
   let analyzedCount = 0
   let failedCount = 0
 
@@ -438,7 +457,7 @@ export async function startAnalysis(secUid?: string): Promise<void> {
     message: '正在初始化分析...'
   })
 
-  const rateLimiter = new RateLimiter(rpm)
+  const rateLimiter = new RateLimiter(config.rpm)
 
   try {
     const tasks = posts.map((post, index) => async () => {
@@ -446,45 +465,52 @@ export async function startAnalysis(secUid?: string): Promise<void> {
         throw new Error('已停止')
       }
 
-      const postTitle =
-        (post.desc || post.caption || '').substring(0, 30) || `${post.nickname || '未知用户'}的视频`
-
       sendProgress({
         status: 'running',
-        currentPost: postTitle,
+        currentPost: postTitleOf(post),
         currentIndex: index + 1,
         totalPosts: totalCount,
         analyzedCount,
         failedCount,
-        message: postTitle
+        message: postTitleOf(post)
       })
 
-      const result = await analyzePost(post, sliceCount, rateLimiter, apiKey, apiUrl, model, prompt)
+      const result = await analyzePost(
+        post,
+        config.sliceCount,
+        rateLimiter,
+        config.apiKey,
+        config.apiUrl,
+        config.model,
+        config.prompt
+      )
       updatePostAnalysis(post.id, result)
       return result
     })
 
-    await runWithConcurrency(tasks, concurrency, (index, result) => {
-      if (result instanceof Error) {
-        failedCount++
-        console.error(`[Analyzer] Failed to analyze post ${posts[index].aweme_id}:`, result.message)
-      } else {
+    await runWithConcurrency(tasks, config.concurrency, (index, result) => {
+      const post = posts[index]
+      const ok = !(result instanceof Error)
+      if (ok) {
         analyzedCount++
+      } else {
+        failedCount++
+        console.error(
+          `[Analyzer] Failed to analyze post ${post.aweme_id}:`,
+          (result as Error).message
+        )
       }
 
-      if ((analyzedCount + failedCount) % 5 === 0) {
-        sendProgress({
-          status: 'running',
-          currentPost:
-            (posts[index].desc || posts[index].caption || '').substring(0, 30) ||
-            `${posts[index].nickname || '未知用户'}的视频`,
-          currentIndex: index + 1,
-          totalPosts: totalCount,
-          analyzedCount,
-          failedCount,
-          message: `已分析 ${analyzedCount} 个，失败 ${failedCount} 个`
-        })
-      }
+      sendProgress({
+        status: 'running',
+        currentPost: postTitleOf(post),
+        currentIndex: index + 1,
+        totalPosts: totalCount,
+        analyzedCount,
+        failedCount,
+        message: `已分析 ${analyzedCount} 个，失败 ${failedCount} 个`,
+        lastResult: { postId: post.id, ok, title: postTitleOf(post) }
+      })
     })
 
     sendProgress({
@@ -513,6 +539,28 @@ export async function startAnalysis(secUid?: string): Promise<void> {
     isAnalyzing = false
     shouldStop = false
   }
+}
+
+export async function startAnalysis(secUid?: string): Promise<void> {
+  await runAnalysisForPosts(getUnanalyzedPosts(secUid))
+}
+
+// 重新分析单个视频（覆盖 AI 标签，不影响手动标签）
+export async function reanalyzePost(postId: number): Promise<void> {
+  const post = getPostById(postId)
+  if (!post) {
+    throw new Error('视频不存在')
+  }
+  await runAnalysisForPosts([post])
+}
+
+// 重新分析指定的多个视频
+export async function reanalyzePosts(postIds: number[]): Promise<void> {
+  const posts = postIds.map((id) => getPostById(id)).filter((p): p is DbPost => !!p)
+  if (!posts.length) {
+    throw new Error('没有可重新分析的视频')
+  }
+  await runAnalysisForPosts(posts)
 }
 
 export function stopAnalysis(): void {

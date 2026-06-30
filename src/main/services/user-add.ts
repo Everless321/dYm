@@ -1,7 +1,15 @@
 import { BrowserWindow } from 'electron'
-import { getSetting, createUser, getUserBySecUid, getPostByAwemeId, type DbUser } from '../database'
+import {
+  getSetting,
+  createUser,
+  updateUser,
+  getUserBySecUid,
+  getPostByAwemeId,
+  type DbUser
+} from '../database'
 import { fetchUserProfileBySecUid, fetchVideoDetail, parseDouyinUrl } from './douyin'
 import { downloadSinglePost } from './downloader'
+import { downloadAvatar } from './avatar'
 
 export type AddUserPostDownload =
   | { status: 'downloading'; awemeId: string }
@@ -128,6 +136,14 @@ export async function addUserByUrl(url: string): Promise<AddUserResult> {
     dbUser = createUser(input)
     isNewUser = true
     console.log('[User:add] User created:', dbUser.id)
+
+    // 下载头像到本地（失败不影响添加流程）
+    if (input.avatar) {
+      const avatarPath = await downloadAvatar(secUidStr, input.avatar)
+      if (avatarPath) {
+        dbUser = updateUser(dbUser.id, { avatar_path: avatarPath }) ?? dbUser
+      }
+    }
   }
 
   // 决定是否触发作品下载

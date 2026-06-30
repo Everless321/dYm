@@ -124,6 +124,13 @@ export function initDatabase(): void {
     // 列已存在，忽略错误
   }
 
+  // 迁移：为 users 表添加 avatar_path 列（本地保存的头像文件路径）
+  try {
+    database.exec(`ALTER TABLE users ADD COLUMN avatar_path TEXT DEFAULT ''`)
+  } catch {
+    // 列已存在，忽略错误
+  }
+
   // 迁移：为 users 表添加同步相关字段
   try {
     database.exec(`ALTER TABLE users ADD COLUMN auto_sync INTEGER DEFAULT 0`)
@@ -206,7 +213,9 @@ export function initDatabase(): void {
       name: 'analysis_content_level',
       sql: 'ALTER TABLE posts ADD COLUMN analysis_content_level INTEGER'
     },
-    { name: 'analyzed_at', sql: 'ALTER TABLE posts ADD COLUMN analyzed_at INTEGER' }
+    { name: 'analyzed_at', sql: 'ALTER TABLE posts ADD COLUMN analyzed_at INTEGER' },
+    // 手动标签：与 analysis_tags 同为 JSON 字符串数组格式，默认 NULL
+    { name: 'manual_tags', sql: 'ALTER TABLE posts ADD COLUMN manual_tags TEXT' }
   ]
   for (const col of analysisColumns) {
     try {
@@ -307,6 +316,7 @@ export interface DbUser {
   nickname: string
   signature: string
   avatar: string
+  avatar_path: string
   short_id: string
   unique_id: string
   following_count: number
@@ -333,6 +343,7 @@ export interface CreateUserInput {
   nickname?: string
   signature?: string
   avatar?: string
+  avatar_path?: string
   short_id?: string
   unique_id?: string
   following_count?: number
@@ -738,6 +749,8 @@ export interface DbPost {
   analysis_scene: string | null
   analysis_content_level: number | null
   analyzed_at: number | null
+  // 手动添加的标签（JSON 字符串数组，与 analysis_tags 同格式）
+  manual_tags: string | null
 }
 
 export interface CreatePostInput {
@@ -946,9 +959,12 @@ export function getAllPosts(
   }
 
   if (filters?.tags && filters.tags.length > 0) {
-    const tagConditions = filters.tags.map(() => 'analysis_tags LIKE ?').join(' OR ')
+    // 标签命中 AI 或手动任一来源
+    const tagConditions = filters.tags
+      .map(() => '(analysis_tags LIKE ? OR manual_tags LIKE ?)')
+      .join(' OR ')
     conditions.push(`(${tagConditions})`)
-    filters.tags.forEach((tag) => params.push(`%"${tag}"%`))
+    filters.tags.forEach((tag) => params.push(`%"${tag}"%`, `%"${tag}"%`))
   }
 
   if (filters?.minContentLevel !== undefined) {
@@ -988,6 +1004,33 @@ export function getAllPosts(
   return { posts, total: countRow.count, authors }
 }
 
+// 解析标签 JSON 字符串，容错：非数组/解析失败返回 []
+export function parseTagJSON(s: string | null): string[] {
+  if (!s) return []
+  try {
+    const arr = JSON.parse(s)
+    return Array.isArray(arr) ? arr.filter((t): t is string => typeof t === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+// 合并某 post 的 AI 标签与手动标签，去重保序
+function mergedTagsOf(post: {
+  analysis_tags: string | null
+  manual_tags: string | null
+}): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const t of [...parseTagJSON(post.analysis_tags), ...parseTagJSON(post.manual_tags)]) {
+    if (!seen.has(t)) {
+      seen.add(t)
+      out.push(t)
+    }
+  }
+  return out
+}
+
 export function getAllTags(): string[] {
   const database = getDatabase()
 
@@ -1004,20 +1047,13 @@ export function getAllTags(): string[] {
   const placeholders = visibleSecUids.map(() => '?').join(',')
   const rows = database
     .prepare(
-      `SELECT analysis_tags FROM posts WHERE sec_uid IN (${placeholders}) AND analysis_tags IS NOT NULL`
+      `SELECT analysis_tags, manual_tags FROM posts WHERE sec_uid IN (${placeholders}) AND (analysis_tags IS NOT NULL OR manual_tags IS NOT NULL)`
     )
-    .all(...visibleSecUids) as { analysis_tags: string }[]
+    .all(...visibleSecUids) as { analysis_tags: string | null; manual_tags: string | null }[]
 
   const tagSet = new Set<string>()
   for (const row of rows) {
-    try {
-      const tags = JSON.parse(row.analysis_tags)
-      if (Array.isArray(tags)) {
-        tags.forEach((tag) => tagSet.add(tag))
-      }
-    } catch {
-      // Ignore invalid JSON
-    }
+    mergedTagsOf(row).forEach((tag) => tagSet.add(tag))
   }
 
   return Array.from(tagSet).sort()
@@ -1189,6 +1225,291 @@ export function updatePostAnalysis(id: number, result: AnalysisResult): void {
     )
 }
 
+// ==================== 标签管理 ====================
+
+// 写入单个 post 的标签（按需更新 AI / 手动来源）。不改 analyzed_at。
+export function setPostTags(id: number, input: { aiTags?: string[]; manualTags?: string[] }): void {
+  const database = getDatabase()
+  const fields: string[] = []
+  const values: unknown[] = []
+  if (input.aiTags !== undefined) {
+    fields.push('analysis_tags = ?')
+    values.push(input.aiTags.length ? JSON.stringify(input.aiTags) : null)
+  }
+  if (input.manualTags !== undefined) {
+    fields.push('manual_tags = ?')
+    values.push(input.manualTags.length ? JSON.stringify(input.manualTags) : null)
+  }
+  if (!fields.length) return
+  values.push(id)
+  database.prepare(`UPDATE posts SET ${fields.join(', ')} WHERE id = ?`).run(...values)
+}
+
+export type ClearTagScope = 'all' | 'ai' | 'manual'
+
+// 批量清除标签。清 AI 时连带重置分析字段与 analyzed_at（回到未分析，便于重标队列捡到）。
+export function clearTags(postIds: number[], scope: ClearTagScope): number {
+  if (!postIds.length) return 0
+  const database = getDatabase()
+  const placeholders = postIds.map(() => '?').join(',')
+  const tx = database.transaction((ids: number[]) => {
+    if (scope === 'manual' || scope === 'all') {
+      database
+        .prepare(`UPDATE posts SET manual_tags = NULL WHERE id IN (${placeholders})`)
+        .run(...ids)
+    }
+    if (scope === 'ai' || scope === 'all') {
+      database
+        .prepare(
+          `UPDATE posts SET analysis_tags = NULL, analysis_category = NULL, analysis_summary = NULL,
+             analysis_scene = NULL, analysis_content_level = NULL, analyzed_at = NULL
+           WHERE id IN (${placeholders})`
+        )
+        .run(...ids)
+    }
+  })
+  tx(postIds)
+  return postIds.length
+}
+
+// 按映射跨 analysis_tags + manual_tags 改写标签（parse→映射→去重→写回，整体事务）
+function rewriteTagsWithMapping(mapping: Map<string, string>): number {
+  const sources = Array.from(mapping.keys())
+  if (!sources.length) return 0
+  const database = getDatabase()
+  const likeClause = sources.map(() => '(analysis_tags LIKE ? OR manual_tags LIKE ?)').join(' OR ')
+  const params: unknown[] = []
+  sources.forEach((s) => params.push(`%"${s}"%`, `%"${s}"%`))
+  const rows = database
+    .prepare(`SELECT id, analysis_tags, manual_tags FROM posts WHERE ${likeClause}`)
+    .all(...params) as { id: number; analysis_tags: string | null; manual_tags: string | null }[]
+
+  const apply = (tags: string[]): string[] => {
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const t of tags) {
+      const mapped = mapping.get(t) ?? t
+      if (!seen.has(mapped)) {
+        seen.add(mapped)
+        out.push(mapped)
+      }
+    }
+    return out
+  }
+
+  const update = database.prepare(
+    'UPDATE posts SET analysis_tags = ?, manual_tags = ? WHERE id = ?'
+  )
+  const tx = database.transaction((items: typeof rows) => {
+    for (const row of items) {
+      const ai = apply(parseTagJSON(row.analysis_tags))
+      const manual = apply(parseTagJSON(row.manual_tags))
+      update.run(
+        ai.length ? JSON.stringify(ai) : null,
+        manual.length ? JSON.stringify(manual) : null,
+        row.id
+      )
+    }
+  })
+  tx(rows)
+  return rows.length
+}
+
+export function renameTag(oldName: string, newName: string): number {
+  if (!oldName || !newName || oldName === newName) return 0
+  return rewriteTagsWithMapping(new Map([[oldName, newName]]))
+}
+
+export function mergeTags(names: string[], into: string): number {
+  const mapping = new Map<string, string>()
+  for (const n of names) {
+    if (n && n !== into) mapping.set(n, into)
+  }
+  return rewriteTagsWithMapping(mapping)
+}
+
+// 自定义标签库（无独立 tags 表，存设置项）。承载"新建"与"未使用"标签来源。
+export function getCustomTags(): string[] {
+  return parseTagJSON(getSetting('tag_library_custom'))
+}
+
+export function addCustomTag(name: string): void {
+  const t = name.trim()
+  if (!t) return
+  const cur = getCustomTags()
+  if (!cur.includes(t)) setSetting('tag_library_custom', JSON.stringify([...cur, t]))
+}
+
+export function removeCustomTag(name: string): void {
+  const cur = getCustomTags()
+  setSetting('tag_library_custom', JSON.stringify(cur.filter((t) => t !== name)))
+}
+
+export interface TagOverviewStats {
+  totalVideos: number
+  tagged: number
+  untagged: number
+  tagKinds: number
+}
+
+export function getTagOverviewStats(): TagOverviewStats {
+  const database = getDatabase()
+  const row = database
+    .prepare(
+      `SELECT COUNT(*) as total,
+        SUM(CASE WHEN analysis_tags IS NOT NULL OR manual_tags IS NOT NULL THEN 1 ELSE 0 END) as tagged
+       FROM posts`
+    )
+    .get() as { total: number; tagged: number }
+  const total = row?.total || 0
+  const tagged = row?.tagged || 0
+  return {
+    totalVideos: total,
+    tagged,
+    untagged: total - tagged,
+    tagKinds: getTagsWithFrequency().length
+  }
+}
+
+export interface UserTagStats {
+  sec_uid: string
+  nickname: string
+  avatar: string
+  avatar_path: string
+  total: number
+  tagged: number
+  untagged: number
+}
+
+export function getUserTagStats(): UserTagStats[] {
+  const database = getDatabase()
+  const users = database
+    .prepare('SELECT sec_uid, nickname, avatar, avatar_path FROM users ORDER BY nickname')
+    .all() as { sec_uid: string; nickname: string; avatar: string; avatar_path: string }[]
+  const stmt = database.prepare(
+    `SELECT COUNT(*) as total,
+       SUM(CASE WHEN analysis_tags IS NOT NULL OR manual_tags IS NOT NULL THEN 1 ELSE 0 END) as tagged
+     FROM posts WHERE sec_uid = ?`
+  )
+  return users.map((u) => {
+    const s = stmt.get(u.sec_uid) as { total: number; tagged: number } | undefined
+    const total = s?.total || 0
+    const tagged = s?.tagged || 0
+    return { ...u, total, tagged, untagged: total - tagged }
+  })
+}
+
+export interface TagFrequencyItem {
+  tag: string
+  count: number
+  source: 'ai' | 'manual' | 'both'
+}
+
+// 全量标签频率（每 post 内合并去重计 1 次）+ 来源标记。不受 show_in_home 限制。
+export function getTagsWithFrequency(): TagFrequencyItem[] {
+  const database = getDatabase()
+  const rows = database
+    .prepare(
+      `SELECT analysis_tags, manual_tags FROM posts WHERE analysis_tags IS NOT NULL OR manual_tags IS NOT NULL`
+    )
+    .all() as { analysis_tags: string | null; manual_tags: string | null }[]
+  const map = new Map<string, { count: number; ai: boolean; manual: boolean }>()
+  for (const row of rows) {
+    const aiSet = new Set(parseTagJSON(row.analysis_tags))
+    const manualSet = new Set(parseTagJSON(row.manual_tags))
+    for (const t of new Set([...aiSet, ...manualSet])) {
+      const e = map.get(t) || { count: 0, ai: false, manual: false }
+      e.count++
+      if (aiSet.has(t)) e.ai = true
+      if (manualSet.has(t)) e.manual = true
+      map.set(t, e)
+    }
+  }
+  return Array.from(map.entries())
+    .map(
+      ([tag, e]): TagFrequencyItem => ({
+        tag,
+        count: e.count,
+        source: e.ai && e.manual ? 'both' : e.ai ? 'ai' : 'manual'
+      })
+    )
+    .sort((a, b) => b.count - a.count)
+}
+
+export interface TagLibraryStats {
+  totalTags: number
+  categories: number
+  usedTags: number
+  unusedTags: number
+}
+
+export function getTagLibraryStats(): TagLibraryStats {
+  const database = getDatabase()
+  const freq = getTagsWithFrequency()
+  const usedSet = new Set(freq.map((t) => t.tag))
+  const unused = getCustomTags().filter((t) => !usedSet.has(t))
+  const catRow = database
+    .prepare(
+      `SELECT COUNT(DISTINCT analysis_category) as c FROM posts WHERE analysis_category IS NOT NULL AND analysis_category != ''`
+    )
+    .get() as { c: number }
+  return {
+    totalTags: usedSet.size + unused.length,
+    categories: catRow?.c || 0,
+    usedTags: usedSet.size,
+    unusedTags: unused.length
+  }
+}
+
+export interface TagCategoryItem {
+  category: string
+  count: number
+}
+
+export function getTagCategories(): TagCategoryItem[] {
+  const database = getDatabase()
+  return database
+    .prepare(
+      `SELECT COALESCE(NULLIF(analysis_category, ''), '未分类') as category, COUNT(*) as count
+       FROM posts WHERE analysis_tags IS NOT NULL OR manual_tags IS NOT NULL
+       GROUP BY category ORDER BY count DESC`
+    )
+    .all() as TagCategoryItem[]
+}
+
+// 按用户取作品（标签管理用，不受 show_in_home 限制），支持标签/关键词过滤 + 分页
+export function getPostsBySecUidForTags(
+  secUid: string,
+  filters?: { tags?: string[]; keyword?: string },
+  page = 1,
+  pageSize = 60
+): { posts: DbPost[]; total: number } {
+  const database = getDatabase()
+  const offset = (page - 1) * pageSize
+  const conditions: string[] = ['sec_uid = ?']
+  const params: unknown[] = [secUid]
+  if (filters?.tags && filters.tags.length > 0) {
+    const tagConditions = filters.tags
+      .map(() => '(analysis_tags LIKE ? OR manual_tags LIKE ?)')
+      .join(' OR ')
+    conditions.push(`(${tagConditions})`)
+    filters.tags.forEach((tag) => params.push(`%"${tag}"%`, `%"${tag}"%`))
+  }
+  if (filters?.keyword?.trim()) {
+    conditions.push('(caption LIKE ? OR desc LIKE ?)')
+    const kw = `%${filters.keyword.trim()}%`
+    params.push(kw, kw)
+  }
+  const whereClause = `WHERE ${conditions.join(' AND ')}`
+  const posts = database
+    .prepare(`SELECT * FROM posts ${whereClause} ORDER BY downloaded_at DESC LIMIT ? OFFSET ?`)
+    .all(...params, pageSize, offset) as DbPost[]
+  const countRow = database
+    .prepare(`SELECT COUNT(*) as count FROM posts ${whereClause}`)
+    .get(...params) as { count: number }
+  return { posts, total: countRow.count }
+}
+
 // 标准化路径前缀（确保尾部有 /）
 function normalizeDirPrefix(p: string): string {
   return p.endsWith('/') ? p : p + '/'
@@ -1310,12 +1631,19 @@ export interface TagStatItem {
 
 export function getTopTags(limit = 20): TagStatItem[] {
   const database = getDatabase()
+  // 合并 AI 与手动标签来源；每个 post 内对同名标签去重计 1 次
   return database
     .prepare(
-      `SELECT j.value as tag, COUNT(*) as count
-       FROM posts, json_each(posts.analysis_tags) j
-       WHERE posts.analysis_tags IS NOT NULL AND posts.analysis_tags != '[]'
-       GROUP BY j.value
+      `SELECT tag, COUNT(*) as count FROM (
+         SELECT DISTINCT posts.id as pid, j.value as tag
+         FROM posts, json_each(posts.analysis_tags) j
+         WHERE posts.analysis_tags IS NOT NULL AND posts.analysis_tags != '[]'
+         UNION
+         SELECT DISTINCT posts.id as pid, j.value as tag
+         FROM posts, json_each(posts.manual_tags) j
+         WHERE posts.manual_tags IS NOT NULL AND posts.manual_tags != '[]'
+       )
+       GROUP BY tag
        ORDER BY count DESC
        LIMIT ?`
     )

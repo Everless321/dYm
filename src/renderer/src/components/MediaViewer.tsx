@@ -10,6 +10,7 @@ import {
   VolumeX,
   Download
 } from 'lucide-react'
+import { getMergedTags } from '@/lib/utils'
 
 interface MediaViewerProps {
   post: DbPost | null
@@ -63,7 +64,7 @@ export function MediaViewer({
   const recommendations = useMemo(() => {
     if (!post || allPosts.length === 0) return []
 
-    const currentTags = post.analysis_tags ? (JSON.parse(post.analysis_tags) as string[]) : []
+    const currentTags = getMergedTags(post)
     const currentSecUid = post.sec_uid
     const result: DbPost[] = []
     const usedIds = new Set<number>([post.id])
@@ -76,7 +77,7 @@ export function MediaViewer({
       const sameTagOtherAuthor = candidates
         .filter((p) => {
           if (p.sec_uid === currentSecUid) return false
-          const tags = p.analysis_tags ? (JSON.parse(p.analysis_tags) as string[]) : []
+          const tags = getMergedTags(p)
           return tags.some((t) => currentTags.includes(t))
         })
         .slice(0, 2)
@@ -223,8 +224,8 @@ export function MediaViewer({
     }
   }
 
-  // 解析标签
-  const tags = post?.analysis_tags ? (JSON.parse(post.analysis_tags) as string[]) : []
+  // 解析标签（合并 AI + 手动）
+  const tags = post ? getMergedTags(post) : []
 
   if (!open) return null
 

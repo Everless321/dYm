@@ -39,6 +39,16 @@ export interface LinkParseResult {
 }
 
 /**
+ * 从用户主页链接直接提取 sec_user_id（不发网络请求）。
+ * 形如 https://www.douyin.com/user/MS4wLjABAAAA... → MS4wLjABAAAA...
+ * 提取不到返回 null（如短链 v.douyin.com，需走 getSecUserId 解析）。
+ */
+export function extractSecUidFromUrl(url: string): string | null {
+  const match = url.match(/\/user\/([A-Za-z0-9_-]+)/)
+  return match ? match[1] : null
+}
+
+/**
  * 智能识别抖音链接类型
  * 1. 先尝试提取 sec_user_id（用户链接）
  * 2. 如果失败，尝试提取 aweme_id（作品链接）
@@ -97,6 +107,28 @@ export async function fetchUserProfileBySecUid(secUserId: string) {
   const profile = await handler.fetchUserProfile(secUserId)
   console.log('[Douyin] profile:', JSON.stringify(profile, null, 2))
   return profile
+}
+
+/**
+ * 刷新/同步用户资料的统一入口：
+ * 主页链接已含 sec_uid 时优先直接请求（省掉 getSecUserId 一跳），
+ * 失败则自动回落到完整解析路径 fetchUserProfile(url)，
+ * 保证不会比改动前更差，不影响正常的用户信息同步。
+ */
+export async function fetchUserProfileSmart(url: string): Promise<unknown> {
+  const secUid = extractSecUidFromUrl(url)
+  if (!secUid) {
+    return fetchUserProfile(url)
+  }
+  try {
+    return await fetchUserProfileBySecUid(secUid)
+  } catch (error) {
+    console.warn(
+      '[Douyin] fetchUserProfileBySecUid failed, fallback to fetchUserProfile:',
+      (error as Error).message
+    )
+    return fetchUserProfile(url)
+  }
 }
 
 /**
