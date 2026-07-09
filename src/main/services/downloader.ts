@@ -3,12 +3,11 @@ import { join } from 'path'
 import { existsSync, readdirSync, unlinkSync } from 'fs'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import ffmpegInstaller from '@ffmpeg-installer/ffmpeg'
+import { ffmpegPath } from '../utils/ffmpeg-path'
 
 const execFileAsync = promisify(execFile)
-const ffmpegPath = ffmpegInstaller.path.replace('app.asar', 'app.asar.unpacked')
-import { DouyinHandler } from 'dy-downloader'
-import { DouyinDownloader } from 'dy-downloader'
+import { DouyinHandler } from 'polydl'
+import { DouyinDownloader } from 'polydl'
 import {
   getTaskById,
   updateTask,
@@ -398,7 +397,7 @@ async function downloadUserVideos(
               sec_uid: user.sec_uid,
               nickname: awemeData.nickname || user.nickname,
               caption: awemeData.caption || '',
-              // descRaw 为原始未转义文案；desc 会被 dy-downloader 转义为下划线
+              // descRaw 为原始未转义文案；desc 会被 polydl 转义为下划线
               desc: awemeData.descRaw || awemeData.desc || '',
               aweme_type: awemeData.awemeType || 0,
               create_time: awemeData.createTime || '',
@@ -569,7 +568,7 @@ async function downloadSinglePostInner(
       sec_uid: user.sec_uid,
       nickname: awemeData.nickname || user.nickname,
       caption: awemeData.caption || '',
-      // descRaw 为原始未转义文案；desc 会被 dy-downloader 转义为下划线
+      // descRaw 为原始未转义文案；desc 会被 polydl 转义为下划线
       desc: awemeData.descRaw || awemeData.desc || '',
       aweme_type: awemeData.awemeType || 0,
       create_time: awemeData.createTime || '',

@@ -9,7 +9,8 @@ import {
   ScrollText,
   HardDrive,
   LayoutGrid,
-  Tags
+  Tags,
+  Radio
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -22,6 +23,7 @@ const navItems = [
   { path: '/files', label: '文件管理', icon: HardDrive },
   { path: '/analysis', label: '视频分析', icon: Sparkles },
   { path: '/tags', label: '标签管理', icon: Tags },
+  { path: '/live', label: '直播录制', icon: Radio },
   { path: '/logs', label: '同步日志', icon: ScrollText },
   { path: '/settings', label: '系统设置', icon: Settings }
 ]

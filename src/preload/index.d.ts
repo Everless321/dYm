@@ -68,6 +68,10 @@ declare global {
     sync_cron: string
     last_sync_at: number | null
     sync_status: 'idle' | 'syncing' | 'error'
+    live_record: number
+    live_check_cron: string
+    live_status: 'idle' | 'recording'
+    last_live_at: number | null
     created_at: number
     updated_at: number
   }
@@ -78,6 +82,8 @@ declare global {
     remark?: string
     auto_sync?: boolean
     sync_cron?: string
+    live_record?: boolean
+    live_check_cron?: string
   }
 
   interface BatchRefreshResult {
@@ -225,6 +231,45 @@ declare global {
   interface CollectAPI {
     reschedule: () => Promise<void>
     syncNow: () => Promise<void>
+  }
+
+  interface LiveProgress {
+    userId: number
+    recordId: number | null
+    nickname: string
+    status: 'checking' | 'not-live' | 'recording' | 'completed' | 'stopped' | 'failed'
+    roomId: string | null
+    title: string | null
+    filePath: string | null
+    message: string
+  }
+
+  interface LiveRecord {
+    id: number
+    user_id: number
+    sec_uid: string
+    nickname: string | null
+    room_id: string
+    title: string | null
+    quality: string | null
+    file_path: string | null
+    file_size: number
+    status: 'recording' | 'completed' | 'failed' | 'stopped'
+    error: string | null
+    started_at: number
+    ended_at: number | null
+  }
+
+  interface LiveAPI {
+    isRecording: (userId: number) => Promise<boolean>
+    getRecordingUsers: () => Promise<number[]>
+    checkNow: (userId: number) => Promise<boolean>
+    stop: (userId: number) => Promise<void>
+    getRecords: (limit?: number) => Promise<LiveRecord[]>
+    deleteRecord: (id: number) => Promise<LiveRecord | undefined>
+    revealFile: (filePath: string) => Promise<void>
+    updateUserSchedule: (userId: number) => Promise<void>
+    onProgress: (callback: (progress: LiveProgress) => void) => () => void
   }
 
   interface DbPost {
@@ -553,6 +598,7 @@ declare global {
     sync: SyncAPI
     scheduler: SchedulerAPI
     collect: CollectAPI
+    live: LiveAPI
     post: PostAPI
     grok: GrokAPI
     analysis: AnalysisAPI

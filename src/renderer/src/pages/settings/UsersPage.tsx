@@ -68,10 +68,13 @@ export default function UsersPage() {
     max_download_count: 0,
     show_in_home: true,
     auto_sync: false,
-    sync_cron: ''
+    sync_cron: '',
+    live_record: false,
+    live_check_cron: ''
   })
   const [editLoading, setEditLoading] = useState(false)
   const [cronValid, setCronValid] = useState(true)
+  const [liveCronValid, setLiveCronValid] = useState(true)
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [batchEditOpen, setBatchEditOpen] = useState(false)
@@ -345,9 +348,12 @@ export default function UsersPage() {
       max_download_count: user.max_download_count || 0,
       show_in_home: !!user.show_in_home,
       auto_sync: !!user.auto_sync,
-      sync_cron: user.sync_cron || ''
+      sync_cron: user.sync_cron || '',
+      live_record: !!user.live_record,
+      live_check_cron: user.live_check_cron || ''
     })
     setCronValid(true)
+    setLiveCronValid(true)
   }
 
   const handleSaveEdit = async () => {
@@ -360,6 +366,14 @@ export default function UsersPage() {
         return
       }
     }
+    if (editForm.live_record && editForm.live_check_cron) {
+      const valid = await window.api.sync.validateCron(editForm.live_check_cron)
+      if (!valid) {
+        setLiveCronValid(false)
+        toast.error('直播检测 Cron 表达式无效')
+        return
+      }
+    }
     setEditLoading(true)
     try {
       await window.api.user.updateSettings(editingUser.id, {
@@ -367,9 +381,12 @@ export default function UsersPage() {
         max_download_count: editForm.max_download_count,
         show_in_home: editForm.show_in_home,
         auto_sync: editForm.auto_sync,
-        sync_cron: editForm.sync_cron
+        sync_cron: editForm.sync_cron,
+        live_record: editForm.live_record,
+        live_check_cron: editForm.live_check_cron
       })
       await window.api.sync.updateUserSchedule(editingUser.id)
+      await window.api.live.updateUserSchedule(editingUser.id)
       toast.success('保存成功')
       setEditingUser(null)
       loadUsers()
@@ -1018,6 +1035,41 @@ export default function UsersPage() {
                     <p className="font-mono">0 8 * * 1 - 每周一 8:00</p>
                   </div>
                   {!cronValid && <p className="text-xs text-red-500">Cron 表达式无效</p>}
+                </div>
+              )}
+            </div>
+            <div className="border-t border-[#E5E5E7] pt-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>录制直播</Label>
+                  <p className="text-xs text-muted-foreground">按计划检测开播并自动录制</p>
+                </div>
+                <Switch
+                  checked={editForm.live_record}
+                  onCheckedChange={(checked) =>
+                    setEditForm((f) => ({ ...f, live_record: checked }))
+                  }
+                />
+              </div>
+              {editForm.live_record && (
+                <div className="space-y-2">
+                  <Label>检测计划 (Cron 表达式)</Label>
+                  <Input
+                    value={editForm.live_check_cron}
+                    onChange={(e) => {
+                      setEditForm((f) => ({ ...f, live_check_cron: e.target.value }))
+                      setLiveCronValid(true)
+                    }}
+                    placeholder="*/5 * * * *"
+                    className={!liveCronValid ? 'border-red-500' : ''}
+                  />
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <p>常用示例:</p>
+                    <p className="font-mono">*/5 * * * * - 每 5 分钟检测</p>
+                    <p className="font-mono">*/10 * * * * - 每 10 分钟检测</p>
+                    <p className="font-mono">0 * * * * - 每小时整点检测</p>
+                  </div>
+                  {!liveCronValid && <p className="text-xs text-red-500">Cron 表达式无效</p>}
                 </div>
               )}
             </div>

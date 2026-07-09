@@ -17,3 +17,6 @@ out
 
 # Downloaded data
 packages/server/data/
+
+# 下载的 ffmpeg/ffprobe 静态二进制（由 scripts/download-ffmpeg.mjs 拉取）
+resources/ffmpeg/

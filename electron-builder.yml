@@ -5,6 +5,8 @@ directories:
 extraResources:
   - from: resources/web
     to: web
+  - from: resources/ffmpeg
+    to: ffmpeg
 files:
   - '!**/.vscode/*'
   - '!src/*'
@@ -14,8 +16,6 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
-  - node_modules/@ffmpeg-installer/**
-  - node_modules/@ffprobe-installer/**
 win:
   executableName: dym
   forceCodeSigning: false

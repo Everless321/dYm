@@ -55,6 +55,29 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Cache ffmpeg binaries
+        uses: actions/cache@v4
+        with:
+          path: resources/ffmpeg
+          key: ffmpeg-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('scripts/download-ffmpeg.mjs') }}
+
+      - name: Fetch ffmpeg (bundled into app)
+        shell: bash
+        env:
+          MATRIX_PLATFORM: ${{ matrix.platform }}
+          MATRIX_ARCH: ${{ matrix.arch }}
+        run: |
+          case "$MATRIX_PLATFORM" in
+            mac) P=macos ;;
+            win) P=windows ;;
+            linux) P=linux ;;
+          esac
+          case "$MATRIX_ARCH" in
+            x64) A=amd64 ;;
+            arm64) A=arm64 ;;
+          esac
+          node scripts/download-ffmpeg.mjs --platform "$P" --arch "$A"
+
       - name: Package (macOS)
         if: matrix.platform == 'mac'
         run: npx electron-builder --mac --${{ matrix.arch }} --publish never

@@ -1,4 +1,4 @@
-import { DouyinHandler, getSecUserId, getAwemeId, setConfig } from 'dy-downloader'
+import { DouyinHandler, getSecUserId, getAwemeId, setConfig } from 'polydl'
 import { getSetting } from '../database'
 
 let handler: DouyinHandler | null = null

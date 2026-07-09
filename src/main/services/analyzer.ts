@@ -4,8 +4,7 @@ import { existsSync, readdirSync, readFileSync } from 'fs'
 import { rm, mkdir } from 'fs/promises'
 import { randomUUID } from 'crypto'
 import ffmpeg from 'fluent-ffmpeg'
-import ffmpegInstaller from '@ffmpeg-installer/ffmpeg'
-import ffprobeInstaller from '@ffprobe-installer/ffprobe'
+import { ffmpegPath, ffprobePath } from '../utils/ffmpeg-path'
 import {
   getSetting,
   getUnanalyzedPosts,
@@ -15,9 +14,6 @@ import {
   type AnalysisResult
 } from '../database'
 
-// 设置 ffmpeg 路径，生产环境需要处理 asar 路径
-const ffmpegPath = ffmpegInstaller.path.replace('app.asar', 'app.asar.unpacked')
-const ffprobePath = ffprobeInstaller.path.replace('app.asar', 'app.asar.unpacked')
 ffmpeg.setFfmpegPath(ffmpegPath)
 ffmpeg.setFfprobePath(ffprobePath)
 

@@ -4,7 +4,7 @@
  */
 
 import Database from 'better-sqlite3'
-import { DouyinHandler, getSecUserId, getAwemeId, setConfig } from 'dy-downloader'
+import { DouyinHandler, getSecUserId, getAwemeId, setConfig } from 'polydl'
 import { join } from 'path'
 import { app } from 'electron'
 
@@ -63,13 +63,15 @@ const URLS = [
   'https://www.douyin.com/user/MS4wLjABAAAATtM5qVZhyYjvtbVHEd4qFXHpCvIWuACCd38klJWsKEph0q3QwYu6L8f7BrwIzbxP',
   'https://www.douyin.com/user/MS4wLjABAAAAyZRA-JJvvyHTvBr1vLEXYpZvjti1lgRMKuo6rTAjNnAbLvI6cNiif9kU7ptWcG1V',
   'https://www.douyin.com/user/MS4wLjABAAAAttCEtzfPgR1vHBJ7eArUY6ULPKPqqkVg7DRy0qnHyeE',
-  'https://www.douyin.com/user/MS4wLjABAAAAK2jW2BNuFA9rAPvT96GxFaTLAUb29mjfEwrlJ_9Ed7c',
+  'https://www.douyin.com/user/MS4wLjABAAAAK2jW2BNuFA9rAPvT96GxFaTLAUb29mjfEwrlJ_9Ed7c'
 ]
 
 // 数据库路径 (与应用使用相同路径)
 const DB_PATH = join(process.env.HOME || '', 'Library/Application Support/dYmanager/data.db')
 
-async function parseDouyinUrl(url: string): Promise<{ type: 'user' | 'video' | 'unknown'; id: string }> {
+async function parseDouyinUrl(
+  url: string
+): Promise<{ type: 'user' | 'video' | 'unknown'; id: string }> {
   // 尝试提取用户 ID
   try {
     const secUserId = await getSecUserId(url)
@@ -100,7 +102,9 @@ async function main() {
   const db = new Database(DB_PATH)
 
   // 获取 cookie
-  const cookieRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('douyin_cookie') as { value: string } | undefined
+  const cookieRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('douyin_cookie') as
+    | { value: string }
+    | undefined
   if (!cookieRow?.value) {
     console.error('\n❌ 未找到 Cookie，请先在应用中设置')
     process.exit(1)
@@ -179,7 +183,8 @@ async function main() {
         (userData.nickname as string) || '',
         (userData.signature as string) || '',
         (userData.avatar_larger as { url_list?: string[] })?.url_list?.[0] ||
-          (userData.avatar_medium as { url_list?: string[] })?.url_list?.[0] || '',
+          (userData.avatar_medium as { url_list?: string[] })?.url_list?.[0] ||
+          '',
         (userData.short_id as string) || '',
         (userData.unique_id as string) || '',
         (userData.following_count as number) || 0,
@@ -193,8 +198,7 @@ async function main() {
       success++
 
       // 添加延迟避免请求过快
-      await new Promise(resolve => setTimeout(resolve, 500))
-
+      await new Promise((resolve) => setTimeout(resolve, 500))
     } catch (error) {
       console.log(`  ❌ 失败: ${(error as Error).message}`)
       failed++

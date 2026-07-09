@@ -9,7 +9,7 @@
  *     sqlite3 ~/Library/Application\ Support/dYmanager/data.db
  */
 
-import { DouyinHandler, setConfig } from 'dy-downloader'
+import { DouyinHandler, setConfig } from 'polydl'
 import { readFileSync } from 'fs'
 
 const file = process.argv[2]

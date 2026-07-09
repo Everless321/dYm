@@ -127,6 +127,26 @@ const collectAPI = {
   syncNow: (): Promise<void> => ipcRenderer.invoke('collect:syncNow')
 }
 
+const liveAPI = {
+  isRecording: (userId: number): Promise<boolean> => ipcRenderer.invoke('live:isRecording', userId),
+  getRecordingUsers: (): Promise<number[]> => ipcRenderer.invoke('live:getRecordingUsers'),
+  checkNow: (userId: number): Promise<boolean> => ipcRenderer.invoke('live:checkNow', userId),
+  stop: (userId: number): Promise<void> => ipcRenderer.invoke('live:stop', userId),
+  getRecords: (limit?: number): Promise<LiveRecord[]> =>
+    ipcRenderer.invoke('live:getRecords', limit),
+  deleteRecord: (id: number): Promise<LiveRecord | undefined> =>
+    ipcRenderer.invoke('live:deleteRecord', id),
+  revealFile: (filePath: string): Promise<void> => ipcRenderer.invoke('live:revealFile', filePath),
+  updateUserSchedule: (userId: number): Promise<void> =>
+    ipcRenderer.invoke('live:updateUserSchedule', userId),
+  onProgress: (callback: (progress: LiveProgress) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: LiveProgress): void =>
+      callback(progress)
+    ipcRenderer.on('live:progress', handler)
+    return () => ipcRenderer.removeListener('live:progress', handler)
+  }
+}
+
 const postAPI = {
   getAll: (
     page?: number,
@@ -302,6 +322,7 @@ const api = {
   sync: syncAPI,
   scheduler: schedulerAPI,
   collect: collectAPI,
+  live: liveAPI,
   post: postAPI,
   grok: grokAPI,
   analysis: analysisAPI,

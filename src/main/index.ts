@@ -40,6 +40,9 @@ import {
   setUserShowInHome,
   updateUserSettings,
   batchUpdateUserSettings,
+  getLiveRecords,
+  deleteLiveRecord,
+  resetStaleLiveStatus,
   createTask,
   getTaskById,
   getAllTasks,
@@ -105,6 +108,8 @@ import {
   stopScheduler,
   scheduleUser,
   unscheduleUser,
+  scheduleUserLive,
+  unscheduleUserLive,
   scheduleTask,
   unscheduleTask,
   validateCronExpression,
@@ -113,6 +118,13 @@ import {
   scheduleCollectSync,
   executeCollectSync
 } from './services/scheduler'
+import {
+  checkAndRecordUser,
+  stopLiveRecording,
+  stopAllLiveRecordings,
+  isRecordingLive,
+  getRecordingUserIds
+} from './services/live-recorder'
 import {
   getUnanalyzedPostsCount,
   getUnanalyzedPostsCountByUser,
@@ -457,6 +469,9 @@ app.whenReady().then(async () => {
 
   // 初始化数据库
   initDatabase()
+
+  // 清理上次异常退出遗留的「录制中」脏状态
+  resetStaleLiveStatus()
 
   // 初始化抖音客户端
   initDouyinHandler()
@@ -846,6 +861,27 @@ app.whenReady().then(async () => {
     }
   })
 
+  // Live recording IPC handlers
+  ipcMain.handle('live:isRecording', (_event, userId: number) => isRecordingLive(userId))
+  ipcMain.handle('live:getRecordingUsers', () => getRecordingUserIds())
+  ipcMain.handle('live:checkNow', (_event, userId: number) => checkAndRecordUser(userId))
+  ipcMain.handle('live:stop', (_event, userId: number) => stopLiveRecording(userId))
+  ipcMain.handle('live:getRecords', (_event, limit?: number) => getLiveRecords(limit))
+  ipcMain.handle('live:deleteRecord', (_event, id: number) => deleteLiveRecord(id))
+  ipcMain.handle('live:revealFile', (_event, filePath: string) => {
+    if (filePath) shell.showItemInFolder(filePath)
+  })
+  ipcMain.handle('live:updateUserSchedule', (_event, userId: number) => {
+    const user = getUserById(userId)
+    if (user) {
+      if (user.live_record && user.live_check_cron) {
+        scheduleUserLive(user)
+      } else {
+        unscheduleUserLive(userId)
+      }
+    }
+  })
+
   // Task schedule update
   ipcMain.handle('task:updateSchedule', (_event, taskId: number) => {
     const task = getTaskById(taskId)
@@ -1226,6 +1262,7 @@ app.whenReady().then(async () => {
 app.on('before-quit', () => {
   isQuitting = true
   stopScheduler()
+  stopAllLiveRecordings()
   void stopWebBrowserServer().catch((error) => {
     console.error('[Web] Failed to stop video browser server:', error)
   })

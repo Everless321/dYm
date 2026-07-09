@@ -51,6 +51,10 @@ export default function SystemPage() {
   const [collectCron, setCollectCron] = useState('*/30 * * * *')
   const [collectSyncing, setCollectSyncing] = useState(false)
 
+  // 直播录制
+  const [liveOutputPath, setLiveOutputPath] = useState('')
+  const [liveMaxDuration, setLiveMaxDuration] = useState('0')
+
   // 更新
   const [currentVersion, setCurrentVersion] = useState('')
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
@@ -102,6 +106,8 @@ export default function SystemPage() {
     setCollectBaseUrl(settings.collect_sync_base_url || 'https://dymserver.everless.app')
     setCollectToken(settings.collect_sync_token || '')
     setCollectCron(settings.collect_sync_cron || '*/30 * * * *')
+    setLiveOutputPath(settings.live_output_path || '')
+    setLiveMaxDuration(settings.live_max_duration || '0')
   }
 
   // Cookie handlers
@@ -257,6 +263,17 @@ export default function SystemPage() {
       toast.error(`触发失败: ${(error as Error).message}`)
     } finally {
       setCollectSyncing(false)
+    }
+  }
+
+  // 直播录制 handlers
+  const handleSaveLive = async () => {
+    try {
+      await window.api.settings.set('live_output_path', liveOutputPath.trim())
+      await window.api.settings.set('live_max_duration', String(parseInt(liveMaxDuration) || 0))
+      toast.success('直播录制设置已保存')
+    } catch {
+      toast.error('保存失败')
     }
   }
 
@@ -756,6 +773,75 @@ export default function SystemPage() {
                   className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors"
                 >
                   保存收藏同步设置
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            <div>
+              <p className="text-xs font-semibold text-[#6E6E73] uppercase tracking-widest">
+                自动化
+              </p>
+              <h2 className="text-lg font-semibold text-[#1D1D1F] mt-1">直播录制</h2>
+            </div>
+            <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-6">
+              <p className="text-xs text-[#A1A1A6] mb-4">
+                在「用户管理」中为用户开启「录制直播」并设置检测计划，应用会按计划检测开播并用
+                ffmpeg 自动录制。录制文件默认保存到下方目录（按 sec_uid 分文件夹）。
+              </p>
+
+              <div className="divide-y divide-[#E5E5E7]">
+                {/* Output path */}
+                <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
+                  <div className="md:min-w-[120px]">
+                    <p className="text-sm text-[#1D1D1F]">录制目录</p>
+                    <p className="text-xs text-[#A1A1A6] mt-1">留空则用默认下载目录下的 live</p>
+                  </div>
+                  <div className="flex gap-2 w-full md:w-[360px]">
+                    <input
+                      type="text"
+                      value={liveOutputPath}
+                      onChange={(e) => setLiveOutputPath(e.target.value)}
+                      placeholder="默认：<用户数据>/Download/live"
+                      className="flex-1 h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const path = await window.api.system.openDirectoryDialog()
+                        if (path) setLiveOutputPath(path)
+                      }}
+                      className="h-10 px-3 rounded-lg border border-[#E5E5E7] text-sm text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex-shrink-0"
+                    >
+                      选择
+                    </button>
+                  </div>
+                </div>
+
+                {/* Max duration */}
+                <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
+                  <div className="md:min-w-[120px]">
+                    <p className="text-sm text-[#1D1D1F]">最大时长（分钟）</p>
+                    <p className="text-xs text-[#A1A1A6] mt-1">0 表示不限，录到直播结束</p>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    value={liveMaxDuration}
+                    onChange={(e) => setLiveMaxDuration(e.target.value)}
+                    placeholder="0"
+                    className="w-full md:w-[360px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  onClick={handleSaveLive}
+                  className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors"
+                >
+                  保存直播录制设置
                 </button>
               </div>
             </div>

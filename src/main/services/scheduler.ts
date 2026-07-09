@@ -3,6 +3,7 @@ import { BrowserWindow } from 'electron'
 import {
   getAutoSyncUsers,
   getAutoSyncTasks,
+  getLiveRecordUsers,
   updateTaskLastSyncAt,
   type DbUser,
   type DbTaskWithUsers
@@ -11,6 +12,7 @@ import { startUserSync, isUserSyncing } from './syncer'
 import { startDownloadTask, isTaskRunning } from './downloader'
 import { addUserByUrl } from './user-add'
 import { isCollectSyncEnabled, getCollectCron, pullCollectedItems } from './collect-sync'
+import { checkAndRecordUser, isRecordingLive } from './live-recorder'
 
 export interface SchedulerLog {
   timestamp: number
@@ -70,6 +72,7 @@ interface ScheduledDownloadTask {
 
 const scheduledUserTasks: Map<number, ScheduledUserTask> = new Map()
 const scheduledDownloadTasks: Map<number, ScheduledDownloadTask> = new Map()
+const scheduledLiveTasks: Map<number, ScheduledUserTask> = new Map()
 
 function isValidCron(expression: string): boolean {
   return cron.validate(expression)
@@ -148,6 +151,73 @@ export function unscheduleUser(userId: number): void {
     scheduled.task.stop()
     scheduledUserTasks.delete(userId)
     sendSchedulerLog({ level: 'info', message: `已取消定时同步 (用户ID: ${userId})`, type: 'user' })
+  }
+}
+
+// 直播录制：按用户 cron 定时检测开播，在播即开始录制
+async function executeLiveCheck(user: DbUser): Promise<void> {
+  if (isRecordingLive(user.id)) {
+    // 已在录制中，无需重复检测
+    return
+  }
+  try {
+    const started = await checkAndRecordUser(user.id)
+    if (started) {
+      sendSchedulerLog({
+        level: 'info',
+        message: '检测到开播，开始录制',
+        type: 'user',
+        targetName: user.nickname
+      })
+    }
+  } catch (error) {
+    sendSchedulerLog({
+      level: 'error',
+      message: `直播检测失败: ${(error as Error).message}`,
+      type: 'user',
+      targetName: user.nickname
+    })
+  }
+}
+
+export function scheduleUserLive(user: DbUser): void {
+  if (scheduledLiveTasks.has(user.id)) {
+    unscheduleUserLive(user.id)
+  }
+
+  if (!user.live_record || !user.live_check_cron) {
+    return
+  }
+
+  if (!isValidCron(user.live_check_cron)) {
+    sendSchedulerLog({
+      level: 'error',
+      message: `无效的直播检测 Cron 表达式: ${user.live_check_cron}`,
+      type: 'user',
+      targetName: user.nickname
+    })
+    return
+  }
+
+  const task = cron.schedule(user.live_check_cron, () => {
+    void executeLiveCheck(user)
+  })
+
+  scheduledLiveTasks.set(user.id, { userId: user.id, task })
+  sendSchedulerLog({
+    level: 'info',
+    message: `已注册直播检测 (${user.live_check_cron})`,
+    type: 'user',
+    targetName: user.nickname
+  })
+}
+
+export function unscheduleUserLive(userId: number): void {
+  const scheduled = scheduledLiveTasks.get(userId)
+  if (scheduled) {
+    scheduled.task.stop()
+    scheduledLiveTasks.delete(userId)
+    sendSchedulerLog({ level: 'info', message: `已取消直播检测 (用户ID: ${userId})`, type: 'user' })
   }
 }
 
@@ -339,6 +409,17 @@ export function initScheduler(): void {
 
   // Initialize collect (favorites) sync
   scheduleCollectSync()
+
+  // Initialize live recording scheduling
+  const liveUsers = getLiveRecordUsers()
+  sendSchedulerLog({
+    level: 'info',
+    message: `初始化完成，${liveUsers.length} 个用户直播录制`,
+    type: 'system'
+  })
+  for (const user of liveUsers) {
+    scheduleUserLive(user)
+  }
 }
 
 export function stopScheduler(): void {
@@ -347,6 +428,9 @@ export function stopScheduler(): void {
   }
   for (const [taskId] of scheduledDownloadTasks) {
     unscheduleTask(taskId)
+  }
+  for (const [userId] of scheduledLiveTasks) {
+    unscheduleUserLive(userId)
   }
   unscheduleCollectSync()
   sendSchedulerLog({ level: 'info', message: '所有定时任务已停止', type: 'system' })

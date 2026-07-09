@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
-import { DouyinHandler, DouyinDownloader } from 'dy-downloader'
+import { DouyinHandler, DouyinDownloader } from 'polydl'
 import {
   getUserById,
   getSetting,
@@ -272,7 +272,7 @@ export async function startUserSync(userId: number): Promise<void> {
               sec_uid: user.sec_uid,
               nickname: awemeData.nickname || user.nickname,
               caption: awemeData.caption || '',
-              // descRaw 为原始未转义文案；desc 会被 dy-downloader 转义为下划线
+              // descRaw 为原始未转义文案；desc 会被 polydl 转义为下划线
               desc: awemeData.descRaw || awemeData.desc || '',
               aweme_type: awemeData.awemeType || 0,
               create_time: awemeData.createTime || '',
