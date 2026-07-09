@@ -58,9 +58,14 @@ async function download(url, dest) {
 
 function unzip(zip, dir) {
   mkdirSync(dir, { recursive: true })
-  // 用系统自带工具解压，避免引入依赖：win 用 bsdtar（支持 zip），其余用 unzip
+  // 用系统自带工具解压，避免引入依赖。
+  // Windows：bsdtar 会把 "C:\..." 当成远程主机导致 "Cannot connect to C"，改用 PowerShell Expand-Archive。
   if (process.platform === 'win32') {
-    execFileSync('tar', ['-xf', zip, '-C', dir], { stdio: 'inherit' })
+    execFileSync(
+      'powershell',
+      ['-NoProfile', '-Command', `Expand-Archive -LiteralPath '${zip}' -DestinationPath '${dir}' -Force`],
+      { stdio: 'inherit' }
+    )
   } else {
     execFileSync('unzip', ['-o', '-q', zip, '-d', dir], { stdio: 'inherit' })
   }
