@@ -11,7 +11,9 @@
 
 dYm 是一个将**无水印视频下载**与 **AI 内容分析**相结合的桌面应用。专为内容创作者、社交媒体运营和研究人员打造，高效采集、整理和理解短视频内容。
 
-[仓库地址](https://github.com/Everless321/dYm)
+[仓库地址](https://github.com/Everless321/dYm) · [Telegram 群组](https://t.me/+a02Yk5OY4gk1N2I1)
+
+> 💬 加入 [Telegram 群组](https://t.me/+a02Yk5OY4gk1N2I1)，获取更新、交流与支持。
 
 ---
 
@@ -54,6 +56,7 @@ dYm 的核心智能 —— 自动理解视频内容，无需逐个观看。
 ## 功能特性
 
 - **用户管理** — 添加和管理抖音创作者，支持批量刷新
+- **直播录制** — 自动录制抖音直播（通过内置 FFmpeg 录原画 FLV），直播结束自动停止
 - **批量下载** — 并发无水印下载，可配置下载数量，任务可追踪
 - **智能筛选** — 按创作者、AI 标签、分类、内容分级多维筛选
 - **本地存储** — SQLite 本地数据库，数据完全可控
@@ -77,7 +80,7 @@ dYm 的核心智能 —— 自动理解视频内容，无需逐个观看。
 - **UI**：Tailwind CSS + Radix UI + shadcn/ui
 - **数据库**：better-sqlite3
 - **视频处理**：fluent-ffmpeg（AI 分析帧提取）
-- **下载核心**：[dy-downloader](https://github.com/Everless321/dyDownload)
+- **下载核心**：[polydl](https://www.npmjs.com/package/polydl)（视频 / 图文 / 直播下载器）
 - **AI 集成**：OpenAI 兼容的视觉 API（可配置端点）
 
 ---

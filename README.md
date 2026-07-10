@@ -11,7 +11,9 @@
 
 dYm is a desktop application that combines **watermark-free video downloading** with **AI-driven content analysis**. Built for content creators, social media managers, and researchers who need to efficiently collect, organize, and understand short-form video content at scale.
 
-[Repository](https://github.com/Everless321/dYm)
+[Repository](https://github.com/Everless321/dYm) · [Telegram Group](https://t.me/+a02Yk5OY4gk1N2I1)
+
+> 💬 Join our [Telegram group](https://t.me/+a02Yk5OY4gk1N2I1) for updates, support, and discussion.
 
 ---
 
@@ -54,6 +56,7 @@ For image carousel posts (Douyin's photo mode), dYm sends the original images di
 ## Features
 
 - **User Management** — Add and manage Douyin creators, bulk refresh profiles
+- **Live Recording** — Automatically record Douyin livestreams (original-quality FLV via bundled FFmpeg) and stop when the broadcast ends
 - **Batch Download** — Concurrent watermark-free downloads with configurable limits and task tracking
 - **Smart Filtering** — Filter content by creator, AI-generated tags, category, and content level
 - **Local Storage** — All data stored in a local SQLite database, fully under your control
@@ -77,7 +80,7 @@ For image carousel posts (Douyin's photo mode), dYm sends the original images di
 - **UI**: Tailwind CSS + Radix UI + shadcn/ui
 - **Database**: better-sqlite3
 - **Video Processing**: fluent-ffmpeg (frame extraction for AI analysis)
-- **Download Engine**: [dy-downloader](https://github.com/Everless321/dyDownload)
+- **Download Engine**: [polydl](https://www.npmjs.com/package/polydl) (includes video, image, and livestream downloaders)
 - **AI Integration**: OpenAI-compatible Vision API (configurable endpoint)
 
 ---
