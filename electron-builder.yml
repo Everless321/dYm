@@ -14,6 +14,8 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  # ffmpeg 已通过 extraResources 单独打包，排除出 asar 避免重复打一份（省 ~130MB）
+  - '!resources/ffmpeg'
 asarUnpack:
   - resources/**
 win:

@@ -34,11 +34,16 @@ interface RunningRecording {
   recordId: number
   roomId: string
   filePath: string
-  manualStop: boolean
+  stopReason?: 'manual' | 'ended'
+  watchdog?: ReturnType<typeof setInterval>
 }
 
 // key: userId —— 保证同一用户同一时刻只录一路
 const runningRecordings: Map<number, RunningRecording> = new Map()
+
+// 看门狗轮询间隔：抖音直播结束后 CDN 常保持连接不断、只是停发数据，
+// ffmpeg 会一直傻等不退出，必须定时查开播状态、结束了主动停。
+const LIVE_WATCHDOG_INTERVAL_MS = 45_000
 
 function nowSec(): number {
   return Math.floor(Date.now() / 1000)
@@ -78,6 +83,7 @@ export function getRecordingUserIds(): number[] {
 function finishRecording(userId: number, status: DbLiveRecord['status'], error?: string): void {
   const rec = runningRecordings.get(userId)
   if (!rec) return
+  if (rec.watchdog) clearInterval(rec.watchdog)
   runningRecordings.delete(userId)
 
   let size = 0
@@ -257,17 +263,41 @@ export async function checkAndRecordUser(userId: number): Promise<boolean> {
   })
   updateUserLiveStatus(userId, 'recording', nowSec())
 
-  // 5) ffmpeg 录制（-c copy 直接转储，不转码）；带最大时长上限（0=不限）
+  // 5) ffmpeg 录制（-c copy 直接转储，不转码）；带最大时长上限（0=不限）。
+  // -rw_timeout：60s 收不到数据就自己退出，作为看门狗的兜底。
   const maxDurationMin = parseInt(getSetting('live_max_duration') || '0') || 0
-  const args = ['-y', '-headers', 'Referer: https://live.douyin.com/\r\n', '-i', streamUrl]
+  const args = [
+    '-y',
+    '-rw_timeout',
+    '60000000',
+    '-headers',
+    'Referer: https://live.douyin.com/\r\n',
+    '-i',
+    streamUrl
+  ]
   if (maxDurationMin > 0) {
     args.push('-t', String(maxDurationMin * 60))
   }
   args.push('-c', 'copy', filePath)
 
   const proc = spawn(ffmpegPath, args)
-  const rec: RunningRecording = { proc, recordId, roomId, filePath, manualStop: false }
+  const rec: RunningRecording = { proc, recordId, roomId, filePath }
   runningRecordings.set(userId, rec)
+
+  // 看门狗：定时查是否还在播，结束了主动停（抖音断流后 ffmpeg 不会自动退出）
+  rec.watchdog = setInterval(() => {
+    void (async () => {
+      try {
+        const st = await handler.fetchUserLiveStatus(String(uid))
+        if (st.liveStatus !== 1) {
+          rec.stopReason = 'ended'
+          rec.proc.kill('SIGINT')
+        }
+      } catch {
+        // 网络抖动忽略，靠 -rw_timeout 兜底
+      }
+    })()
+  }, LIVE_WATCHDOG_INTERVAL_MS)
 
   sendProgress({
     userId,
@@ -282,10 +312,12 @@ export async function checkAndRecordUser(userId: number): Promise<boolean> {
 
   proc.on('error', (err) => finishRecording(userId, 'failed', err.message))
   proc.on('close', (code) => {
-    if (rec.manualStop) {
+    // 用 stopReason 而非退出码判断（Windows 上 kill 是硬杀、退出码不定）
+    if (rec.stopReason === 'manual') {
       finishRecording(userId, 'stopped')
-    } else if (code === 0 || code === 255) {
-      // 255 = SIGINT 结束；正常直播断流 ffmpeg 也多以 0 退出
+    } else if (rec.stopReason === 'ended') {
+      finishRecording(userId, 'completed')
+    } else if (code === 0) {
       finishRecording(userId, 'completed')
     } else {
       finishRecording(userId, 'failed', `ffmpeg 退出码 ${code}`)
@@ -301,7 +333,7 @@ export async function checkAndRecordUser(userId: number): Promise<boolean> {
 export function stopLiveRecording(userId: number): void {
   const rec = runningRecordings.get(userId)
   if (!rec) return
-  rec.manualStop = true
+  rec.stopReason = 'manual'
   rec.proc.kill('SIGINT')
 }
 
@@ -310,7 +342,7 @@ export function stopLiveRecording(userId: number): void {
  */
 export function stopAllLiveRecordings(): void {
   for (const [, rec] of runningRecordings) {
-    rec.manualStop = true
+    rec.stopReason = 'manual'
     rec.proc.kill('SIGINT')
   }
 }
