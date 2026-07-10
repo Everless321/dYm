@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { WelcomeDialog } from './WelcomeDialog'
 
 const navItems = [
   { path: '/', label: '数据概览', icon: Home },
@@ -103,6 +104,7 @@ export function AppLayout() {
 
   return (
     <div className="h-screen flex bg-[#F5F5F7]">
+      <WelcomeDialog />
       {/* Sidebar */}
       <aside className="w-60 flex-shrink-0 flex flex-col bg-white border-r border-[#E5E5E7]">
         {/* Logo */}
