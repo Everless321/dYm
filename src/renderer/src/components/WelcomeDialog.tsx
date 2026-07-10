@@ -31,7 +31,9 @@ export function WelcomeDialog() {
       <DialogContent className="sm:max-w-[440px]">
         <DialogHeader>
           <DialogTitle>欢迎使用 dYm</DialogTitle>
-          <DialogDescription className="pt-1">AI 驱动的抖音视频分析与下载管理工具</DialogDescription>
+          <DialogDescription className="pt-1">
+            AI 驱动的抖音视频分析与下载管理工具
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 text-sm leading-relaxed text-[#3A3A3C]">
@@ -41,10 +43,15 @@ export function WelcomeDialog() {
           </p>
           <p>如果有人以本软件的名义向你收取任何费用，均与作者无关，请注意甄别、谨防上当。</p>
           <p>
-            项目在 GitHub 完全开源，欢迎 Star、提 Issue 或参与贡献；使用中遇到问题、想反馈需求，也可以加入官方
-            Telegram 交流群，我们在群里解答问题、发布更新。
+            项目在 GitHub 完全开源，欢迎 Star、提 Issue
+            或参与贡献；使用中遇到问题、想反馈需求，也可以加入官方 Telegram
+            交流群，我们在群里解答问题、发布更新。
           </p>
         </div>
+
+        <p className="text-xs leading-relaxed text-[#A1A1A6]">
+          本软件会收集匿名使用统计（如启动次数、版本、系统类型）以帮助改进产品，不含任何个人信息或下载内容，可在「系统设置」中关闭。
+        </p>
 
         <div className="grid grid-cols-2 gap-2 pt-1">
           <Button variant="outline" onClick={() => openExternal(GITHUB_URL)}>

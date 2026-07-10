@@ -96,6 +96,7 @@ import {
   isAllowedExternalProtocol
 } from './utils/block-protocols'
 import { initUpdater, registerUpdaterHandlers } from './services/updater'
+import { initTelemetry, track } from './services/telemetry'
 import {
   startUserSync,
   stopUserSync,
@@ -379,6 +380,9 @@ protocol.registerSchemesAsPrivileged([
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
+// 遥测必须在 app ready 之前初始化（SDK 需在 ready 前注册协议）
+initTelemetry()
+
 app.whenReady().then(async () => {
   for (const scheme of ['bytedance', 'snssdk', 'aweme']) {
     protocol.handle(scheme, () => new Response('', { status: 400 }))
@@ -469,6 +473,9 @@ app.whenReady().then(async () => {
 
   // 初始化数据库
   initDatabase()
+
+  // 统计启动次数（匿名，可在系统设置关闭）
+  track('app_started')
 
   // 清理上次异常退出遗留的「录制中」脏状态
   resetStaleLiveStatus()
@@ -837,7 +844,10 @@ app.whenReady().then(async () => {
   })
 
   // Download IPC handlers
-  ipcMain.handle('download:start', (_event, taskId: number) => startDownloadTask(taskId))
+  ipcMain.handle('download:start', (_event, taskId: number) => {
+    track('download_started')
+    return startDownloadTask(taskId)
+  })
   ipcMain.handle('download:stop', (_event, taskId: number) => stopDownloadTask(taskId))
   ipcMain.handle('download:isRunning', (_event, taskId: number) => isTaskRunning(taskId))
 
@@ -924,7 +934,10 @@ app.whenReady().then(async () => {
   })
 
   // Analysis IPC handlers
-  ipcMain.handle('analysis:start', (_event, secUid?: string) => startAnalysis(secUid))
+  ipcMain.handle('analysis:start', (_event, secUid?: string) => {
+    track('analysis_started')
+    return startAnalysis(secUid)
+  })
   ipcMain.handle('analysis:stop', () => stopAnalysis())
   ipcMain.handle('analysis:isRunning', () => isAnalysisRunning())
   ipcMain.handle('analysis:getUnanalyzedCount', (_event, secUid?: string) =>

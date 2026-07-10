@@ -3,6 +3,7 @@ import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { mkdirSync, statSync } from 'fs'
 import { ffmpegPath } from '../utils/ffmpeg-path'
+import { track } from './telemetry'
 import { getDouyinHandler } from './douyin'
 import {
   getUserById,
@@ -283,6 +284,8 @@ export async function checkAndRecordUser(userId: number): Promise<boolean> {
   const proc = spawn(ffmpegPath, args)
   const rec: RunningRecording = { proc, recordId, roomId, filePath }
   runningRecordings.set(userId, rec)
+
+  track('live_record_started')
 
   // 看门狗：定时查是否还在播，结束了主动停（抖音断流后 ffmpeg 不会自动退出）
   rec.watchdog = setInterval(() => {

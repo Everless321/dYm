@@ -55,6 +55,9 @@ export default function SystemPage() {
   const [liveOutputPath, setLiveOutputPath] = useState('')
   const [liveMaxDuration, setLiveMaxDuration] = useState('0')
 
+  // 隐私 / 匿名统计（默认开启）
+  const [telemetryEnabled, setTelemetryEnabled] = useState(true)
+
   // 更新
   const [currentVersion, setCurrentVersion] = useState('')
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
@@ -108,6 +111,13 @@ export default function SystemPage() {
     setCollectCron(settings.collect_sync_cron || '*/30 * * * *')
     setLiveOutputPath(settings.live_output_path || '')
     setLiveMaxDuration(settings.live_max_duration || '0')
+    setTelemetryEnabled(settings.telemetry_enabled !== 'false')
+  }
+
+  const handleToggleTelemetry = async () => {
+    const next = !telemetryEnabled
+    setTelemetryEnabled(next)
+    await window.api.settings.set('telemetry_enabled', next ? 'true' : 'false')
   }
 
   // Cookie handlers
@@ -933,6 +943,28 @@ export default function SystemPage() {
                     >
                       <Database className="h-4 w-4" />
                       打开目录
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-sm text-[#1D1D1F]">匿名使用统计</p>
+                      <p className="text-xs text-[#A1A1A6] mt-1">
+                        仅上报启动次数、应用版本、操作系统等匿名数据，帮助改进产品；不含任何个人信息或下载内容，可随时关闭
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleToggleTelemetry}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                        telemetryEnabled ? 'bg-[#0A84FF]' : 'bg-[#D1D1D6]'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                          telemetryEnabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+                        }`}
+                      />
                     </button>
                   </div>
                 </div>
