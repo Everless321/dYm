@@ -907,37 +907,6 @@ export default function UsersPage() {
                 className="h-11 border-[#E5E5E7]"
               />
             </div>
-            <div className="space-y-3">
-              <Label className="text-sm font-medium text-[#1D1D1F]">下载内容类型</Label>
-              <div className="space-y-2">
-                <label className="flex items-center gap-3 p-3 rounded-lg border border-[#0A84FF] bg-[#E8F0FE]/30 cursor-pointer">
-                  <input type="radio" name="type" value="all" defaultChecked className="sr-only" />
-                  <div className="h-5 w-5 rounded-full border-2 border-[#0A84FF] flex items-center justify-center">
-                    <div className="h-2.5 w-2.5 rounded-full bg-[#0A84FF]" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-[#1D1D1F]">作品</p>
-                    <p className="text-xs text-[#6E6E73]">下载用户发布的所有作品</p>
-                  </div>
-                </label>
-                <label className="flex items-center gap-3 p-3 rounded-lg border border-[#E5E5E7] cursor-pointer hover:bg-[#F2F2F4] transition-colors">
-                  <input type="radio" name="type" value="video" className="sr-only" />
-                  <div className="h-5 w-5 rounded-full border-2 border-[#E5E5E7]" />
-                  <div>
-                    <p className="font-medium text-[#1D1D1F]">视频</p>
-                    <p className="text-xs text-[#6E6E73]">仅下载用户发布的视频作品(不含图文)</p>
-                  </div>
-                </label>
-                <label className="flex items-center gap-3 p-3 rounded-lg border border-[#E5E5E7] cursor-pointer hover:bg-[#F2F2F4] transition-colors">
-                  <input type="radio" name="type" value="liked" className="sr-only" />
-                  <div className="h-5 w-5 rounded-full border-2 border-[#E5E5E7]" />
-                  <div>
-                    <p className="font-medium text-[#1D1D1F]">喜欢</p>
-                    <p className="text-xs text-[#6E6E73]">下载用户点赞的所有公开作品</p>
-                  </div>
-                </label>
-              </div>
-            </div>
           </div>
           <div className="h-[72px] flex items-center justify-end gap-3 px-6 border-t border-[#E5E5E7]">
             <Button
