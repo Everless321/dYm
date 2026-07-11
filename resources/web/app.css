@@ -541,6 +541,8 @@ input { border: none; outline: none; background: none; }
   height: auto;
   object-fit: contain;
   display: block;
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 
 .story-image-stack {
@@ -562,6 +564,39 @@ input { border: none; outline: none; background: none; }
 }
 
 .story-image.is-visible { opacity: 1; }
+
+.story-speed-badge {
+  position: absolute;
+  top: 76px;
+  left: 50%;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 15px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -6px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.story-speed-badge.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.story-speed-badge-icon {
+  font-size: 12px;
+  letter-spacing: -2px;
+}
 
 .story-overlay {
   position: absolute;

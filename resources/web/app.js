@@ -966,7 +966,79 @@ function bindVideoControls(story, video) {
     video.addEventListener('loadedmetadata', onReady)
   })
 
+  // 长按 2 倍速播放（仿抖音移动端）：按住视频 350ms 进入 2x，松手恢复。
+  const SPEED_HOLD_MS = 350
+  const SPEED_MOVE_TOLERANCE = 10
+  let holdTimer = null
+  let speedActive = false
+  let speedEndedAt = 0
+  let startX = 0
+  let startY = 0
+  let speedBadge = null
+
+  const showSpeedBadge = () => {
+    if (!speedBadge) {
+      speedBadge = document.createElement('div')
+      speedBadge.className = 'story-speed-badge'
+      const icon = document.createElement('span')
+      icon.className = 'story-speed-badge-icon'
+      icon.textContent = '▶▶'
+      speedBadge.append(icon, '2倍速播放中')
+      story.appendChild(speedBadge)
+    }
+    void speedBadge.offsetWidth
+    speedBadge.classList.add('is-visible')
+  }
+
+  const enterSpeed = () => {
+    holdTimer = null
+    if (speedActive) return
+    speedActive = true
+    video.playbackRate = 2
+    if (video.paused) video.play().catch(() => {})
+    showSpeedBadge()
+  }
+
+  const exitSpeed = () => {
+    if (holdTimer) {
+      clearTimeout(holdTimer)
+      holdTimer = null
+    }
+    if (!speedActive) return
+    speedActive = false
+    video.playbackRate = 1
+    speedBadge?.classList.remove('is-visible')
+    speedEndedAt = Date.now() // 松手随后触发的 click 在此后短时间内被忽略，避免误暂停
+  }
+
+  video.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    startX = event.clientX
+    startY = event.clientY
+    if (holdTimer) clearTimeout(holdTimer)
+    holdTimer = setTimeout(enterSpeed, SPEED_HOLD_MS)
+  })
+
+  video.addEventListener('pointermove', (event) => {
+    if (!holdTimer || speedActive) return
+    if (
+      Math.abs(event.clientX - startX) > SPEED_MOVE_TOLERANCE ||
+      Math.abs(event.clientY - startY) > SPEED_MOVE_TOLERANCE
+    ) {
+      // 判定为滑动（切换视频/拖动），取消长按
+      clearTimeout(holdTimer)
+      holdTimer = null
+    }
+  })
+
+  video.addEventListener('pointerup', exitSpeed)
+  video.addEventListener('pointercancel', exitSpeed)
+  video.addEventListener('pointerleave', exitSpeed)
+  // 阻止长按时弹出原生菜单（iOS 存储视频 / 桌面右键），以免打断倍速手势
+  video.addEventListener('contextmenu', (event) => event.preventDefault())
+
   video.addEventListener('click', async () => {
+    if (Date.now() - speedEndedAt < 300) return // 忽略长按松手后误触的暂停
     if (video.paused) {
       try {
         await video.play()
