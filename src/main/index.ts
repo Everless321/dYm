@@ -370,19 +370,27 @@ function createWindow(): BrowserWindow {
   return mainWindow
 }
 
+// 遥测必须在 app ready 之前初始化（SDK 内部会调用 registerSchemesAsPrivileged 注册
+// aptabase-ipc）。必须在下面我们自己的 registerSchemesAsPrivileged 之前调用：该 API 多次
+// 调用会互相覆盖（仅最后一次生效），所以让 SDK 先注册、我们最后注册一个包含全部协议的完整
+// 列表，避免 local 协议的 bypassCSP 被 SDK 覆盖导致 local:// 图片/视频被 CSP 拦截。
+initTelemetry()
+
 protocol.registerSchemesAsPrivileged([
   { scheme: 'local', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true } },
   { scheme: 'bytedance', privileges: {} },
   { scheme: 'snssdk', privileges: {} },
-  { scheme: 'aweme', privileges: {} }
+  { scheme: 'aweme', privileges: {} },
+  // 与 Aptabase SDK 内部注册保持一致，确保覆盖后 aptabase-ipc 仍具备所需特权
+  {
+    scheme: 'aptabase-ipc',
+    privileges: { bypassCSP: true, corsEnabled: true, supportFetchAPI: true, secure: true }
+  }
 ])
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-// 遥测必须在 app ready 之前初始化（SDK 需在 ready 前注册协议）
-initTelemetry()
-
 app.whenReady().then(async () => {
   for (const scheme of ['bytedance', 'snssdk', 'aweme']) {
     protocol.handle(scheme, () => new Response('', { status: 400 }))
