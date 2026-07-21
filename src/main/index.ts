@@ -4,7 +4,6 @@ import {
   BrowserWindow,
   ipcMain,
   protocol,
-  net,
   dialog,
   Tray,
   Menu,
@@ -13,15 +12,7 @@ import {
 } from 'electron'
 import os from 'os'
 import { join } from 'path'
-import {
-  existsSync,
-  readdirSync,
-  createWriteStream,
-  createReadStream,
-  statSync,
-  cpSync,
-  rmSync
-} from 'fs'
+import { existsSync, readdirSync, createWriteStream, statSync, cpSync, rmSync } from 'fs'
 import { mkdir, readdir, stat } from 'fs/promises'
 import { pipeline } from 'stream/promises'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -87,7 +78,9 @@ import {
   stopAnalysis,
   isAnalysisRunning,
   reanalyzePost,
-  reanalyzePosts
+  reanalyzePosts,
+  buildAuthHeaders,
+  normalizeApiUrl
 } from './services/analyzer'
 import {
   blockCustomProtocols,
@@ -126,6 +119,8 @@ import {
   isRecordingLive,
   getRecordingUserIds
 } from './services/live-recorder'
+import { preparePlayback, getDanmaku } from './services/live-playback'
+import { getConvertingIds, sweepUnconverted } from './services/live-convert'
 import {
   getUnanalyzedPostsCount,
   getUnanalyzedPostsCountByUser,
@@ -370,6 +365,36 @@ function createWindow(): BrowserWindow {
   return mainWindow
 }
 
+// 直播回放播放器窗口（独立 HTML 入口，自带宽松 CSP 以支持 FLV/MSE 的 blob:）。
+// 通过 hash 传 recordId，渲染端据此拉取记录并播放。
+function createLivePlayerWindow(recordId: number): void {
+  const win = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    minWidth: 900,
+    minHeight: 560,
+    title: '直播回放',
+    backgroundColor: '#000000',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false
+    }
+  })
+  blockCustomProtocols(win)
+
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/live-player.html#${recordId}`)
+  } else {
+    win.loadFile(join(__dirname, '../renderer/live-player.html'), { hash: String(recordId) })
+  }
+}
+
+// 关闭加速视频解码：抖音直播录制流经转封装后，Chromium 的 VideoToolbox 硬解路径
+// 会在部分流上报 -12909（bad data）解码失败；改用软解可稳定播放（ffmpeg 软解验证无误）。
+// 需在 app ready 之前设置。软解 1080p H.264 CPU 开销可忽略。
+app.commandLine.appendSwitch('disable-accelerated-video-decode')
+
 // 遥测必须在 app ready 之前初始化（SDK 内部会调用 registerSchemesAsPrivileged 注册
 // aptabase-ipc）。必须在下面我们自己的 registerSchemesAsPrivileged 之前调用：该 API 多次
 // 调用会互相覆盖（仅最后一次生效），所以让 SDK 先注册、我们最后注册一个包含全部协议的完整
@@ -377,7 +402,13 @@ function createWindow(): BrowserWindow {
 initTelemetry()
 
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'local', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true } },
+  // standard: true 必需 — 否则 Chromium 媒体栈对 local:// 的分段(Range)加载失效，
+  // <video> seek/长视频播放会报 PIPELINE_ERROR_READ: FFmpegDemuxer: data source error。
+  // standard scheme 的 URL 必须带 host，统一用固定 host「file」：local://file/abs/path
+  {
+    scheme: 'local',
+    privileges: { standard: true, bypassCSP: true, stream: true, supportFetchAPI: true }
+  },
   { scheme: 'bytedance', privileges: {} },
   { scheme: 'snssdk', privileges: {} },
   { scheme: 'aweme', privileges: {} },
@@ -396,71 +427,23 @@ app.whenReady().then(async () => {
     protocol.handle(scheme, () => new Response('', { status: 400 }))
   }
 
-  protocol.handle('local', async (request) => {
-    const filePath = fromUrlPath(decodeURIComponent(request.url.replace('local://', '')))
-    console.log('[local://] Request URL:', request.url)
-    console.log('[local://] File path:', filePath)
-    console.log('[local://] File exists:', existsSync(filePath))
-
+  // 用 registerFileProtocol（而非 protocol.handle）：交给 Chromium 原生 file loader，
+  // MIME/Range/206 全部原生处理，<video> 才能正确 seek。protocol.handle 的自定义
+  // Response 对二次 Range 请求有已知 bug（electron#38749），seek 必报 PIPELINE_ERROR_READ。
+  protocol.registerFileProtocol('local', (request, callback) => {
     try {
-      const fileStat = statSync(filePath)
-      const fileSize = fileStat.size
-      const rangeHeader = request.headers.get('Range')
-
-      // 根据文件扩展名确定 MIME 类型
-      const ext = filePath.split('.').pop()?.toLowerCase() || ''
-      const mimeTypes: Record<string, string> = {
-        mp4: 'video/mp4',
-        webm: 'video/webm',
-        mov: 'video/quicktime',
-        avi: 'video/x-msvideo',
-        mp3: 'audio/mpeg',
-        m4a: 'audio/mp4',
-        wav: 'audio/wav',
-        jpg: 'image/jpeg',
-        jpeg: 'image/jpeg',
-        png: 'image/png',
-        webp: 'image/webp',
-        gif: 'image/gif'
+      const u = new URL(request.url)
+      // 标准形式 local://file/abs/path → pathname 即路径（大小写保真）；
+      // 兜底：无「file」host 的旧形式 URL，首段路径会被解析成 host（已小写化）
+      const urlPath = u.hostname === 'file' ? u.pathname : `/${u.hostname}${u.pathname}`
+      const filePath = fromUrlPath(decodeURIComponent(urlPath))
+      if (!existsSync(filePath)) {
+        callback({ error: -6 }) // net::ERR_FILE_NOT_FOUND
+        return
       }
-      const contentType = mimeTypes[ext] || 'application/octet-stream'
-
-      if (rangeHeader) {
-        // 解析 Range 请求
-        const match = rangeHeader.match(/bytes=(\d*)-(\d*)/)
-        if (match) {
-          const start = match[1] ? parseInt(match[1], 10) : 0
-          const end = match[2] ? parseInt(match[2], 10) : fileSize - 1
-          const chunkSize = end - start + 1
-
-          const stream = createReadStream(filePath, { start, end })
-          const chunks: Buffer[] = []
-          for await (const chunk of stream) {
-            chunks.push(Buffer.from(chunk))
-          }
-          const buffer = Buffer.concat(chunks)
-
-          return new Response(buffer, {
-            status: 206,
-            headers: {
-              'Content-Type': contentType,
-              'Content-Length': String(chunkSize),
-              'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-              'Accept-Ranges': 'bytes'
-            }
-          })
-        }
-      }
-
-      // 无 Range 请求时返回完整文件
-      // Windows 需要 file:/// 格式，并将反斜杠转换为正斜杠
-      const fileUrl =
-        process.platform === 'win32'
-          ? `file:///${filePath.replace(/\\/g, '/')}`
-          : `file://${filePath}`
-      return net.fetch(fileUrl)
+      callback({ path: filePath })
     } catch {
-      return new Response('File not found', { status: 404 })
+      callback({ error: -6 })
     }
   })
 
@@ -487,6 +470,9 @@ app.whenReady().then(async () => {
 
   // 清理上次异常退出遗留的「录制中」脏状态
   resetStaleLiveStatus()
+
+  // 补扫未转换的历史录制（异常退出/转换失败遗留的 FLV），后台串行转换
+  sweepUnconverted()
 
   // 初始化抖音客户端
   initDouyinHandler()
@@ -882,9 +868,17 @@ app.whenReady().then(async () => {
   // Live recording IPC handlers
   ipcMain.handle('live:isRecording', (_event, userId: number) => isRecordingLive(userId))
   ipcMain.handle('live:getRecordingUsers', () => getRecordingUserIds())
+  ipcMain.handle('live:getConvertingIds', () => getConvertingIds())
   ipcMain.handle('live:checkNow', (_event, userId: number) => checkAndRecordUser(userId))
   ipcMain.handle('live:stop', (_event, userId: number) => stopLiveRecording(userId))
   ipcMain.handle('live:getRecords', (_event, limit?: number) => getLiveRecords(limit))
+  // 为回放准备可原生播放的视频（FLV -> MP4 转封装，缓存复用）
+  ipcMain.handle('live:preparePlayback', (_event, id: number) => preparePlayback(id))
+  ipcMain.handle('live:getDanmaku', (_event, id: number) => getDanmaku(id))
+  // 打开独立播放窗口（左视频右弹幕）
+  ipcMain.handle('live:openPlayer', (_event, id: number) => {
+    createLivePlayerWindow(id)
+  })
   ipcMain.handle('live:deleteRecord', (_event, id: number) => deleteLiveRecord(id))
   ipcMain.handle('live:revealFile', (_event, filePath: string) => {
     if (filePath) shell.showItemInFolder(filePath)
@@ -922,12 +916,9 @@ app.whenReady().then(async () => {
 
   // Grok API verification
   ipcMain.handle('grok:verify', async (_event, apiKey: string, apiUrl: string, model: string) => {
-    const response = await fetch(`${apiUrl}/chat/completions`, {
+    const response = await fetch(`${normalizeApiUrl(apiUrl)}/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`
-      },
+      headers: buildAuthHeaders(apiKey),
       body: JSON.stringify({
         model,
         messages: [{ role: 'user', content: 'Hi' }],

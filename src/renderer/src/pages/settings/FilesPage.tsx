@@ -302,7 +302,7 @@ export default function FilesPage() {
 
   const getCoverUrl = (post: DbPost) => {
     const path = coverPaths[post.aweme_id]
-    return path ? `local://${path}` : null
+    return path ? `local://file${path}` : null
   }
 
   const handleScanBroken = async () => {

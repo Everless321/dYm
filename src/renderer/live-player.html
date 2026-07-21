@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>直播回放</title>
+    <!-- 播放器窗口 CSP：原生 <video> 播放本地 MP4，放行 local: 媒体与图片 -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: local:; media-src 'self' local:"
+    />
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/live-player.tsx"></script>
+  </body>
+</html>

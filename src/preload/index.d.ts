@@ -237,7 +237,16 @@ declare global {
     userId: number
     recordId: number | null
     nickname: string
-    status: 'checking' | 'not-live' | 'recording' | 'completed' | 'stopped' | 'failed'
+    status:
+      | 'checking'
+      | 'not-live'
+      | 'recording'
+      | 'completed'
+      | 'stopped'
+      | 'failed'
+      | 'converting'
+      | 'converted'
+      | 'convert-failed'
     roomId: string | null
     title: string | null
     filePath: string | null
@@ -252,6 +261,7 @@ declare global {
     room_id: string
     title: string | null
     quality: string | null
+    cover_path: string | null
     file_path: string | null
     file_size: number
     status: 'recording' | 'completed' | 'failed' | 'stopped'
@@ -260,12 +270,36 @@ declare global {
     ended_at: number | null
   }
 
+  // 一条弹幕（t = 相对录制起点的毫秒偏移）
+  interface DanmakuLine {
+    t: number
+    type: 'chat' | 'gift' | 'member'
+    name: string
+    text?: string
+    gift?: string
+    count?: number
+  }
+
+  // 回放准备结果：可原生播放的视频 URL + 展示元信息
+  interface LivePlaybackInfo {
+    videoUrl: string
+    title: string | null
+    nickname: string | null
+    quality: string | null
+    coverPath: string | null
+    filePath: string | null
+  }
+
   interface LiveAPI {
     isRecording: (userId: number) => Promise<boolean>
     getRecordingUsers: () => Promise<number[]>
+    getConvertingIds: () => Promise<number[]>
     checkNow: (userId: number) => Promise<boolean>
-    stop: (userId: number) => Promise<void>
+    stop: (userId: number) => Promise<boolean>
     getRecords: (limit?: number) => Promise<LiveRecord[]>
+    preparePlayback: (id: number) => Promise<LivePlaybackInfo>
+    getDanmaku: (id: number) => Promise<DanmakuLine[]>
+    openPlayer: (id: number) => Promise<void>
     deleteRecord: (id: number) => Promise<LiveRecord | undefined>
     revealFile: (filePath: string) => Promise<void>
     updateUserSchedule: (userId: number) => Promise<void>

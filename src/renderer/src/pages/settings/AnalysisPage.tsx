@@ -523,7 +523,7 @@ export default function AnalysisPage() {
                               <div className="w-20 h-[60px] rounded-md bg-[#F2F2F4] overflow-hidden flex-shrink-0">
                                 {coverCache.get(post.id) ? (
                                   <img
-                                    src={`local://${coverCache.get(post.id)}`}
+                                    src={`local://file${coverCache.get(post.id)}`}
                                     alt=""
                                     className="w-full h-full object-cover"
                                   />

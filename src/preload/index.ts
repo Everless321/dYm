@@ -130,10 +130,15 @@ const collectAPI = {
 const liveAPI = {
   isRecording: (userId: number): Promise<boolean> => ipcRenderer.invoke('live:isRecording', userId),
   getRecordingUsers: (): Promise<number[]> => ipcRenderer.invoke('live:getRecordingUsers'),
+  getConvertingIds: (): Promise<number[]> => ipcRenderer.invoke('live:getConvertingIds'),
   checkNow: (userId: number): Promise<boolean> => ipcRenderer.invoke('live:checkNow', userId),
-  stop: (userId: number): Promise<void> => ipcRenderer.invoke('live:stop', userId),
+  stop: (userId: number): Promise<boolean> => ipcRenderer.invoke('live:stop', userId),
   getRecords: (limit?: number): Promise<LiveRecord[]> =>
     ipcRenderer.invoke('live:getRecords', limit),
+  preparePlayback: (id: number): Promise<LivePlaybackInfo> =>
+    ipcRenderer.invoke('live:preparePlayback', id),
+  getDanmaku: (id: number): Promise<DanmakuLine[]> => ipcRenderer.invoke('live:getDanmaku', id),
+  openPlayer: (id: number): Promise<void> => ipcRenderer.invoke('live:openPlayer', id),
   deleteRecord: (id: number): Promise<LiveRecord | undefined> =>
     ipcRenderer.invoke('live:deleteRecord', id),
   revealFile: (filePath: string): Promise<void> => ipcRenderer.invoke('live:revealFile', filePath),

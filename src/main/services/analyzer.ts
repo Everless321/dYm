@@ -255,6 +255,38 @@ function extractMessageContent(rawBody: string): string {
   return content
 }
 
+/**
+ * 规范化 API 基址。
+ * OpenAI 兼容服务的接口都在某个路径下（通常是 /v1），只填了主机端口
+ * （如 http://localhost:1234）会拼出 /chat/completions 而 404。
+ * 仅在「没有路径」时补 /v1，已有路径的原样保留，避免误改自定义部署。
+ */
+export function normalizeApiUrl(apiUrl: string): string {
+  const trimmed = (apiUrl || '').trim().replace(/\/+$/, '')
+  if (!trimmed) return trimmed
+  try {
+    const u = new URL(trimmed)
+    if (u.pathname === '' || u.pathname === '/') {
+      return `${trimmed}/v1`
+    }
+  } catch {
+    // 非法 URL 交给 fetch 去报错，这里不动
+  }
+  return trimmed
+}
+
+/**
+ * 构造请求头。API Key 为空时不发 Authorization——
+ * Ollama / LM Studio 等本地服务无需鉴权，发空 Bearer 反而可能被拒。
+ */
+export function buildAuthHeaders(apiKey: string): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (apiKey?.trim()) {
+    headers.Authorization = `Bearer ${apiKey.trim()}`
+  }
+  return headers
+}
+
 async function callVisionAPI(
   images: string[],
   prompt: string,
@@ -267,12 +299,9 @@ async function callVisionAPI(
     image_url: { url: img }
   }))
 
-  const response = await fetch(`${apiUrl}/chat/completions`, {
+  const response = await fetch(`${normalizeApiUrl(apiUrl)}/chat/completions`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
+    headers: buildAuthHeaders(apiKey),
     body: JSON.stringify({
       model,
       messages: [
@@ -407,10 +436,8 @@ interface AnalysisConfig {
 }
 
 function loadAnalysisConfig(): AnalysisConfig {
-  const apiKey = getSetting('grok_api_key')
-  if (!apiKey) {
-    throw new Error('请先配置 Grok API Key')
-  }
+  // API Key 可为空：Ollama / LM Studio 等本地推理服务无需鉴权
+  const apiKey = getSetting('grok_api_key') || ''
   const prompt = getSetting('analysis_prompt') || ''
   if (!prompt) {
     throw new Error('请先配置分析提示词')

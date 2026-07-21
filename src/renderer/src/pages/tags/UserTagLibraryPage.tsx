@@ -197,7 +197,7 @@ export default function UserTagLibraryPage() {
                   onClick={() => onCardClick(p)}
                 >
                   {cover ? (
-                    <img src={`local://${cover}`} className="w-full h-full object-cover" alt="" />
+                    <img src={`local://file${cover}`} className="w-full h-full object-cover" alt="" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
                       <Play className="h-8 w-8 text-white/40" />

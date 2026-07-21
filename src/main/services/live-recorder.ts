@@ -5,6 +5,9 @@ import { mkdirSync, statSync } from 'fs'
 import { ffmpegPath } from '../utils/ffmpeg-path'
 import { track } from './telemetry'
 import { getDouyinHandler } from './douyin'
+import { downloadLiveCover } from './live-cover'
+import { startDanmakuRecording, danmakuPathFor, type DanmakuRecorder } from './live-danmaku'
+import { enqueueConvert } from './live-convert'
 import {
   getUserById,
   getSetting,
@@ -17,7 +20,16 @@ import {
 // 画质优先级：从高到低（真实清晰度顺序，SD2 高清 > SD1 标清）
 const QUALITY_ORDER = ['FULL_HD1', 'HD1', 'SD2', 'SD1']
 
-export type LiveStage = 'checking' | 'not-live' | 'recording' | 'completed' | 'stopped' | 'failed'
+export type LiveStage =
+  | 'checking'
+  | 'not-live'
+  | 'recording'
+  | 'completed'
+  | 'stopped'
+  | 'failed'
+  | 'converting'
+  | 'converted'
+  | 'convert-failed'
 
 export interface LiveProgress {
   userId: number
@@ -37,7 +49,14 @@ interface RunningRecording {
   filePath: string
   stopReason?: 'manual' | 'ended'
   watchdog?: ReturnType<typeof setInterval>
+  danmaku?: DanmakuRecorder
+  killTimer?: ReturnType<typeof setTimeout>
 }
+
+// SIGINT 后等待 ffmpeg 自行收尾的宽限期，超时强杀。
+// ffmpeg 卡在阻塞的网络读取时收不到信号，靠 -rw_timeout 要等到 60s 才退出。
+// FLV 是流式格式，强杀不会损坏已写入的内容。
+const FORCE_KILL_GRACE_MS = 5_000
 
 // key: userId —— 保证同一用户同一时刻只录一路
 const runningRecordings: Map<number, RunningRecording> = new Map()
@@ -85,6 +104,8 @@ function finishRecording(userId: number, status: DbLiveRecord['status'], error?:
   const rec = runningRecordings.get(userId)
   if (!rec) return
   if (rec.watchdog) clearInterval(rec.watchdog)
+  if (rec.killTimer) clearTimeout(rec.killTimer)
+  rec.danmaku?.stop()
   runningRecordings.delete(userId)
 
   let size = 0
@@ -118,6 +139,11 @@ function finishRecording(userId: number, status: DbLiveRecord['status'], error?:
     filePath: rec.filePath,
     message: messageMap[status] || status
   })
+
+  // 录制产物立刻转成可播放的 MP4（FLV 只在录制期间用，抗中断）
+  if (status !== 'recording') {
+    enqueueConvert(rec.recordId)
+  }
 }
 
 interface StreamPick {
@@ -127,6 +153,7 @@ interface StreamPick {
 
 interface LiveLike {
   flvPullUrl?: Record<string, string> | null
+  cover?: string | null
   toRaw?: () => unknown
 }
 
@@ -251,7 +278,15 @@ export async function checkAndRecordUser(userId: number): Promise<boolean> {
   // 4) 准备输出路径
   const userDir = join(getLiveOutputPath(), user.sec_uid)
   mkdirSync(userDir, { recursive: true })
-  const filePath = join(userDir, `live_${roomId}_${timestampStr()}.flv`)
+  const baseName = `live_${roomId}_${timestampStr()}`
+  const filePath = join(userDir, `${baseName}.flv`)
+
+  // 抓取直播封面（与 .flv 同名 .jpg）；失败不影响录制，coverPath 保持 undefined
+  let coverPath: string | undefined
+  if (live.cover) {
+    const saved = await downloadLiveCover(live.cover, join(userDir, `${baseName}.jpg`))
+    if (saved) coverPath = saved
+  }
 
   const recordId = createLiveRecord({
     user_id: userId,
@@ -260,6 +295,7 @@ export async function checkAndRecordUser(userId: number): Promise<boolean> {
     room_id: roomId,
     title,
     quality: key,
+    cover_path: coverPath,
     file_path: filePath
   })
   updateUserLiveStatus(userId, 'recording', nowSec())
@@ -281,8 +317,12 @@ export async function checkAndRecordUser(userId: number): Promise<boolean> {
   }
   args.push('-c', 'copy', filePath)
 
+  // 取录制起点墙钟时间作为弹幕对齐基准：紧贴 spawn，两者同时开始
+  const startedAtMs = Date.now()
   const proc = spawn(ffmpegPath, args)
   const rec: RunningRecording = { proc, recordId, roomId, filePath }
+  // 并行录弹幕（聊天/礼物/进场）到 sidecar，失败不影响录像
+  rec.danmaku = startDanmakuRecording(roomId, danmakuPathFor(filePath), startedAtMs)
   runningRecordings.set(userId, rec)
 
   track('live_record_started')
@@ -333,11 +373,26 @@ export async function checkAndRecordUser(userId: number): Promise<boolean> {
 /**
  * 停止某用户的录制（手动）。SIGINT 让 ffmpeg 优雅写完当前文件。
  */
-export function stopLiveRecording(userId: number): void {
+export function stopLiveRecording(userId: number): boolean {
   const rec = runningRecordings.get(userId)
-  if (!rec) return
+  // 没有进行中的录制（如应用重启后残留的界面状态），返回 false 让调用方如实反馈
+  if (!rec) return false
+
   rec.stopReason = 'manual'
+  // 立即断开弹幕流，不等 ffmpeg 收尾
+  rec.danmaku?.stop()
   rec.proc.kill('SIGINT')
+
+  // 宽限期内没退出就强杀，避免卡在阻塞读取上迟迟不停
+  if (!rec.killTimer) {
+    rec.killTimer = setTimeout(() => {
+      if (runningRecordings.has(userId)) {
+        console.warn(`[Live] ffmpeg 未在 ${FORCE_KILL_GRACE_MS}ms 内退出，强制结束`)
+        rec.proc.kill('SIGKILL')
+      }
+    }, FORCE_KILL_GRACE_MS)
+  }
+  return true
 }
 
 /**
@@ -346,6 +401,7 @@ export function stopLiveRecording(userId: number): void {
 export function stopAllLiveRecordings(): void {
   for (const [, rec] of runningRecordings) {
     rec.stopReason = 'manual'
+    rec.danmaku?.stop()
     rec.proc.kill('SIGINT')
   }
 }

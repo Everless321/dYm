@@ -264,6 +264,7 @@ export function initDatabase(): void {
       room_id TEXT NOT NULL,
       title TEXT,
       quality TEXT,
+      cover_path TEXT,
       file_path TEXT,
       file_size INTEGER DEFAULT 0,
       status TEXT DEFAULT 'recording',
@@ -273,6 +274,13 @@ export function initDatabase(): void {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `)
+  // 迁移：为 live_records 表添加 cover_path 列（本地保存的直播封面图路径）
+  try {
+    database.exec(`ALTER TABLE live_records ADD COLUMN cover_path TEXT`)
+  } catch {
+    // 列已存在，忽略错误
+  }
+
   database.exec(`CREATE INDEX IF NOT EXISTS idx_live_records_user_id ON live_records(user_id)`)
   database.exec(
     `CREATE INDEX IF NOT EXISTS idx_live_records_started_at ON live_records(started_at DESC)`
@@ -668,6 +676,7 @@ export interface DbLiveRecord {
   room_id: string
   title: string | null
   quality: string | null
+  cover_path: string | null
   file_path: string | null
   file_size: number
   status: 'recording' | 'completed' | 'failed' | 'stopped'
@@ -683,6 +692,7 @@ export interface CreateLiveRecordInput {
   room_id: string
   title?: string
   quality?: string
+  cover_path?: string
   file_path?: string
 }
 
@@ -690,8 +700,8 @@ export function createLiveRecord(input: CreateLiveRecordInput): number {
   const database = getDatabase()
   const result = database
     .prepare(
-      `INSERT INTO live_records (user_id, sec_uid, nickname, room_id, title, quality, file_path, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'recording')`
+      `INSERT INTO live_records (user_id, sec_uid, nickname, room_id, title, quality, cover_path, file_path, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'recording')`
     )
     .run(
       input.user_id,
@@ -700,6 +710,7 @@ export function createLiveRecord(input: CreateLiveRecordInput): number {
       input.room_id,
       input.title || null,
       input.quality || null,
+      input.cover_path || null,
       input.file_path || null
     )
   return result.lastInsertRowid as number
@@ -707,6 +718,7 @@ export function createLiveRecord(input: CreateLiveRecordInput): number {
 
 export interface UpdateLiveRecordInput {
   status?: DbLiveRecord['status']
+  file_path?: string
   file_size?: number
   error?: string
   ended_at?: number
@@ -719,6 +731,10 @@ export function updateLiveRecord(id: number, input: UpdateLiveRecordInput): void
   if (input.status !== undefined) {
     fields.push('status = ?')
     values.push(input.status)
+  }
+  if (input.file_path !== undefined) {
+    fields.push('file_path = ?')
+    values.push(input.file_path)
   }
   if (input.file_size !== undefined) {
     fields.push('file_size = ?')
@@ -742,6 +758,13 @@ export function getLiveRecords(limit = 100): DbLiveRecord[] {
   return database
     .prepare('SELECT * FROM live_records ORDER BY started_at DESC LIMIT ?')
     .all(limit) as DbLiveRecord[]
+}
+
+export function getLiveRecordById(id: number): DbLiveRecord | undefined {
+  const database = getDatabase()
+  return database.prepare('SELECT * FROM live_records WHERE id = ?').get(id) as
+    | DbLiveRecord
+    | undefined
 }
 
 export function deleteLiveRecord(id: number): DbLiveRecord | undefined {

@@ -191,7 +191,7 @@ export default function HomePage() {
   const getCoverUrl = (post: DbPost) => {
     const path = coverPaths[post.aweme_id]
     if (!path) return null
-    return `local://${path}`
+    return `local://file${path}`
   }
 
   const handlePostClick = (post: DbPost) => {

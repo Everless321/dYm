@@ -159,14 +159,11 @@ export default function SystemPage() {
   }
 
   const handleVerifyApi = async () => {
-    if (!apiKey) {
-      toast.error('请先输入 API Key')
-      return
-    }
+    // 不校验 API Key：Ollama / LM Studio 等本地服务无需鉴权
     setVerifyingApi(true)
     try {
       await window.api.grok.verify(apiKey, apiUrl, analysisModel)
-      toast.success('API Key 验证成功')
+      toast.success('连接验证成功')
     } catch (error) {
       toast.error(`验证失败: ${(error as Error).message}`)
     } finally {
@@ -387,19 +384,22 @@ export default function SystemPage() {
               {/* API Settings Card */}
               <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-6">
                 <h2 className="text-base font-semibold text-[#1D1D1F] mb-4">API 设置</h2>
-                <p className="text-xs text-[#A1A1A6] mb-4">配置 Grok API 用于视频内容分析</p>
+                <p className="text-xs text-[#A1A1A6] mb-4">
+                  配置兼容 OpenAI 接口的服务用于视频内容分析（Grok、Ollama、LM Studio 等）
+                </p>
 
                 <div className="space-y-4">
                   {/* API Key */}
                   <div className="flex items-center justify-between">
                     <div className="md:min-w-[120px]">
                       <p className="text-sm text-[#1D1D1F]">API Key</p>
+                      <p className="text-xs text-[#A1A1A6] mt-0.5">本地服务可留空</p>
                     </div>
                     <input
                       type="password"
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
-                      placeholder="xai-**********************"
+                      placeholder="本地服务（Ollama / LM Studio）可留空"
                       className="w-full md:w-[360px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
                     />
                   </div>

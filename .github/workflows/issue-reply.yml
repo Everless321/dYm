@@ -1,0 +1,69 @@
+name: Codex 自动回复 Issue
+
+on:
+  issues:
+    types: [opened]
+
+# 避免同一个 issue 被并发触发重复回复
+concurrency:
+  group: codex-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      # 通过文件传递 prompt，issue 内容走环境变量，防止脚本/YAML 注入
+      - name: 生成 prompt
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+        run: |
+          {
+            echo "你是 dYmanager（一个基于 Electron 的抖音内容下载管理桌面应用）开源仓库的 issue 助手。"
+            echo "请用简体中文，针对下面这条用户提交的 issue 给出一条简洁、专业、可操作的回复。"
+            echo "如果是 bug，引导用户补充复现步骤、系统版本、应用版本与日志；如果是功能请求，确认理解并说明可行性；如果信息已足够，给出初步排查方向。"
+            echo "不要编造不存在的功能，不要承诺具体修复时间。结尾礼貌致谢。"
+            echo "如果需要查看代码再判断，可以读取当前仓库代码。"
+            echo ""
+            echo "---- Issue 提交者: ${ISSUE_AUTHOR} ----"
+            echo "标题: ${ISSUE_TITLE}"
+            echo "正文:"
+            echo "${ISSUE_BODY}"
+          } > "${RUNNER_TEMP}/codex-prompt.txt"
+
+      - name: Codex 生成回复
+        id: codex
+        uses: openai/codex-action@e0fdf01220eb9a88167c4898839d273e3f2609d1 # v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: ${{ runner.temp }}/codex-prompt.txt
+          sandbox: read-only
+
+      - name: 发表评论
+        uses: actions/github-script@v7
+        env:
+          COMMENT_BODY: ${{ steps.codex.outputs.final-message }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const body = process.env.COMMENT_BODY;
+            if (!body || !body.trim()) {
+              core.warning('Codex 未返回内容，跳过评论');
+              return;
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `${body}\n\n---\n> 🤖 此回复由 Codex 自动生成，仅供参考。`,
+            });

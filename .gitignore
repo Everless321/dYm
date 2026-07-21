@@ -20,3 +20,10 @@ packages/server/data/
 
 # 下载的 ffmpeg/ffprobe 静态二进制（由 scripts/download-ffmpeg.mjs 拉取）
 resources/ffmpeg/
+
+# 本地数据导入脚本（含用户数据，勿提交）
+import.sql
+import-1.sql
+
+# understand-anything 工具产物
+.understand-anything/

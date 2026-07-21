@@ -105,7 +105,7 @@ export default function VideoTagEditPage() {
               onClick={() => setViewerOpen(true)}
             >
               {cover ? (
-                <img src={`local://${cover}`} className="w-full h-full object-cover" alt="" />
+                <img src={`local://file${cover}`} className="w-full h-full object-cover" alt="" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-white/40">
                   无封面

@@ -252,8 +252,8 @@ export function MediaViewer({
                   (currentImageVideo ? (
                     <video
                       key={currentImageVideo}
-                      src={`local://${currentImageVideo}`}
-                      poster={`local://${images[currentIndex]}`}
+                      src={`local://file${currentImageVideo}`}
+                      poster={`local://file${images[currentIndex]}`}
                       className="max-w-full max-h-full object-contain"
                       autoPlay
                       loop
@@ -262,7 +262,7 @@ export function MediaViewer({
                     />
                   ) : (
                     <img
-                      src={`local://${images[currentIndex]}`}
+                      src={`local://file${images[currentIndex]}`}
                       alt={`Image ${currentIndex + 1}`}
                       className="max-w-full max-h-full object-contain"
                     />
@@ -298,7 +298,7 @@ export function MediaViewer({
                 )}
                 {media.music && (
                   <>
-                    <audio ref={audioRef} src={`local://${media.music}`} loop muted={isMuted} />
+                    <audio ref={audioRef} src={`local://file${media.music}`} loop muted={isMuted} />
                     <button
                       className="absolute bottom-4 right-4 w-8 h-8 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center text-white transition-colors"
                       onClick={() => {
@@ -315,7 +315,7 @@ export function MediaViewer({
               </>
             ) : media.video ? (
               <video
-                src={`local://${media.video}`}
+                src={`local://file${media.video}`}
                 className="max-w-full max-h-full"
                 controls
                 autoPlay
@@ -412,7 +412,7 @@ export function MediaViewer({
                     <div className="w-[70px] h-[70px] rounded-lg bg-[#F2F2F4] overflow-hidden flex-shrink-0">
                       {recommendCovers.get(rec.id) ? (
                         <img
-                          src={`local://${recommendCovers.get(rec.id)}`}
+                          src={`local://file${recommendCovers.get(rec.id)}`}
                           alt=""
                           className="w-full h-full object-cover"
                         />

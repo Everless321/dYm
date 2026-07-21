@@ -10,7 +10,7 @@ export function cn(...inputs: ClassValue[]) {
  * 否则回退到抖音远程链接（可能因防盗链/过期加载失败）。
  */
 export function getAvatarUrl(user: { avatar?: string; avatar_path?: string }): string | undefined {
-  if (user.avatar_path) return `local://${user.avatar_path}`
+  if (user.avatar_path) return `local://file${user.avatar_path}`
   return user.avatar || undefined
 }
 
