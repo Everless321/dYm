@@ -134,14 +134,18 @@ import {
   getTagLibraryStats,
   getTagsWithFrequency,
   getTagCategories,
-  getPostsBySecUidForTags,
+  queryPostsForTags,
+  getTagFilterFacets,
+  addTagsToPosts,
   getPostById,
   setPostTags,
   clearTags,
   renameTag,
   mergeTags,
+  deleteTags,
   addCustomTag,
-  type ClearTagScope
+  type ClearTagScope,
+  type TagPostFilters
 } from './database'
 import { findCoverFile, findMediaFiles, fromUrlPath, getDownloadPath } from './services/media'
 import { refreshUserProfile, getBatchRefreshDelay, sleep } from './services/user-refresh'
@@ -952,18 +956,21 @@ app.whenReady().then(async () => {
   ipcMain.handle('tag:getOverviewStats', () => getTagOverviewStats())
   ipcMain.handle('tag:getUserStats', () => getUserTagStats())
   ipcMain.handle('tag:getLibraryStats', () => getTagLibraryStats())
-  ipcMain.handle('tag:getTagsWithFrequency', () => getTagsWithFrequency())
+  ipcMain.handle('tag:getTagsWithFrequency', (_event, secUid?: string) =>
+    getTagsWithFrequency(secUid)
+  )
   ipcMain.handle('tag:getCategories', () => getTagCategories())
+  ipcMain.handle('tag:getFilterFacets', (_event, filters?: TagPostFilters) =>
+    getTagFilterFacets(filters)
+  )
   ipcMain.handle('tag:getPost', (_event, postId: number) => getPostById(postId))
   ipcMain.handle(
-    'tag:getPostsByUser',
-    (
-      _event,
-      secUid: string,
-      filters?: { tags?: string[]; keyword?: string },
-      page?: number,
-      pageSize?: number
-    ) => getPostsBySecUidForTags(secUid, filters, page, pageSize)
+    'tag:queryPosts',
+    (_event, filters?: TagPostFilters, page?: number, pageSize?: number) =>
+      queryPostsForTags(filters, page, pageSize)
+  )
+  ipcMain.handle('tag:addTags', (_event, postIds: number[], tags: string[]) =>
+    addTagsToPosts(postIds, tags)
   )
   ipcMain.handle(
     'tag:setPostTags',
@@ -977,6 +984,7 @@ app.whenReady().then(async () => {
     renameTag(oldName, newName)
   )
   ipcMain.handle('tag:merge', (_event, names: string[], into: string) => mergeTags(names, into))
+  ipcMain.handle('tag:delete', (_event, names: string[]) => deleteTags(names))
   ipcMain.handle('tag:addCustomTag', (_event, name: string) => addCustomTag(name))
 
   // Video IPC handlers

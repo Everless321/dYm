@@ -1,14 +1,30 @@
-import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ChevronLeft, Play, X, Plus, Sparkles, Loader2, RotateCw, Hand } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Play,
+  X,
+  Plus,
+  Sparkles,
+  Loader2,
+  RotateCw,
+  Hand
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MediaViewer } from '@/components/MediaViewer'
 import { parseTags } from '@/lib/utils'
+import { PageHeader, BackLink } from './components/PageHeader'
+import { parseTagFilters } from './filters'
+
+/** 上/下一条的可切换范围上限（一次拉够，避免翻页逻辑） */
+const SIBLING_LIMIT = 2000
 
 export default function VideoTagEditPage() {
   const { postId = '' } = useParams()
+  const [searchParams] = useSearchParams()
   const id = Number(postId)
   const navigate = useNavigate()
   const [post, setPost] = useState<DbPost | null>(null)
@@ -17,6 +33,7 @@ export default function VideoTagEditPage() {
   const [input, setInput] = useState('')
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [reanalyzing, setReanalyzing] = useState(false)
+  const [siblings, setSiblings] = useState<number[]>([])
 
   const load = useCallback(async () => {
     const p = await window.api.tag.getPost(id)
@@ -43,6 +60,42 @@ export default function VideoTagEditPage() {
     })
     return unsub
   }, [load])
+
+  // 上/下一条沿工作台传来的筛选队列走；没带筛选时退化为「同用户全部视频」
+  const search = searchParams.toString()
+  const backTo = `/tags${search ? `?${search}` : ''}`
+  const siblingFilters = useMemo<TagPostFilters | null>(() => {
+    if (search) return parseTagFilters(searchParams)
+    return post?.sec_uid ? { secUid: post.sec_uid } : null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, post?.sec_uid])
+
+  useEffect(() => {
+    if (!siblingFilters) return
+    window.api.tag
+      .queryPosts(siblingFilters, 1, SIBLING_LIMIT)
+      .then((res) => setSiblings(res.posts.map((p) => p.id)))
+  }, [siblingFilters])
+
+  const idx = siblings.indexOf(id)
+  const prevId = idx > 0 ? siblings[idx - 1] : null
+  const nextId = idx >= 0 && idx < siblings.length - 1 ? siblings[idx + 1] : null
+  const go = useCallback(
+    (target: number) => navigate(`/tags/video/${target}${search ? `?${search}` : ''}`),
+    [navigate, search]
+  )
+
+  // 键盘 ←/→ 切换（输入框聚焦时不拦截）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      if (e.key === 'ArrowLeft' && prevId) go(prevId)
+      else if (e.key === 'ArrowRight' && nextId) go(nextId)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [prevId, nextId, go])
 
   if (!post) {
     return <div className="p-10 text-sm text-[#A1A1A6]">加载中…</div>
@@ -86,15 +139,38 @@ export default function VideoTagEditPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="h-16 flex items-center px-8 border-b border-[#E5E5E7] bg-white shrink-0">
-        <button
-          onClick={() => navigate(`/tags/user/${post.sec_uid}`)}
-          className="flex items-center gap-1 text-sm text-[#6E6E73] hover:text-[#1D1D1F]"
-        >
-          <ChevronLeft className="h-4 w-4" />
-          返回视频库
-        </button>
-      </div>
+      <PageHeader
+        left={<BackLink label="返回列表" onClick={() => navigate(backTo)} />}
+        right={
+          idx >= 0 && siblings.length > 1 ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[#A1A1A6] tabular-nums mr-1">
+                {idx + 1} / {siblings.length}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!prevId}
+                onClick={() => prevId && go(prevId)}
+                title="上一条（←）"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                上一条
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!nextId}
+                onClick={() => nextId && go(nextId)}
+                title="下一条（→）"
+              >
+                下一条
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : undefined
+        }
+      />
 
       <div className="flex-1 overflow-y-auto p-8">
         <div className="flex gap-8 max-w-5xl">
