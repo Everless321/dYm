@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Library, Search, CheckSquare, Trash2, RotateCw, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,13 @@ const LEVEL_MIN = 1
 const LEVEL_MAX = 10
 /** 单个筛选分组最多渲染的项数，超出靠搜索缩小范围 */
 const LIST_LIMIT = 200
+
+/**
+ * 进详情页前暂存列表状态，返回时恢复。放在模块作用域，因为组件会被卸载。
+ * key 为筛选条件（URL query），所以换筛选条件不会命中，不会用旧位置干扰新结果。
+ * 由恢复 effect 在真正设好 scrollTop 后才删除，只生效一次。
+ */
+const listStateCache = new Map<string, { pages: number; scrollTop: number }>()
 
 const STATUS_OPTIONS: { key: TagStatusFilter; label: string }[] = [
   { key: 'all', label: '全部' },
@@ -73,6 +80,9 @@ export default function TagWorkbenchPage(): React.JSX.Element {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [covers, setCovers] = useState<Map<number, string>>(new Map())
+  // 结果区滚动容器；prevSearch 用于区分「换筛选条件」和「加载更多追加数据」
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const prevSearchRef = useRef('')
 
   const [selectMode, setSelectMode] = useState(false)
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -154,6 +164,22 @@ export default function TagWorkbenchPage(): React.JSX.Element {
     [filters, loadCovers]
   )
 
+  // 一次取回前 N 页，用于从详情页返回时重建列表（否则只剩第一页，滚动位置无处可去）
+  const loadFirstPages = useCallback(
+    async (pages: number) => {
+      setLoading(true)
+      try {
+        const res = await window.api.tag.queryPosts(filters, 1, pages * PAGE_SIZE)
+        setTotal(res.total)
+        setPosts(res.posts)
+        loadCovers(res.posts)
+      } finally {
+        setLoading(false)
+      }
+    },
+    [filters, loadCovers]
+  )
+
   // 全库统计 + 用户标注进度（画像条要用），不随筛选变化
   const loadStats = useCallback(async () => {
     const [s, u] = await Promise.all([
@@ -177,12 +203,49 @@ export default function TagWorkbenchPage(): React.JSX.Element {
     loadFacets()
   }, [loadFacets])
 
-  // 筛选变化 → 回到第一页重查
+  // 筛选变化 → 重查。若是从详情页返回（缓存命中），连同已加载的页数一起取回，
+  // 否则只剩第一页、滚动位置无处可去。这里只读不删，缓存留给下面的恢复 effect 消费 ——
+  // StrictMode 下 effect 会双跑，读到即删会让第二次跑丢掉恢复目标。
   useEffect(() => {
-    setPage(1)
+    const pages = listStateCache.get(search)?.pages ?? 1
     setSelected(new Set())
-    loadPage(1)
-  }, [loadPage])
+    setPage(pages)
+    if (pages > 1) loadFirstPages(pages)
+    else loadPage(1)
+    // search 已经决定了 loadPage / loadFirstPages 的身份，无需重复列入依赖
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadPage, loadFirstPages])
+
+  // posts 渲染后恢复滚动位置，成功后才消费缓存（幂等，重复执行无副作用）。
+  // 卡片是固定宽高比容器，高度不依赖封面异步加载，所以此刻布局已稳定。
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const cached = listStateCache.get(search)
+    if (cached && posts.length > 0) {
+      el.scrollTop = cached.scrollTop
+      listStateCache.delete(search)
+      prevSearchRef.current = search
+      return
+    }
+    // 换了筛选条件（而非「加载更多」追加数据）时回到顶部
+    if (prevSearchRef.current !== search) {
+      el.scrollTop = 0
+      prevSearchRef.current = search
+    }
+  }, [posts, search])
+
+  // 点视频进详情页：先记下位置，返回时才恢复得回来
+  const openVideo = useCallback(
+    (postId: number) => {
+      listStateCache.set(search, {
+        pages: page,
+        scrollTop: scrollRef.current?.scrollTop ?? 0
+      })
+      navigate(`/tags/video/${postId}${search ? `?${search}` : ''}`)
+    },
+    [search, page, navigate]
+  )
 
   const refresh = useCallback(() => {
     setSelectMode(false)
@@ -634,7 +697,7 @@ export default function TagWorkbenchPage(): React.JSX.Element {
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto p-5">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-5">
               <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
                 {posts.map((p) => (
                   <VideoCard
@@ -644,12 +707,7 @@ export default function TagWorkbenchPage(): React.JSX.Element {
                     selectMode={selectMode}
                     selected={selected.has(p.id)}
                     highlightTags={tags}
-                    onClick={() =>
-                      selectMode
-                        ? toggleSelect(p.id)
-                        : // 带上筛选条件，编辑页的上/下一条才能沿同一队列走
-                          navigate(`/tags/video/${p.id}${search ? `?${search}` : ''}`)
-                    }
+                    onClick={() => (selectMode ? toggleSelect(p.id) : openVideo(p.id))}
                     onToggleSelect={() => toggleSelect(p.id)}
                   />
                 ))}
