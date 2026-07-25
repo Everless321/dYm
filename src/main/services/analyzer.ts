@@ -3,6 +3,9 @@ import { join } from 'path'
 import { existsSync, readdirSync, readFileSync } from 'fs'
 import { rm, mkdir } from 'fs/promises'
 import { randomUUID } from 'crypto'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
+import { cpus } from 'os'
 import ffmpeg from 'fluent-ffmpeg'
 import { ffmpegPath, ffprobePath } from '../utils/ffmpeg-path'
 import {
@@ -17,8 +20,11 @@ import {
 ffmpeg.setFfmpegPath(ffmpegPath)
 ffmpeg.setFfprobePath(ffprobePath)
 
+const execFileAsync = promisify(execFile)
+
 // FFmpeg 并发限制（避免同时运行太多 ffmpeg 进程）
-const MAX_FFMPEG_CONCURRENCY = 2
+// 每个视频只跑一个短生命周期进程，可以按核数放宽
+const MAX_FFMPEG_CONCURRENCY = Math.min(4, Math.max(2, cpus().length - 2))
 let ffmpegRunning = 0
 const ffmpegQueue: Array<() => void> = []
 
@@ -108,32 +114,9 @@ function getVideoDuration(videoPath: string): Promise<number> {
   })
 }
 
-// 使用 -ss 快速定位提取单帧（比 select 滤镜快很多）
-async function extractSingleFrame(
-  videoPath: string,
-  timestamp: number,
-  outputPath: string
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    ffmpeg(videoPath)
-      .inputOptions([
-        '-ss',
-        timestamp.toFixed(2) // 在输入前 seek，利用关键帧快速定位
-      ])
-      .outputOptions([
-        '-frames:v',
-        '1', // 只提取一帧
-        '-q:v',
-        '2', // 最高质量
-        '-y'
-      ])
-      .output(outputPath)
-      .on('end', () => resolve())
-      .on('error', (err) => reject(err))
-      .run()
-  })
-}
-
+// 单个 ffmpeg 进程一次性提取全部切片：同一文件作为 N 路输入，
+// 每路用 -ss 输入前 seek（关键帧快速定位），各 map 一帧输出。
+// 相比每帧起一个进程，省掉 N-1 次进程 spawn 且无需串行等待。
 async function extractVideoFrames(videoPath: string, sliceCount: number): Promise<string[]> {
   if (!existsSync(videoPath)) {
     throw new Error(`Video file not found: ${videoPath}`)
@@ -144,31 +127,36 @@ async function extractVideoFrames(videoPath: string, sliceCount: number): Promis
 
   console.log(`[Analyzer] Extracting frames from: ${videoPath}`)
 
-  // 获取 ffmpeg 执行槽位
-  await acquireFfmpegSlot()
-
   try {
     const duration = await getVideoDuration(videoPath)
     console.log(`[Analyzer] Video duration: ${duration}s, slices: ${sliceCount}`)
 
     const interval = duration / (sliceCount + 1)
-    const frames: string[] = []
+    const framePaths = Array.from({ length: sliceCount }, (_, i) =>
+      join(tempDir, `frame_${i + 1}.jpg`)
+    )
 
-    // 串行提取每一帧（使用 -ss 快速定位，比并行更省资源）
+    const args: string[] = ['-hide_banner', '-loglevel', 'error', '-y']
     for (let i = 1; i <= sliceCount; i++) {
-      const timestamp = interval * i
-      const framePath = join(tempDir, `frame_${i}.jpg`)
+      // 每路解码限 2 线程：N 路并行解码不限线程时 4K 视频 CPU 峰值可达 800%+
+      args.push('-threads', '2', '-ss', (interval * i).toFixed(2), '-i', videoPath)
+    }
+    framePaths.forEach((framePath, i) => {
+      args.push('-map', `${i}:v:0`, '-frames:v', '1', '-q:v', '2', framePath)
+    })
 
-      try {
-        await extractSingleFrame(videoPath, timestamp, framePath)
-        if (existsSync(framePath)) {
-          frames.push(framePath)
-        }
-      } catch (err) {
-        console.warn(`[Analyzer] Failed to extract frame at ${timestamp}s:`, err)
-      }
+    // 槽位只包住这一次短生命周期进程，不再占着槽位串行干活
+    await acquireFfmpegSlot()
+    try {
+      await execFileAsync(ffmpegPath, args)
+    } catch (err) {
+      // 个别时间点可能提取失败，只要有帧产出就继续
+      console.warn(`[Analyzer] ffmpeg frame extraction reported error:`, err)
+    } finally {
+      releaseFfmpegSlot()
     }
 
+    const frames = framePaths.filter((p) => existsSync(p))
     if (frames.length === 0) {
       throw new Error('No frames could be extracted from video')
     }
@@ -178,8 +166,6 @@ async function extractVideoFrames(videoPath: string, sliceCount: number): Promis
   } catch (error) {
     await rm(tempDir, { recursive: true, force: true }).catch(() => {})
     throw error
-  } finally {
-    releaseFfmpegSlot()
   }
 }
 
