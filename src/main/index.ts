@@ -394,10 +394,15 @@ function createLivePlayerWindow(recordId: number): void {
   }
 }
 
-// 关闭加速视频解码：抖音直播录制流经转封装后，Chromium 的 VideoToolbox 硬解路径
-// 会在部分流上报 -12909（bad data）解码失败；改用软解可稳定播放（ffmpeg 软解验证无误）。
-// 需在 app ready 之前设置。软解 1080p H.264 CPU 开销可忽略。
-app.commandLine.appendSwitch('disable-accelerated-video-decode')
+// 曾经在此设置 disable-accelerated-video-decode，用于绕开直播录制转封装流上
+// VideoToolbox 硬解报 -12909（bad data）的问题。但该开关是进程级的，副作用是
+// 彻底禁掉 HEVC：macOS 上 Chromium 只有硬解路径能解 H.265，没有软解兜底，
+// 于是抖音下发的 HEVC 作品（本机 61 个里有 9 个）音频正常、画面全黑。
+//
+// Electron 39 上重新验证：全部 4 条录制（含 ORIGIN 原画）在硬解下均正常播放，
+// 1920x1080 实时推进、无 -12909、无 stall，故移除该开关。
+// 若 -12909 再次出现，正确做法是对出问题的文件用内置 ffmpeg 转码成 H.264，
+// 而不是用进程级开关关掉整个硬解路径。
 
 // 遥测必须在 app ready 之前初始化（SDK 内部会调用 registerSchemesAsPrivileged 注册
 // aptabase-ipc）。必须在下面我们自己的 registerSchemesAsPrivileged 之前调用：该 API 多次
