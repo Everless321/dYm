@@ -46,6 +46,9 @@ export function AddTagsDialog({
     return pool.filter((t) => !picked.includes(t.tag)).slice(0, SUGGESTION_LIMIT)
   }, [library, input, picked])
 
+  // 同一个弹窗既服务于工作台的批量打标，也服务于浏览页对单个作品打标
+  const isBatch = postIds.length > 1
+
   const add = (tag: string): void => {
     const t = tag.trim()
     if (!t || picked.includes(t)) return
@@ -58,7 +61,9 @@ export function AddTagsDialog({
     setSaving(true)
     try {
       const n = await window.api.tag.addTags(postIds, picked)
-      toast.success(`已为 ${n} 个视频添加 ${picked.length} 个标签`)
+      toast.success(
+        isBatch ? `已为 ${n} 个视频添加 ${picked.length} 个标签` : `已添加 ${picked.length} 个标签`
+      )
       onOpenChange(false)
       onAdded?.()
     } catch (err) {
@@ -72,9 +77,11 @@ export function AddTagsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>批量添加标签</DialogTitle>
+          <DialogTitle>{isBatch ? '批量添加标签' : '添加标签'}</DialogTitle>
           <DialogDescription>
-            为选中的 {postIds.length} 个视频追加手动标签，已有标签不会被覆盖
+            {isBatch
+              ? `为选中的 ${postIds.length} 个视频追加手动标签，已有标签不会被覆盖`
+              : '追加手动标签，已有标签不会被覆盖'}
           </DialogDescription>
         </DialogHeader>
 
@@ -140,7 +147,7 @@ export function AddTagsDialog({
             取消
           </Button>
           <Button disabled={!picked.length || saving} onClick={submit}>
-            {saving ? '添加中…' : `添加到 ${postIds.length} 个视频`}
+            {saving ? '添加中…' : isBatch ? `添加到 ${postIds.length} 个视频` : '添加'}
           </Button>
         </div>
       </DialogContent>

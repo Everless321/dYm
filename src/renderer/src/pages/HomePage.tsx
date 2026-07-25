@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   Video,
@@ -11,7 +12,10 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
-  RefreshCw
+  RefreshCw,
+  TagIcon,
+  Tags,
+  UserSearch
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -21,6 +25,7 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger
 } from '@/components/ui/context-menu'
 import { MediaViewer } from '@/components/MediaViewer'
@@ -28,11 +33,15 @@ import { VideoDownloadDialog } from '@/components/VideoDownloadDialog'
 import { SortSelect } from '@/components/SortSelect'
 import { getInitialSort } from '@/lib/post-sort'
 import { getMergedTags } from '@/lib/utils'
+import { AddTagsDialog } from '@/pages/tags/AddTagsDialog'
 
 const IMAGE_AWEME_TYPE = 68
 const PAGE_SIZE = 50
 
 export default function HomePage() {
+  const navigate = useNavigate()
+  // 右键「添加标签」的目标作品（null 表示弹窗关闭）
+  const [tagTarget, setTagTarget] = useState<DbPost | null>(null)
   const [posts, setPosts] = useState<DbPost[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -197,6 +206,15 @@ export default function HomePage() {
   const handlePostClick = (post: DbPost) => {
     setSelectedPost(post)
     setViewerOpen(true)
+  }
+
+  // 加完标签只回填这一条，不重载列表 —— 否则已加载的分页和滚动位置都会丢
+  const refreshPostTags = async (postId?: number): Promise<void> => {
+    if (!postId) return
+    const fresh = await window.api.tag.getPost(postId)
+    if (!fresh) return
+    setPosts((prev) => prev.map((p) => (p.id === postId ? fresh : p)))
+    setSelectedPost((prev) => (prev?.id === postId ? fresh : prev))
   }
 
   const isImagePost = (post: DbPost) => post.aweme_type === IMAGE_AWEME_TYPE
@@ -589,6 +607,21 @@ export default function HomePage() {
                       </Card>
                     </ContextMenuTrigger>
                     <ContextMenuContent>
+                      <ContextMenuItem onClick={() => setTagTarget(post)}>
+                        <TagIcon className="h-4 w-4 mr-2" />
+                        添加标签
+                      </ContextMenuItem>
+                      <ContextMenuItem onClick={() => navigate(`/tags/video/${post.id}`)}>
+                        <Tags className="h-4 w-4 mr-2" />
+                        在标签管理中编辑
+                      </ContextMenuItem>
+                      <ContextMenuItem
+                        onClick={() => navigate(`/tags?user=${encodeURIComponent(post.sec_uid)}`)}
+                      >
+                        <UserSearch className="h-4 w-4 mr-2" />
+                        该作者的标签管理
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
                       <ContextMenuItem
                         onClick={() => window.api.post.openFolder(post.sec_uid, post.folder_name)}
                       >
@@ -633,6 +666,13 @@ export default function HomePage() {
         onOpenChange={setViewerOpen}
         allPosts={posts}
         onSelectPost={setSelectedPost}
+      />
+
+      <AddTagsDialog
+        open={tagTarget !== null}
+        onOpenChange={(o) => !o && setTagTarget(null)}
+        postIds={tagTarget ? [tagTarget.id] : []}
+        onAdded={() => refreshPostTags(tagTarget?.id)}
       />
 
       <VideoDownloadDialog open={downloadDialogOpen} onOpenChange={setDownloadDialogOpen} />
