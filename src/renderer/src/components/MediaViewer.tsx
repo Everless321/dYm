@@ -11,6 +11,7 @@ import {
   Download
 } from 'lucide-react'
 import { getMergedTags } from '@/lib/utils'
+import { VideoPlayer } from './VideoPlayer'
 
 interface MediaViewerProps {
   post: DbPost | null
@@ -314,12 +315,7 @@ export function MediaViewer({
                 )}
               </>
             ) : media.video ? (
-              <video
-                src={`local://file${media.video}`}
-                className="max-w-full max-h-full"
-                controls
-                autoPlay
-              />
+              <VideoPlayer url={`local://file${media.video}`} className="w-full h-full" />
             ) : (
               <div className="text-white text-center">
                 <p>视频文件未找到</p>
