@@ -10,11 +10,15 @@ import {
   HardDrive,
   LayoutGrid,
   Tags,
-  Radio
+  Radio,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { WelcomeDialog } from './WelcomeDialog'
+
+const COLLAPSE_KEY = 'sidebar_collapsed'
 
 const navItems = [
   { path: '/', label: '数据概览', icon: Home },
@@ -29,11 +33,19 @@ const navItems = [
   { path: '/settings', label: '系统设置', icon: Settings }
 ]
 
-export function AppLayout() {
+export function AppLayout(): React.JSX.Element {
   const location = useLocation()
   const navigate = useNavigate()
   const [pendingLink, setPendingLink] = useState<string | null>(null)
   const [isAdding, setIsAdding] = useState(false)
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1')
+
+  const toggleCollapsed = (): void => {
+    setCollapsed((prev) => {
+      localStorage.setItem(COLLAPSE_KEY, prev ? '0' : '1')
+      return !prev
+    })
+  }
 
   // 监听剪贴板中的抖音链接
   useEffect(() => {
@@ -58,7 +70,7 @@ export function AppLayout() {
   useEffect(() => {
     if (!pendingLink || isAdding) return
 
-    const addUser = async () => {
+    const addUser = async (): Promise<void> => {
       setIsAdding(true)
       try {
         const { user, isNewUser, postDownload } = await window.api.user.add(pendingLink)
@@ -97,7 +109,7 @@ export function AppLayout() {
     return unsubscribe
   }, [])
 
-  const isActive = (path: string) => {
+  const isActive = (path: string): boolean => {
     if (path === '/') return location.pathname === '/'
     return location.pathname.startsWith(path)
   }
@@ -106,18 +118,52 @@ export function AppLayout() {
     <div className="h-screen flex bg-[#F5F5F7]">
       <WelcomeDialog />
       {/* Sidebar */}
-      <aside className="w-60 flex-shrink-0 flex flex-col bg-white border-r border-[#E5E5E7]">
-        {/* Logo */}
-        <div className="h-[72px] flex items-center gap-3 px-6 border-b border-[#E5E5E7]">
-          <Download className="h-7 w-7 text-[#0A84FF]" />
-          <span className="text-lg font-semibold text-[#1D1D1F]">dYm</span>
+      <aside
+        className={cn(
+          'flex-shrink-0 flex flex-col bg-white border-r border-[#E5E5E7] transition-[width] duration-200',
+          collapsed ? 'w-[68px]' : 'w-60'
+        )}
+      >
+        {/* Logo + 收缩开关 */}
+        <div
+          className={cn(
+            'h-[72px] flex items-center border-b border-[#E5E5E7]',
+            collapsed ? 'justify-center' : 'gap-3 px-6'
+          )}
+        >
+          {collapsed ? (
+            <button
+              onClick={toggleCollapsed}
+              title="展开侧边栏"
+              className="group h-10 w-10 flex items-center justify-center rounded-lg hover:bg-[#F2F2F4] transition-colors"
+            >
+              <Download className="h-6 w-6 text-[#0A84FF] group-hover:hidden" />
+              <PanelLeftOpen className="h-5 w-5 text-[#6E6E73] hidden group-hover:block" />
+            </button>
+          ) : (
+            <>
+              <Download className="h-7 w-7 text-[#0A84FF]" />
+              <span className="text-lg font-semibold text-[#1D1D1F]">dYm</span>
+              <button
+                onClick={toggleCollapsed}
+                title="收起侧边栏"
+                className="ml-auto -mr-2 h-8 w-8 flex items-center justify-center rounded-md text-[#A1A1A6] hover:bg-[#F2F2F4] hover:text-[#1D1D1F] transition-colors"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </button>
+            </>
+          )}
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-1">
-          <span className="block px-4 py-2 text-[11px] font-medium text-[#A1A1A6] font-mono tracking-wide">
-            菜单
-          </span>
+        <nav className={cn('flex-1 space-y-1', collapsed ? 'p-2.5' : 'p-4')}>
+          {collapsed ? (
+            <div className="h-4" />
+          ) : (
+            <span className="block px-4 py-2 text-[11px] font-medium text-[#A1A1A6] font-mono tracking-wide">
+              菜单
+            </span>
+          )}
           {navItems.map((item) => {
             const Icon = item.icon
             const active = isActive(item.path)
@@ -125,15 +171,19 @@ export function AppLayout() {
               <Link
                 key={item.path}
                 to={item.path}
+                title={collapsed ? item.label : undefined}
                 className={cn(
-                  'flex items-center gap-3 h-12 px-4 rounded-lg transition-colors',
+                  'flex items-center h-12 rounded-lg transition-colors',
+                  collapsed ? 'justify-center' : 'gap-3 px-4',
                   active
                     ? 'bg-[#E8F0FE] text-[#1D1D1F] font-medium'
                     : 'text-[#6E6E73] hover:bg-[#F2F2F4]'
                 )}
               >
-                <Icon className={cn('h-5 w-5', active ? 'text-[#0A84FF]' : 'text-[#6E6E73]')} />
-                <span className="text-sm">{item.label}</span>
+                <Icon
+                  className={cn('h-5 w-5 shrink-0', active ? 'text-[#0A84FF]' : 'text-[#6E6E73]')}
+                />
+                {!collapsed && <span className="text-sm">{item.label}</span>}
               </Link>
             )
           })}

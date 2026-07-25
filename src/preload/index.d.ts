@@ -457,6 +457,7 @@ declare global {
     tag: string
     count: number
     source: 'ai' | 'manual' | 'both'
+    categories: string[]
   }
 
   interface TagLibraryStats {
@@ -471,19 +472,45 @@ declare global {
     count: number
   }
 
+  type TagStatusFilter = 'all' | 'untagged' | 'tagged' | 'ai' | 'manual' | 'both'
+  type TagPostSort = 'downloaded' | 'published' | 'analyzed' | 'level'
+
+  interface TagPostFilters {
+    secUid?: string
+    tags?: string[]
+    tagMode?: 'any' | 'all'
+    keyword?: string
+    status?: TagStatusFilter
+    categories?: string[]
+    scenes?: string[]
+    minLevel?: number
+    maxLevel?: number
+    sort?: TagPostSort
+  }
+
+  interface TagFilterFacets {
+    users: { sec_uid: string; nickname: string; count: number }[]
+    tags: { tag: string; count: number }[]
+    categories: TagCategoryItem[]
+    scenes: { scene: string; count: number }[]
+    statusCounts: Record<Exclude<TagStatusFilter, 'all'>, number>
+    total: number
+  }
+
   interface TagAPI {
     getOverviewStats: () => Promise<TagOverviewStats>
     getUserStats: () => Promise<UserTagStats[]>
     getLibraryStats: () => Promise<TagLibraryStats>
-    getTagsWithFrequency: () => Promise<TagFrequencyItem[]>
+    getTagsWithFrequency: (secUid?: string) => Promise<TagFrequencyItem[]>
     getCategories: () => Promise<TagCategoryItem[]>
+    getFilterFacets: (filters?: TagPostFilters) => Promise<TagFilterFacets>
     getPost: (postId: number) => Promise<DbPost | undefined>
-    getPostsByUser: (
-      secUid: string,
-      filters?: { tags?: string[]; keyword?: string },
+    queryPosts: (
+      filters?: TagPostFilters,
       page?: number,
       pageSize?: number
     ) => Promise<{ posts: DbPost[]; total: number }>
+    addTags: (postIds: number[], tags: string[]) => Promise<number>
     setPostTags: (
       postId: number,
       input: { aiTags?: string[]; manualTags?: string[] }
@@ -491,6 +518,7 @@ declare global {
     clear: (postIds: number[], scope: 'all' | 'ai' | 'manual') => Promise<number>
     rename: (oldName: string, newName: string) => Promise<number>
     merge: (names: string[], into: string) => Promise<number>
+    deleteTag: (names: string[]) => Promise<number>
     addCustomTag: (name: string) => Promise<void>
   }
 

@@ -209,18 +209,21 @@ const tagAPI = {
   getOverviewStats: (): Promise<TagOverviewStats> => ipcRenderer.invoke('tag:getOverviewStats'),
   getUserStats: (): Promise<UserTagStats[]> => ipcRenderer.invoke('tag:getUserStats'),
   getLibraryStats: (): Promise<TagLibraryStats> => ipcRenderer.invoke('tag:getLibraryStats'),
-  getTagsWithFrequency: (): Promise<TagFrequencyItem[]> =>
-    ipcRenderer.invoke('tag:getTagsWithFrequency'),
+  getTagsWithFrequency: (secUid?: string): Promise<TagFrequencyItem[]> =>
+    ipcRenderer.invoke('tag:getTagsWithFrequency', secUid),
   getCategories: (): Promise<TagCategoryItem[]> => ipcRenderer.invoke('tag:getCategories'),
+  getFilterFacets: (filters?: TagPostFilters): Promise<TagFilterFacets> =>
+    ipcRenderer.invoke('tag:getFilterFacets', filters),
   getPost: (postId: number): Promise<DbPost | undefined> =>
     ipcRenderer.invoke('tag:getPost', postId),
-  getPostsByUser: (
-    secUid: string,
-    filters?: { tags?: string[]; keyword?: string },
+  queryPosts: (
+    filters?: TagPostFilters,
     page?: number,
     pageSize?: number
   ): Promise<{ posts: DbPost[]; total: number }> =>
-    ipcRenderer.invoke('tag:getPostsByUser', secUid, filters, page, pageSize),
+    ipcRenderer.invoke('tag:queryPosts', filters, page, pageSize),
+  addTags: (postIds: number[], tags: string[]): Promise<number> =>
+    ipcRenderer.invoke('tag:addTags', postIds, tags),
   setPostTags: (
     postId: number,
     input: { aiTags?: string[]; manualTags?: string[] }
@@ -231,6 +234,7 @@ const tagAPI = {
     ipcRenderer.invoke('tag:rename', oldName, newName),
   merge: (names: string[], into: string): Promise<number> =>
     ipcRenderer.invoke('tag:merge', names, into),
+  deleteTag: (names: string[]): Promise<number> => ipcRenderer.invoke('tag:delete', names),
   addCustomTag: (name: string): Promise<void> => ipcRenderer.invoke('tag:addCustomTag', name)
 }
 

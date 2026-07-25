@@ -1,4 +1,4 @@
-import { createHashRouter, Navigate } from 'react-router-dom'
+import { createHashRouter, Navigate, useParams } from 'react-router-dom'
 import { AppLayout } from '@/components/AppLayout'
 import DashboardPage from '@/pages/DashboardPage'
 import HomePage from '@/pages/HomePage'
@@ -10,10 +10,15 @@ import SystemPage from '@/pages/settings/SystemPage'
 import LogsPage from '@/pages/settings/LogsPage'
 import LiveRecordPage from '@/pages/settings/LiveRecordPage'
 import FilesPage from '@/pages/settings/FilesPage'
-import TagOverviewPage from '@/pages/tags/TagOverviewPage'
-import UserTagLibraryPage from '@/pages/tags/UserTagLibraryPage'
+import TagWorkbenchPage from '@/pages/tags/TagWorkbenchPage'
 import VideoTagEditPage from '@/pages/tags/VideoTagEditPage'
 import TagLibraryPage from '@/pages/tags/TagLibraryPage'
+
+/** 旧的按用户查看页已并入工作台，保留路由做重定向（外部链接/历史记录仍可用） */
+function TagUserRedirect() {
+  const { secUid = '' } = useParams()
+  return <Navigate to={`/tags?user=${encodeURIComponent(secUid)}`} replace />
+}
 
 export const router = createHashRouter([
   {
@@ -50,7 +55,7 @@ export const router = createHashRouter([
       },
       {
         path: 'tags',
-        element: <TagOverviewPage />
+        element: <TagWorkbenchPage />
       },
       {
         path: 'tags/library',
@@ -58,7 +63,7 @@ export const router = createHashRouter([
       },
       {
         path: 'tags/user/:secUid',
-        element: <UserTagLibraryPage />
+        element: <TagUserRedirect />
       },
       {
         path: 'tags/video/:postId',
