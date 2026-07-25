@@ -14,7 +14,11 @@ interface UserProfileBarProps {
 const TOP_TAGS = 8
 
 /** 筛选到单个用户时的内容画像：标注进度 + 该用户高频标签 */
-export function UserProfileBar({ user, onTagClick, onClear }: UserProfileBarProps) {
+export function UserProfileBar({
+  user,
+  onTagClick,
+  onClear
+}: UserProfileBarProps): React.JSX.Element {
   const [tags, setTags] = useState<TagFrequencyItem[]>([])
 
   useEffect(() => {

@@ -23,7 +23,7 @@ export function VideoCard({
   highlightTags,
   onClick,
   onToggleSelect
-}: VideoCardProps) {
+}: VideoCardProps): React.JSX.Element {
   const tags = getMergedTags(post)
   const manualSet = new Set(parseTags(post.manual_tags))
   const hl = new Set(highlightTags || [])

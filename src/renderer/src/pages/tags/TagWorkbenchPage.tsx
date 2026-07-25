@@ -36,7 +36,7 @@ const SORT_OPTIONS: { key: TagPostSort; label: string }[] = [
   { key: 'level', label: '内容评级' }
 ]
 
-export default function TagWorkbenchPage() {
+export default function TagWorkbenchPage(): React.JSX.Element {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
 
@@ -118,7 +118,7 @@ export default function TagWorkbenchPage() {
     [params, patch]
   )
 
-  const clearAll = () =>
+  const clearAll = (): void =>
     setParams(new URLSearchParams(sort === 'downloaded' ? {} : { sort }), { replace: true })
 
   const activeFilterCount = countActiveFilters(filters)
@@ -213,7 +213,7 @@ export default function TagWorkbenchPage() {
     }
   }, [keyword])
 
-  const toggleSelect = (id: number) =>
+  const toggleSelect = (id: number): void =>
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -720,7 +720,7 @@ function FilterSearch({
   value: string
   onChange: (v: string) => void
   placeholder: string
-}) {
+}): React.JSX.Element {
   return (
     <div className="relative">
       <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#A1A1A6]" />
@@ -743,7 +743,13 @@ function FilterSearch({
 }
 
 /** 列表被 LIST_LIMIT 截断时明确告知，避免以为「就这么多」 */
-function TruncatedHint({ shown, matched }: { shown: number; matched: number }) {
+function TruncatedHint({
+  shown,
+  matched
+}: {
+  shown: number
+  matched: number
+}): React.JSX.Element | null {
   if (matched <= shown) return null
   return (
     <p className="px-2 pt-1 text-[10px] text-[#A1A1A6]">
@@ -752,7 +758,13 @@ function TruncatedHint({ shown, matched }: { shown: number; matched: number }) {
   )
 }
 
-function FilterChip({ children, onRemove }: { children: React.ReactNode; onRemove: () => void }) {
+function FilterChip({
+  children,
+  onRemove
+}: {
+  children: React.ReactNode
+  onRemove: () => void
+}): React.JSX.Element {
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-[#E8F0FE] px-2.5 py-1 text-xs text-[#0A84FF]">
       {children}

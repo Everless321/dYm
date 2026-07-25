@@ -25,7 +25,7 @@ export function FilterSection({
   /** 固定在列表下方的提示（如「还有 N 项未显示」） */
   footer?: ReactNode
   children: ReactNode
-}) {
+}): React.JSX.Element {
   const [open, setOpen] = useState(defaultOpen)
   return (
     <div className="border-b border-[#F0F0F2] last:border-b-0 py-3">
@@ -73,7 +73,7 @@ export function FilterRow({
   count?: number
   active: boolean
   onClick: () => void
-}) {
+}): React.JSX.Element {
   return (
     <button
       onClick={onClick}

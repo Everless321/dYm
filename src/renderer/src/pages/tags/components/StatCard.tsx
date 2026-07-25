@@ -11,7 +11,13 @@ interface StatCardProps {
 }
 
 /** 统一的统计卡片，替代此前在总览/标签库/重标弹窗中重复定义的多个版本 */
-export function StatCard({ label, value, color = ACCENT.neutral, onClick, active }: StatCardProps) {
+export function StatCard({
+  label,
+  value,
+  color = ACCENT.neutral,
+  onClick,
+  active
+}: StatCardProps): React.JSX.Element {
   const clickable = !!onClick
   return (
     <div

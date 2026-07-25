@@ -22,7 +22,12 @@ interface AddTagsDialogProps {
 const SUGGESTION_LIMIT = 24
 
 /** 批量给选中视频追加手动标签 */
-export function AddTagsDialog({ open, onOpenChange, postIds, onAdded }: AddTagsDialogProps) {
+export function AddTagsDialog({
+  open,
+  onOpenChange,
+  postIds,
+  onAdded
+}: AddTagsDialogProps): React.JSX.Element {
   const [picked, setPicked] = useState<string[]>([])
   const [input, setInput] = useState('')
   const [library, setLibrary] = useState<TagFrequencyItem[]>([])
@@ -41,14 +46,14 @@ export function AddTagsDialog({ open, onOpenChange, postIds, onAdded }: AddTagsD
     return pool.filter((t) => !picked.includes(t.tag)).slice(0, SUGGESTION_LIMIT)
   }, [library, input, picked])
 
-  const add = (tag: string) => {
+  const add = (tag: string): void => {
     const t = tag.trim()
     if (!t || picked.includes(t)) return
     setPicked((prev) => [...prev, t])
     setInput('')
   }
 
-  const submit = async () => {
+  const submit = async (): Promise<void> => {
     if (!picked.length) return
     setSaving(true)
     try {

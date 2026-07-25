@@ -33,7 +33,7 @@ const navItems = [
   { path: '/settings', label: '系统设置', icon: Settings }
 ]
 
-export function AppLayout() {
+export function AppLayout(): React.JSX.Element {
   const location = useLocation()
   const navigate = useNavigate()
   const [pendingLink, setPendingLink] = useState<string | null>(null)
@@ -70,7 +70,7 @@ export function AppLayout() {
   useEffect(() => {
     if (!pendingLink || isAdding) return
 
-    const addUser = async () => {
+    const addUser = async (): Promise<void> => {
       setIsAdding(true)
       try {
         const { user, isNewUser, postDownload } = await window.api.user.add(pendingLink)
@@ -109,7 +109,7 @@ export function AppLayout() {
     return unsubscribe
   }, [])
 
-  const isActive = (path: string) => {
+  const isActive = (path: string): boolean => {
     if (path === '/') return location.pathname === '/'
     return location.pathname.startsWith(path)
   }

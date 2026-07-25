@@ -2,7 +2,13 @@ import { ReactNode } from 'react'
 import { ChevronLeft } from 'lucide-react'
 
 /** 页头外壳：统一 h-16 白底分隔线，左右两个插槽 */
-export function PageHeader({ left, right }: { left: ReactNode; right?: ReactNode }) {
+export function PageHeader({
+  left,
+  right
+}: {
+  left: ReactNode
+  right?: ReactNode
+}): React.JSX.Element {
   return (
     <div className="h-16 flex items-center justify-between px-8 border-b border-[#E5E5E7] bg-white shrink-0">
       <div className="flex items-center gap-2 min-w-0">{left}</div>
@@ -17,7 +23,7 @@ export interface Crumb {
 }
 
 /** 面包屑：首项带返回箭头且可点，末项加粗不可点 */
-export function Crumbs({ items }: { items: Crumb[] }) {
+export function Crumbs({ items }: { items: Crumb[] }): React.JSX.Element {
   return (
     <div className="flex items-center gap-2 text-sm min-w-0">
       {items.map((c, i) => {
@@ -44,7 +50,13 @@ export function Crumbs({ items }: { items: Crumb[] }) {
 }
 
 /** 单独的返回链接（无面包屑链的页面用） */
-export function BackLink({ label, onClick }: { label: string; onClick: () => void }) {
+export function BackLink({
+  label,
+  onClick
+}: {
+  label: string
+  onClick: () => void
+}): React.JSX.Element {
   return (
     <button
       onClick={onClick}

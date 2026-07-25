@@ -10,7 +10,7 @@ interface VideoPlayerProps {
 }
 
 /** 西瓜播放器（xgplayer，字节跳动开源）封装 */
-export function VideoPlayer({ url, poster, className }: VideoPlayerProps) {
+export function VideoPlayer({ url, poster, className }: VideoPlayerProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
