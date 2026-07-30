@@ -66,6 +66,7 @@ export default function HomePage() {
   const [authorSearch, setAuthorSearch] = useState('')
   const [sort, setSort] = useState<PostSortConfig>(() => getInitialSort('home_post_sort'))
   const sentinelRef = useRef<HTMLDivElement>(null)
+  const gridScrollRef = useRef<HTMLDivElement>(null)
   const authorDropdownRef = useRef<HTMLDivElement>(null)
   const authorSearchInputRef = useRef<HTMLInputElement>(null)
 
@@ -218,6 +219,14 @@ export default function HomePage() {
   }
 
   const isImagePost = (post: DbPost) => post.aweme_type === IMAGE_AWEME_TYPE
+
+  // 点击作者名 —— 直接筛选出该作者的全部作品
+  const viewAuthorPosts = (secUid: string): void => {
+    setViewerOpen(false)
+    setShowAuthorDropdown(false)
+    setSelectedSecUid(secUid)
+    gridScrollRef.current?.scrollTo({ top: 0 })
+  }
 
   const selectedAuthor = authors.find((a) => a.sec_uid === selectedSecUid)
 
@@ -506,7 +515,7 @@ export default function HomePage() {
       </div>
 
       {/* Main Content - Video Grid */}
-      <div className="flex-1 overflow-auto px-6 pb-8">
+      <div ref={gridScrollRef} className="flex-1 overflow-auto px-6 pb-8">
         <div className="mx-auto max-w-6xl">
           {loading ? (
             <div className="flex items-center justify-center py-20">
@@ -570,7 +579,16 @@ export default function HomePage() {
                           <p className="text-sm font-medium text-[#1D1D1F] line-clamp-2">
                             {post.desc || post.caption || '无标题'}
                           </p>
-                          <p className="text-xs text-[#6E6E73] mt-1">@{post.nickname}</p>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              viewAuthorPosts(post.sec_uid)
+                            }}
+                            title={`查看 @${post.nickname} 的全部作品`}
+                            className="block text-left text-xs text-[#6E6E73] mt-1 hover:text-[#0A84FF] hover:underline transition-colors"
+                          >
+                            @{post.nickname}
+                          </button>
                           {getMergedTags(post).length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-2">
                               {getMergedTags(post)
@@ -666,6 +684,7 @@ export default function HomePage() {
         onOpenChange={setViewerOpen}
         allPosts={posts}
         onSelectPost={setSelectedPost}
+        onAuthorClick={viewAuthorPosts}
       />
 
       <AddTagsDialog

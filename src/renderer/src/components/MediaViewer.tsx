@@ -19,6 +19,8 @@ interface MediaViewerProps {
   onOpenChange: (open: boolean) => void
   allPosts?: DbPost[]
   onSelectPost?: (post: DbPost) => void
+  /** 传入后作者名可点击，用于跳转查看该作者的全部作品 */
+  onAuthorClick?: (secUid: string) => void
 }
 
 const IMAGE_AUTO_INTERVAL = 3000
@@ -28,7 +30,8 @@ export function MediaViewer({
   open,
   onOpenChange,
   allPosts = [],
-  onSelectPost
+  onSelectPost,
+  onAuthorClick
 }: MediaViewerProps) {
   const [media, setMedia] = useState<MediaFiles | null>(null)
   const [loading, setLoading] = useState(false)
@@ -366,7 +369,17 @@ export function MediaViewer({
                 </span>
               </div>
               <div>
-                <p className="text-sm font-medium text-[#1D1D1F]">@{post?.nickname}</p>
+                {onAuthorClick && post ? (
+                  <button
+                    onClick={() => onAuthorClick(post.sec_uid)}
+                    title={`查看 @${post.nickname} 的全部作品`}
+                    className="text-sm font-medium text-[#1D1D1F] hover:text-[#0A84FF] hover:underline transition-colors"
+                  >
+                    @{post.nickname}
+                  </button>
+                ) : (
+                  <p className="text-sm font-medium text-[#1D1D1F]">@{post?.nickname}</p>
+                )}
                 <p className="text-xs text-[#A1A1A6]">粉丝 --</p>
               </div>
             </div>

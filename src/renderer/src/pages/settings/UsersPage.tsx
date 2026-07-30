@@ -37,6 +37,52 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { getAvatarUrl } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 
+// 同步计划常用预设，点一下直接填入，省得每次手写 cron
+const SYNC_CRON_PRESETS: { label: string; value: string }[] = [
+  { label: '每小时', value: '0 * * * *' },
+  { label: '每 3 小时', value: '0 */3 * * *' },
+  { label: '每 6 小时', value: '0 */6 * * *' },
+  { label: '每 12 小时', value: '0 */12 * * *' },
+  { label: '每天 8:00', value: '0 8 * * *' },
+  { label: '每天 12:00', value: '0 12 * * *' },
+  { label: '每天 0:00', value: '0 0 * * *' },
+  { label: '每周一 8:00', value: '0 8 * * 1' }
+]
+
+function CronPresetRow({
+  value,
+  disabled,
+  onPick
+}: {
+  value: string
+  disabled?: boolean
+  onPick: (cron: string) => void
+}): React.JSX.Element {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {SYNC_CRON_PRESETS.map((preset) => {
+        const active = value.trim() === preset.value
+        return (
+          <button
+            key={preset.value}
+            type="button"
+            disabled={disabled}
+            onClick={() => onPick(preset.value)}
+            title={preset.value}
+            className={`h-7 px-2.5 rounded-md border text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              active
+                ? 'border-[#0A84FF] bg-[#E8F0FE] text-[#0A84FF]'
+                : 'border-[#E5E5E7] bg-white text-[#6E6E73] hover:bg-[#F2F2F4]'
+            }`}
+          >
+            {preset.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 type SortOption = 'default' | 'undownloaded' | 'total'
 type ShowInHomeFilter = 'all' | 'yes' | 'no'
 type AutoSyncFilter = 'all' | 'yes' | 'no'
@@ -997,12 +1043,13 @@ export default function UsersPage() {
                     placeholder="0 8 * * *"
                     className={!cronValid ? 'border-red-500' : ''}
                   />
-                  <div className="text-xs text-muted-foreground space-y-1">
-                    <p>常用示例:</p>
-                    <p className="font-mono">0 8 * * * - 每天 8:00</p>
-                    <p className="font-mono">0 */6 * * * - 每 6 小时</p>
-                    <p className="font-mono">0 8 * * 1 - 每周一 8:00</p>
-                  </div>
+                  <CronPresetRow
+                    value={editForm.sync_cron}
+                    onPick={(cron) => {
+                      setEditForm((f) => ({ ...f, sync_cron: cron }))
+                      setCronValid(true)
+                    }}
+                  />
                   {!cronValid && <p className="text-xs text-red-500">Cron 表达式无效</p>}
                 </div>
               )}
@@ -1149,10 +1196,14 @@ export default function UsersPage() {
                   placeholder="0 8 * * *"
                   className={!batchCronValid ? 'border-red-500' : ''}
                 />
-                <div className="text-xs text-muted-foreground space-y-1">
-                  <p className="font-mono">0 8 * * * - 每天 8:00</p>
-                  <p className="font-mono">0 */6 * * * - 每 6 小时</p>
-                </div>
+                <CronPresetRow
+                  value={batchForm.sync_cron}
+                  disabled={!batchEnabled.sync_cron}
+                  onPick={(cron) => {
+                    setBatchForm((f) => ({ ...f, sync_cron: cron }))
+                    setBatchCronValid(true)
+                  }}
+                />
                 {!batchCronValid && <p className="text-xs text-red-500">Cron 表达式无效</p>}
               </div>
             )}
