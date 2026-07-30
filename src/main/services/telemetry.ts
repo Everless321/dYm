@@ -6,9 +6,18 @@ import { getSetting } from '../database'
  *
  * - Aptabase App Key 是客户端公开值（会打包进安装包），不是密钥，可直接写死。
  * - 注册 https://aptabase.com → 新建 App → 复制 App Key 后替换下面的 APP_KEY。
- * - 只上报匿名数据：应用版本、操作系统、语言，以及少量功能事件名。
+ * - 只上报匿名数据：应用版本、操作系统、语言，以及少量功能事件名/计数。
  *   绝不上报 Cookie、下载内容、抖音账号等任何个人或内容数据。
  * - SDK 不收集 IP、不设持久用户 ID，按天生成匿名 session。
+ *
+ * 下载相关事件（统一 download_finished，便于对 videos 求和 = 总下载量）：
+ * - kind: 'task' | 'sync' | 'single'
+ *     task   = 下载任务（手动开始 / 任务 cron）
+ *     sync   = 用户同步（手动 / 用户 auto_sync cron / 网页端触发）
+ *     single = 单作品/链接下载
+ * - source: 'manual' | 'schedule'
+ * - videos: 本轮实际新下作品数（跳过已下载的不计入）
+ * - status: 'completed' | 'cancelled' | 'failed'
  */
 const APP_KEY: string = 'A-US-1664205856'
 const APP_KEY_PLACEHOLDER = 'A-XX-XXXXXXXXXX'

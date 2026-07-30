@@ -10,6 +10,10 @@ import {
 } from '../database'
 import { convertFolderImagesToJpg } from './downloader'
 import { validateDownloadFolder, cleanupFailedDownload, expectsMusic } from './download-validator'
+import { track } from './telemetry'
+
+/** 同步触发来源：手动 / 定时调度 */
+export type SyncSource = 'manual' | 'schedule'
 
 export interface SyncProgress {
   userId: number
@@ -43,7 +47,11 @@ function getDownloadPath(): string {
   return join(app.getPath('userData'), 'Download', 'post')
 }
 
-export async function startUserSync(userId: number): Promise<void> {
+export async function startUserSync(
+  userId: number,
+  options: { source?: SyncSource } = {}
+): Promise<void> {
+  const source: SyncSource = options.source ?? 'manual'
   console.log(`[Syncer] Starting sync for user ID: ${userId}`)
 
   const user = getUserById(userId)
@@ -79,6 +87,7 @@ export async function startUserSync(userId: number): Promise<void> {
 
   let downloadedCount = 0
   let skippedCount = 0
+  let finishStatus: 'completed' | 'cancelled' | 'failed' = 'failed'
 
   try {
     console.log(`[Syncer] Sending initial progress for ${user.nickname}`)
@@ -167,6 +176,7 @@ export async function startUserSync(userId: number): Promise<void> {
     }
 
     if (syncState?.abort) {
+      finishStatus = 'cancelled'
       updateUserSyncStatus(userId, 'idle')
       sendProgress({
         userId,
@@ -187,6 +197,7 @@ export async function startUserSync(userId: number): Promise<void> {
 
     if (videosToDownload.length === 0) {
       console.log(`[Syncer] No new videos to download for ${user.nickname}`)
+      finishStatus = 'completed'
       const now = Math.floor(Date.now() / 1000)
       updateUserSyncStatus(userId, 'idle', now)
       sendProgress({
@@ -320,6 +331,7 @@ export async function startUserSync(userId: number): Promise<void> {
     }
 
     if (syncState?.abort) {
+      finishStatus = 'cancelled'
       updateUserSyncStatus(userId, 'idle')
       sendProgress({
         userId,
@@ -332,6 +344,7 @@ export async function startUserSync(userId: number): Promise<void> {
         message: '同步已取消'
       })
     } else {
+      finishStatus = 'completed'
       const now = Math.floor(Date.now() / 1000)
       updateUserSyncStatus(userId, 'idle', now)
       const skipMsg = skippedCount > 0 ? `，跳过 ${skippedCount} 个已下载` : ''
@@ -347,6 +360,7 @@ export async function startUserSync(userId: number): Promise<void> {
       })
     }
   } catch (error) {
+    finishStatus = 'failed'
     console.error(`[Syncer] Error syncing user ${user.nickname}:`, error)
     updateUserSyncStatus(userId, 'error')
     sendProgress({
@@ -361,6 +375,13 @@ export async function startUserSync(userId: number): Promise<void> {
     })
   } finally {
     runningSyncs.delete(userId)
+    // 与下载任务共用事件，便于 Aptabase 对 videos 求和得到「总下载量」
+    track('download_finished', {
+      kind: 'sync',
+      source,
+      videos: downloadedCount,
+      status: finishStatus
+    })
   }
 }
 

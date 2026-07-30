@@ -96,7 +96,7 @@ async function executeUserSync(user: DbUser): Promise<void> {
     targetName: user.nickname
   })
   try {
-    await startUserSync(user.id)
+    await startUserSync(user.id, { source: 'schedule' })
     sendSchedulerLog({
       level: 'info',
       message: '定时同步完成',
@@ -235,7 +235,7 @@ async function executeTaskDownload(task: DbTaskWithUsers): Promise<void> {
 
   sendSchedulerLog({ level: 'info', message: '开始定时下载', type: 'task', targetName: task.name })
   try {
-    await startDownloadTask(task.id)
+    await startDownloadTask(task.id, { source: 'schedule' })
     updateTaskLastSyncAt(task.id)
     sendSchedulerLog({
       level: 'info',

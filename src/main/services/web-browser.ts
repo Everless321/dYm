@@ -483,7 +483,7 @@ async function handleAuthorSync(request: IncomingMessage, response: ServerRespon
   }
 
   // 异步触发，不阻塞响应；同步进度可通过轮询 /api/author 查询
-  void startUserSync(user.id).catch((error) => {
+  void startUserSync(user.id, { source: 'manual' }).catch((error) => {
     console.error('[Web] Author sync failed:', error)
   })
   respondJson(response, 200, { started: true, syncing: true })

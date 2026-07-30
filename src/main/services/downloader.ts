@@ -18,6 +18,10 @@ import {
   type DbUser
 } from '../database'
 import { validateDownloadFolder, cleanupFailedDownload, expectsMusic } from './download-validator'
+import { track } from './telemetry'
+
+/** 下载任务触发来源：手动点开始 / 定时调度 */
+export type DownloadSource = 'manual' | 'schedule'
 
 // 并发控制函数
 async function runWithConcurrency<T>(
@@ -85,7 +89,11 @@ function formatFolderName(awemeId: string): string {
   return awemeId
 }
 
-export async function startDownloadTask(taskId: number): Promise<void> {
+export async function startDownloadTask(
+  taskId: number,
+  options: { source?: DownloadSource } = {}
+): Promise<void> {
+  const source: DownloadSource = options.source ?? 'manual'
   const task = getTaskById(taskId)
   if (!task) {
     throw new Error('任务不存在')
@@ -114,6 +122,8 @@ export async function startDownloadTask(taskId: number): Promise<void> {
   // 计算历史已下载数量（从用户的 downloaded_count 动态统计）
   const historicalDownloads = task.users.reduce((sum, u) => sum + (u.downloaded_count || 0), 0)
   let totalDownloaded = 0
+  // completed | cancelled | failed — 任务真正跑过之后上报一次
+  let finishStatus: 'completed' | 'cancelled' | 'failed' = 'failed'
 
   try {
     sendProgress({
@@ -153,6 +163,7 @@ export async function startDownloadTask(taskId: number): Promise<void> {
     // 检查是否被中止
     const taskState = runningTasks.get(taskId)
     if (taskState?.abort) {
+      finishStatus = 'cancelled'
       updateTask(taskId, { status: 'failed', downloaded_videos: totalDownloaded })
       sendProgress({
         taskId,
@@ -166,6 +177,7 @@ export async function startDownloadTask(taskId: number): Promise<void> {
         downloadedPosts: historicalDownloads + totalDownloaded
       })
     } else {
+      finishStatus = 'completed'
       updateTask(taskId, { status: 'completed', downloaded_videos: totalDownloaded })
       sendProgress({
         taskId,
@@ -180,6 +192,7 @@ export async function startDownloadTask(taskId: number): Promise<void> {
       })
     }
   } catch (error) {
+    finishStatus = 'failed'
     console.error('[Downloader] Task failed:', error)
     updateTask(taskId, { status: 'failed', downloaded_videos: totalDownloaded })
     sendProgress({
@@ -195,6 +208,13 @@ export async function startDownloadTask(taskId: number): Promise<void> {
     })
   } finally {
     runningTasks.delete(taskId)
+    // 匿名统计：一次任务结束 = 1 次运行；videos 为本轮实际新下数量
+    track('download_finished', {
+      kind: 'task',
+      source,
+      videos: totalDownloaded,
+      status: finishStatus
+    })
   }
 }
 
@@ -578,10 +598,22 @@ async function downloadSinglePostInner(
       music_path: folderPath
     })
 
+    track('download_finished', {
+      kind: 'single',
+      source: 'manual',
+      videos: 1,
+      status: 'completed'
+    })
     return { status: 'success', folderPath }
   } catch (error) {
     console.error(`[Downloader] downloadSinglePost failed for ${awemeId}:`, error)
     cleanupFailedDownload(folderPath)
+    track('download_finished', {
+      kind: 'single',
+      source: 'manual',
+      videos: 0,
+      status: 'failed'
+    })
     return { status: 'failed', error: (error as Error).message }
   }
 }

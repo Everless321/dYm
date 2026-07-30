@@ -848,14 +848,15 @@ app.whenReady().then(async () => {
 
   // Download IPC handlers
   ipcMain.handle('download:start', (_event, taskId: number) => {
-    track('download_started')
-    return startDownloadTask(taskId)
+    return startDownloadTask(taskId, { source: 'manual' })
   })
   ipcMain.handle('download:stop', (_event, taskId: number) => stopDownloadTask(taskId))
   ipcMain.handle('download:isRunning', (_event, taskId: number) => isTaskRunning(taskId))
 
   // Sync IPC handlers
-  ipcMain.handle('sync:start', (_event, userId: number) => startUserSync(userId))
+  ipcMain.handle('sync:start', (_event, userId: number) =>
+    startUserSync(userId, { source: 'manual' })
+  )
   ipcMain.handle('sync:stop', (_event, userId: number) => stopUserSync(userId))
   ipcMain.handle('sync:isRunning', (_event, userId: number) => isUserSyncing(userId))
   ipcMain.handle('sync:getAnySyncing', () => getAnyUserSyncing())
