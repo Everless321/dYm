@@ -8,6 +8,7 @@ import TaskDetailPage from '@/pages/settings/TaskDetailPage'
 import AnalysisPage from '@/pages/settings/AnalysisPage'
 import SystemPage from '@/pages/settings/SystemPage'
 import LogsPage from '@/pages/settings/LogsPage'
+import ScriptsPage from '@/pages/settings/ScriptsPage'
 import LiveRecordPage from '@/pages/settings/LiveRecordPage'
 import FilesPage from '@/pages/settings/FilesPage'
 import TagWorkbenchPage from '@/pages/tags/TagWorkbenchPage'
@@ -80,6 +81,10 @@ export const router = createHashRouter([
       {
         path: 'live',
         element: <LiveRecordPage />
+      },
+      {
+        path: 'scripts',
+        element: <ScriptsPage />
       }
     ]
   },

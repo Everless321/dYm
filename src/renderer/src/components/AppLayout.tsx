@@ -11,12 +11,14 @@ import {
   LayoutGrid,
   Tags,
   Radio,
+  Code2,
   PanelLeftClose,
   PanelLeftOpen
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { WelcomeDialog } from './WelcomeDialog'
+import { DEVELOPER_MODE_EVENT } from '@/lib/developer-mode'
 
 const COLLAPSE_KEY = 'sidebar_collapsed'
 
@@ -33,12 +35,16 @@ const navItems = [
   { path: '/settings', label: '系统设置', icon: Settings }
 ]
 
+/** 开发者模式下额外显示的菜单项 */
+const devNavItems = [{ path: '/scripts', label: '自定义脚本', icon: Code2 }]
+
 export function AppLayout(): React.JSX.Element {
   const location = useLocation()
   const navigate = useNavigate()
   const [pendingLink, setPendingLink] = useState<string | null>(null)
   const [isAdding, setIsAdding] = useState(false)
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1')
+  const [developerMode, setDeveloperMode] = useState(false)
 
   const toggleCollapsed = (): void => {
     setCollapsed((prev) => {
@@ -46,6 +52,27 @@ export function AppLayout(): React.JSX.Element {
       return !prev
     })
   }
+
+  // 开发者模式：初始读取 + 监听设置页的实时切换
+  useEffect(() => {
+    window.api.settings
+      .get('developer_mode')
+      .then((value) => setDeveloperMode(value === 'true'))
+      .catch(() => setDeveloperMode(false))
+
+    const handler = (event: Event): void => {
+      setDeveloperMode((event as CustomEvent<boolean>).detail)
+    }
+    window.addEventListener(DEVELOPER_MODE_EVENT, handler)
+    return () => window.removeEventListener(DEVELOPER_MODE_EVENT, handler)
+  }, [])
+
+  // 关闭开发者模式时，若正停留在开发者页面则退回首页
+  useEffect(() => {
+    if (!developerMode && devNavItems.some((item) => location.pathname.startsWith(item.path))) {
+      navigate('/', { replace: true })
+    }
+  }, [developerMode, location.pathname, navigate])
 
   // 监听剪贴板中的抖音链接
   useEffect(() => {
@@ -164,7 +191,7 @@ export function AppLayout(): React.JSX.Element {
               菜单
             </span>
           )}
-          {navItems.map((item) => {
+          {[...navItems, ...(developerMode ? devNavItems : [])].map((item) => {
             const Icon = item.icon
             const active = isActive(item.path)
             return (

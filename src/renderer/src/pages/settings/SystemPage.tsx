@@ -11,6 +11,7 @@ import {
   Database,
   X
 } from 'lucide-react'
+import { emitDeveloperModeChange } from '@/lib/developer-mode'
 
 export default function SystemPage() {
   // Cookie
@@ -57,6 +58,9 @@ export default function SystemPage() {
 
   // 隐私 / 匿名统计（默认开启）
   const [telemetryEnabled, setTelemetryEnabled] = useState(true)
+
+  // 开发者模式（默认关闭）
+  const [developerMode, setDeveloperMode] = useState(false)
 
   // 更新
   const [currentVersion, setCurrentVersion] = useState('')
@@ -112,12 +116,21 @@ export default function SystemPage() {
     setLiveOutputPath(settings.live_output_path || '')
     setLiveMaxDuration(settings.live_max_duration || '0')
     setTelemetryEnabled(settings.telemetry_enabled !== 'false')
+    setDeveloperMode(settings.developer_mode === 'true')
   }
 
   const handleToggleTelemetry = async () => {
     const next = !telemetryEnabled
     setTelemetryEnabled(next)
     await window.api.settings.set('telemetry_enabled', next ? 'true' : 'false')
+  }
+
+  const handleToggleDeveloperMode = async (): Promise<void> => {
+    const next = !developerMode
+    setDeveloperMode(next)
+    await window.api.settings.set('developer_mode', next ? 'true' : 'false')
+    emitDeveloperModeChange(next)
+    toast.success(next ? '开发者模式已开启' : '开发者模式已关闭')
   }
 
   // Cookie handlers
@@ -963,6 +976,28 @@ export default function SystemPage() {
                       <span
                         className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
                           telemetryEnabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-sm text-[#1D1D1F]">开发者模式</p>
+                      <p className="text-xs text-[#A1A1A6] mt-1">
+                        开启后侧边栏显示「自定义脚本」模块，用于编写脚本扩展应用能力
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleToggleDeveloperMode}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                        developerMode ? 'bg-[#0A84FF]' : 'bg-[#D1D1D6]'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                          developerMode ? 'translate-x-[22px]' : 'translate-x-0.5'
                         }`}
                       />
                     </button>

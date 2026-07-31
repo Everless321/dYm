@@ -320,6 +320,26 @@ const dashboardAPI = {
     ipcRenderer.invoke('dashboard:getContentLevelDistribution')
 }
 
+const scriptsAPI = {
+  list: (): Promise<ScriptDescriptor[]> => ipcRenderer.invoke('scripts:list'),
+  run: (id: string): Promise<ScriptRunResult> => ipcRenderer.invoke('scripts:run', id),
+  running: (): Promise<string[]> => ipcRenderer.invoke('scripts:running'),
+  getLogs: (id: string): Promise<ScriptLogEntry[]> => ipcRenderer.invoke('scripts:getLogs', id),
+  clearLogs: (id: string): Promise<void> => ipcRenderer.invoke('scripts:clearLogs', id),
+  getDir: (): Promise<string> => ipcRenderer.invoke('scripts:getDir'),
+  openDir: (): Promise<void> => ipcRenderer.invoke('scripts:openDir'),
+  onLog: (callback: (entry: ScriptLogEntry) => void): (() => void) => {
+    const listener = (_event: unknown, entry: ScriptLogEntry): void => callback(entry)
+    ipcRenderer.on('scripts:log', listener)
+    return () => ipcRenderer.removeListener('scripts:log', listener)
+  },
+  onRunningChange: (callback: (ids: string[]) => void): (() => void) => {
+    const listener = (_event: unknown, ids: string[]): void => callback(ids)
+    ipcRenderer.on('scripts:running', listener)
+    return () => ipcRenderer.removeListener('scripts:running', listener)
+  }
+}
+
 const api = {
   db: dbAPI,
   settings: settingsAPI,
@@ -342,7 +362,8 @@ const api = {
   migration: migrationAPI,
   clipboard: clipboardAPI,
   files: filesAPI,
-  dashboard: dashboardAPI
+  dashboard: dashboardAPI,
+  scripts: scriptsAPI
 }
 
 if (process.contextIsolated) {

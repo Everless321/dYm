@@ -148,6 +148,13 @@ import {
   type TagPostFilters
 } from './database'
 import { findCoverFile, findMediaFiles, fromUrlPath, getDownloadPath } from './services/media'
+import { ensureScriptsDir, listScripts } from './services/scripts/loader'
+import {
+  clearScriptLogs,
+  getRunningScripts,
+  getScriptLogs,
+  runScript
+} from './services/scripts/runner'
 import { refreshUserProfile, getBatchRefreshDelay, sleep } from './services/user-refresh'
 import {
   getWebServerInfo,
@@ -923,6 +930,17 @@ app.whenReady().then(async () => {
   // 收藏同步：保存设置后重建定时任务 / 立即手动触发一次
   ipcMain.handle('collect:reschedule', () => scheduleCollectSync())
   ipcMain.handle('collect:syncNow', () => executeCollectSync())
+
+  // 自定义脚本（开发者模式）
+  ipcMain.handle('scripts:list', () => listScripts())
+  ipcMain.handle('scripts:run', (_event, id: string) => runScript(id))
+  ipcMain.handle('scripts:running', () => getRunningScripts())
+  ipcMain.handle('scripts:getLogs', (_event, id: string) => getScriptLogs(id))
+  ipcMain.handle('scripts:clearLogs', (_event, id: string) => clearScriptLogs(id))
+  ipcMain.handle('scripts:getDir', () => ensureScriptsDir())
+  ipcMain.handle('scripts:openDir', () => {
+    shell.openPath(ensureScriptsDir())
+  })
 
   // Grok API verification
   ipcMain.handle('grok:verify', async (_event, apiKey: string, apiUrl: string, model: string) => {

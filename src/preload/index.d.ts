@@ -233,6 +233,44 @@ declare global {
     syncNow: () => Promise<void>
   }
 
+  interface ScriptDescriptor {
+    id: string
+    source: 'builtin' | 'external'
+    name: string
+    description: string
+    filePath: string | null
+    error: string | null
+  }
+
+  interface ScriptLogEntry {
+    scriptId: string
+    runId: string
+    seq: number
+    level: 'info' | 'error'
+    message: string
+    time: number
+  }
+
+  interface ScriptRunResult {
+    runId: string
+    ok: boolean
+    result?: unknown
+    error?: string
+    durationMs: number
+  }
+
+  interface ScriptsAPI {
+    list: () => Promise<ScriptDescriptor[]>
+    run: (id: string) => Promise<ScriptRunResult>
+    running: () => Promise<string[]>
+    getLogs: (id: string) => Promise<ScriptLogEntry[]>
+    clearLogs: (id: string) => Promise<void>
+    getDir: () => Promise<string>
+    openDir: () => Promise<void>
+    onLog: (callback: (entry: ScriptLogEntry) => void) => () => void
+    onRunningChange: (callback: (ids: string[]) => void) => () => void
+  }
+
   interface LiveProgress {
     userId: number
     recordId: number | null
@@ -672,6 +710,7 @@ declare global {
     clipboard: ClipboardAPI
     files: FilesAPI
     dashboard: DashboardAPI
+    scripts: ScriptsAPI
   }
 
   interface Window {
