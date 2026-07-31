@@ -36,6 +36,14 @@ import { startDownloadTask } from '../downloader'
 import { startAnalysis, reanalyzePosts } from '../analyzer'
 import type { Row, ScriptApi } from './types'
 
+/** 脚本被用户停止或超时中断时抛出的错误 */
+export class ScriptCancelledError extends Error {
+  constructor(message = '脚本已停止') {
+    super(message)
+    this.name = 'ScriptCancelledError'
+  }
+}
+
 /** 允许脚本读写的根目录：下载目录与用户数据目录 */
 function allowedRoots(): string[] {
   return [resolve(getDownloadPath()), resolve(app.getPath('userData'))]
@@ -73,12 +81,36 @@ function formatLogArgs(args: unknown[]): string {
  * @param emit 日志回调，由 runner 接上 IPC 推送
  */
 export function createScriptApi(
-  emit: (level: 'info' | 'error', message: string) => void
+  emit: (level: 'info' | 'error', message: string) => void,
+  signal: AbortSignal
 ): ScriptApi {
+  const throwIfCancelled = (): void => {
+    if (signal.aborted) throw new ScriptCancelledError()
+  }
+
   return {
     log: (...args: unknown[]) => emit('info', formatLogArgs(args)),
 
-    sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+    get cancelled() {
+      return signal.aborted
+    },
+
+    throwIfCancelled,
+
+    // 等待期间响应停止，否则长延迟的脚本要等满整个间隔才停得下来
+    sleep: (ms: number) =>
+      new Promise<void>((resolve, reject) => {
+        if (signal.aborted) return reject(new ScriptCancelledError())
+        const onAbort = (): void => {
+          clearTimeout(timer)
+          reject(new ScriptCancelledError())
+        }
+        const timer = setTimeout(() => {
+          signal.removeEventListener('abort', onAbort)
+          resolve()
+        }, ms)
+        signal.addEventListener('abort', onAbort, { once: true })
+      }),
 
     db: {
       query: <T = Row>(sql: string, params: unknown[] = []): T[] => {

@@ -323,6 +323,7 @@ const dashboardAPI = {
 const scriptsAPI = {
   list: (): Promise<ScriptDescriptor[]> => ipcRenderer.invoke('scripts:list'),
   run: (id: string): Promise<ScriptRunResult> => ipcRenderer.invoke('scripts:run', id),
+  stop: (id: string): Promise<boolean> => ipcRenderer.invoke('scripts:stop', id),
   running: (): Promise<string[]> => ipcRenderer.invoke('scripts:running'),
   getLogs: (id: string): Promise<ScriptLogEntry[]> => ipcRenderer.invoke('scripts:getLogs', id),
   clearLogs: (id: string): Promise<void> => ipcRenderer.invoke('scripts:clearLogs', id),

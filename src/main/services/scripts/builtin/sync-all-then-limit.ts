@@ -48,6 +48,9 @@ const script: ScriptModule = {
     const failed: { nickname: string; error: string }[] = []
 
     for (const [index, user] of users.entries()) {
+      // 点「停止」后不再开始下一个用户；等待中的延迟由 api.sleep 立即中断
+      api.throwIfCancelled()
+
       const position = `[${index + 1}/${users.length}]`
       api.log(`${position} 开始同步 ${user.nickname}（当前上限 ${user.max_download_count}）…`)
 
@@ -57,6 +60,8 @@ const script: ScriptModule = {
         succeeded.push(user.nickname)
         api.log(`${position} ✔ ${user.nickname} 同步完成，下载上限已设为 ${MAX_DOWNLOAD_COUNT}`)
       } catch (error) {
+        // 停止不算同步失败：直接向上抛出终止整个脚本，不记进失败列表
+        if (api.cancelled) throw error
         const message = (error as Error).message || String(error)
         failed.push({ nickname: user.nickname, error: message })
         api.log(`${position} ✖ ${user.nickname} 同步失败：${message}（保持原上限不变）`)

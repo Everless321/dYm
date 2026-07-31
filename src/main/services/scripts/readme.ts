@@ -32,6 +32,37 @@ exports.run = async (api) => {
 
 \`await api.sleep(ms)\` 暂停指定毫秒数，用于给连续请求之间加间隔避免风控。
 
+## 停止脚本
+
+页面上的「停止」按钮是**协作式**的：JS 无法强行中断执行中的代码，只能在脚本
+交出控制权时中断。具体会在这些时机停下：
+
+- \`await api.sleep(...)\` 等待中 —— 立即中断
+- 下一次调用任意 \`api.*\` 方法时 —— 抛出中断错误
+
+所以长时间的**纯计算**循环（不调 api、不 await）停不下来，需要自己检查：
+
+\`\`\`js
+for (const item of hugeList) {
+  api.throwIfCancelled()   // 已请求停止则抛出，终止脚本
+  // 或者: if (api.cancelled) break
+  heavyComputation(item)
+}
+\`\`\`
+
+如果脚本用 try/catch 包了 api 调用，记得让中断穿过去，别当成业务失败：
+
+\`\`\`js
+try {
+  await api.actions.syncUser(id)
+} catch (e) {
+  if (api.cancelled) throw e   // 停止不算失败
+  api.log('同步失败：' + e.message)
+}
+\`\`\`
+
+脚本超时（\`meta.timeout\`）走同一套机制。
+
 ## api.db — 数据库
 
 \`\`\`js

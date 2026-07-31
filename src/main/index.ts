@@ -153,7 +153,8 @@ import {
   clearScriptLogs,
   getRunningScripts,
   getScriptLogs,
-  runScript
+  runScript,
+  stopScript
 } from './services/scripts/runner'
 import { refreshUserProfile, getBatchRefreshDelay, sleep } from './services/user-refresh'
 import {
@@ -934,6 +935,7 @@ app.whenReady().then(async () => {
   // 自定义脚本（开发者模式）
   ipcMain.handle('scripts:list', () => listScripts())
   ipcMain.handle('scripts:run', (_event, id: string) => runScript(id))
+  ipcMain.handle('scripts:stop', (_event, id: string) => stopScript(id))
   ipcMain.handle('scripts:running', () => getRunningScripts())
   ipcMain.handle('scripts:getLogs', (_event, id: string) => getScriptLogs(id))
   ipcMain.handle('scripts:clearLogs', (_event, id: string) => clearScriptLogs(id))

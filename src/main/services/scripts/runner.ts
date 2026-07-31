@@ -1,8 +1,8 @@
 import { BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
-import { createScriptApi } from './api'
+import { createScriptApi, ScriptCancelledError } from './api'
 import { loadScript } from './loader'
-import type { ScriptLogEntry, ScriptRunResult } from './types'
+import type { ScriptApi, ScriptLogEntry, ScriptRunResult } from './types'
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000
 
@@ -11,6 +11,29 @@ const LOG_BUFFER_SIZE = 1000
 
 /** 正在运行的脚本 id，用于阻止同一脚本并发执行 */
 const running = new Set<string>()
+
+/** 运行中脚本的中断控制器，「停止」按钮据此发起协作式取消 */
+const controllers = new Map<string, AbortController>()
+
+/**
+ * 包一层代理：任何 api 调用前先检查是否已被停止。
+ * JS 无法强行中断执行中的代码，只能在脚本主动交出控制权（调 api / await）时中断。
+ */
+function withCancelGuard<T extends object>(target: T, check: () => void): T {
+  return new Proxy(target, {
+    get(obj, prop, receiver) {
+      const value = Reflect.get(obj, prop, receiver)
+      if (typeof value === 'function') {
+        return (...args: unknown[]) => {
+          check()
+          return (value as (...a: unknown[]) => unknown).apply(obj, args)
+        }
+      }
+      if (value && typeof value === 'object') return withCancelGuard(value as object, check)
+      return value
+    }
+  })
+}
 
 /**
  * 按脚本缓存运行日志。
@@ -40,6 +63,17 @@ export function getScriptLogs(scriptId: string): ScriptLogEntry[] {
 /** 清空某个脚本的日志 */
 export function clearScriptLogs(scriptId: string): void {
   logBuffers.delete(scriptId)
+}
+
+/**
+ * 请求停止脚本。返回是否确实在运行。
+ * 脚本会在下一次调用 api 或从 sleep/await 恢复时中断。
+ */
+export function stopScript(id: string): boolean {
+  const controller = controllers.get(id)
+  if (!controller || controller.signal.aborted) return false
+  controller.abort()
+  return true
 }
 
 /** 广播当前运行中的脚本列表，让任意时刻挂载的页面都能拿到真实状态 */
@@ -83,37 +117,53 @@ export async function runScript(id: string): Promise<ScriptRunResult> {
     recordAndBroadcast({ scriptId: id, runId, seq: ++logSeq, level, message, time: Date.now() })
   }
 
+  const controller = new AbortController()
+  controllers.set(id, controller)
   running.add(id)
   broadcastRunning()
+
+  let timedOut = false
+
   try {
     const script = loadScript(id)
     const timeoutMs = script.meta.timeout ?? DEFAULT_TIMEOUT_MS
-    const api = createScriptApi(emit)
+    // 代理后每次 api 调用都会先检查中断标记
+    const api = withCancelGuard(createScriptApi(emit, controller.signal), () => {
+      if (controller.signal.aborted) throw new ScriptCancelledError()
+    }) as ScriptApi
 
     emit('info', `▶ 开始运行「${script.meta.name}」`)
 
-    let timer: NodeJS.Timeout | undefined
-    const timeout = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(
-        () => reject(new Error(`脚本执行超时（${Math.round(timeoutMs / 1000)} 秒）`)),
-        timeoutMs
-      )
-    })
+    // 超时同样走 abort，让脚本真正停下而不只是不再等待它
+    const timer = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, timeoutMs)
 
     try {
-      const result = await Promise.race([Promise.resolve(script.run(api)), timeout])
+      const result = await script.run(api)
       const durationMs = Date.now() - startedAt
       emit('info', `✔ 运行完成，耗时 ${durationMs} ms`)
       return { runId, ok: true, result: toSerializable(result), durationMs }
     } finally {
-      if (timer) clearTimeout(timer)
+      clearTimeout(timer)
     }
   } catch (error) {
     const durationMs = Date.now() - startedAt
+
+    if (error instanceof ScriptCancelledError || controller.signal.aborted) {
+      const reason = timedOut
+        ? `脚本执行超时，已中断（耗时 ${durationMs} ms）`
+        : `脚本已停止（耗时 ${durationMs} ms）`
+      emit('error', `■ ${reason}`)
+      return { runId, ok: false, error: reason, cancelled: true, durationMs }
+    }
+
     const message = (error as Error).message || String(error)
     emit('error', `✖ 运行失败：${message}`)
     return { runId, ok: false, error: message, durationMs }
   } finally {
+    controllers.delete(id)
     running.delete(id)
     broadcastRunning()
   }

@@ -52,6 +52,8 @@ export interface ScriptRunResult {
   /** run() 的返回值，JSON 可序列化时透传，否则为 undefined */
   result?: unknown
   error?: string
+  /** 是否因用户停止或超时而中断（区别于脚本自身报错） */
+  cancelled?: boolean
   durationMs: number
 }
 
@@ -74,8 +76,14 @@ export interface ScriptApi {
   /** 输出一行日志到运行面板 */
   log: (...args: unknown[]) => void
 
-  /** 暂停指定毫秒数，用于给请求之间加间隔 */
+  /** 暂停指定毫秒数，用于给请求之间加间隔；点「停止」会立即中断等待 */
   sleep: (ms: number) => Promise<void>
+
+  /** 是否已被请求停止。长时间的纯计算循环应主动检查此标记 */
+  readonly cancelled: boolean
+
+  /** 已被请求停止时抛出中断错误，用于在循环里主动让出 */
+  throwIfCancelled: () => void
 
   db: {
     /** 只读查询，仅允许 SELECT / WITH 开头的语句 */

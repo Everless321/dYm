@@ -9,6 +9,7 @@ import {
   FileCode,
   RefreshCw,
   AlertTriangle,
+  Square,
   Terminal,
   Trash2
 } from 'lucide-react'
@@ -38,6 +39,7 @@ export default function ScriptsPage(): React.JSX.Element {
   const [logs, setLogs] = useState<ScriptLogEntry[]>([])
   const [scriptsDir, setScriptsDir] = useState('')
   const [loading, setLoading] = useState(true)
+  const [stopping, setStopping] = useState(false)
   const logBoxRef = useRef<HTMLDivElement>(null)
 
   const loadScripts = useCallback(async (): Promise<void> => {
@@ -121,11 +123,23 @@ export default function ScriptsPage(): React.JSX.Element {
       const result = await window.api.scripts.run(selected.id)
       if (result.ok) {
         toast.success(`「${selected.name}」运行完成（${result.durationMs} ms）`)
+      } else if (result.cancelled) {
+        toast.info(`「${selected.name}」${result.error}`)
       } else {
         toast.error(`「${selected.name}」运行失败: ${result.error}`)
       }
     } catch (error) {
       toast.error(`运行失败: ${(error as Error).message}`)
+    }
+  }
+
+  const handleStop = async (): Promise<void> => {
+    if (!selected) return
+    setStopping(true)
+    try {
+      await window.api.scripts.stop(selected.id)
+    } finally {
+      setStopping(false)
     }
   }
 
@@ -263,18 +277,29 @@ export default function ScriptsPage(): React.JSX.Element {
                         </p>
                       )}
                     </div>
-                    <button
-                      onClick={handleRun}
-                      disabled={isRunning || !!selected.error}
-                      className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors flex items-center gap-2 disabled:opacity-50 flex-shrink-0"
-                    >
-                      {isRunning ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
+                    {isRunning ? (
+                      <button
+                        onClick={handleStop}
+                        disabled={stopping}
+                        className="h-9 px-4 rounded-lg bg-[#FF3B30] text-sm text-white font-medium hover:bg-[#D70015] transition-colors flex items-center gap-2 disabled:opacity-50 flex-shrink-0"
+                      >
+                        {stopping ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Square className="h-4 w-4 fill-current" />
+                        )}
+                        {stopping ? '停止中' : '停止'}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleRun}
+                        disabled={!!selected.error}
+                        className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors flex items-center gap-2 disabled:opacity-50 flex-shrink-0"
+                      >
                         <Play className="h-4 w-4" />
-                      )}
-                      {isRunning ? '运行中' : '运行'}
-                    </button>
+                        运行
+                      </button>
+                    )}
                   </div>
 
                   {selected.error && (

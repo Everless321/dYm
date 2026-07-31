@@ -256,12 +256,14 @@ declare global {
     ok: boolean
     result?: unknown
     error?: string
+    cancelled?: boolean
     durationMs: number
   }
 
   interface ScriptsAPI {
     list: () => Promise<ScriptDescriptor[]>
     run: (id: string) => Promise<ScriptRunResult>
+    stop: (id: string) => Promise<boolean>
     running: () => Promise<string[]>
     getLogs: (id: string) => Promise<ScriptLogEntry[]>
     clearLogs: (id: string) => Promise<void>
