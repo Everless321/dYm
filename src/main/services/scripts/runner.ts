@@ -4,8 +4,6 @@ import { createScriptApi, ScriptCancelledError } from './api'
 import { loadScript } from './loader'
 import type { ScriptApi, ScriptLogEntry, ScriptRunResult } from './types'
 
-const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000
-
 /** 每个脚本保留的日志条数上限 */
 const LOG_BUFFER_SIZE = 1000
 
@@ -84,6 +82,18 @@ function broadcastRunning(): void {
   })
 }
 
+/** 把毫秒转成便于阅读的时长，长任务可能跑几十小时 */
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms} ms`
+  const totalSeconds = Math.floor(ms / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  if (hours > 0) return `${hours} 小时 ${minutes} 分 ${seconds} 秒`
+  if (minutes > 0) return `${minutes} 分 ${seconds} 秒`
+  return `${seconds} 秒`
+}
+
 /** run() 的返回值可能含不可序列化内容，IPC 前先过一遍 JSON */
 function toSerializable(value: unknown): unknown {
   if (value === undefined) return undefined
@@ -126,7 +136,6 @@ export async function runScript(id: string): Promise<ScriptRunResult> {
 
   try {
     const script = loadScript(id)
-    const timeoutMs = script.meta.timeout ?? DEFAULT_TIMEOUT_MS
     // 代理后每次 api 调用都会先检查中断标记
     const api = withCancelGuard(createScriptApi(emit, controller.signal), () => {
       if (controller.signal.aborted) throw new ScriptCancelledError()
@@ -134,27 +143,32 @@ export async function runScript(id: string): Promise<ScriptRunResult> {
 
     emit('info', `▶ 开始运行「${script.meta.name}」`)
 
-    // 超时同样走 abort，让脚本真正停下而不只是不再等待它
-    const timer = setTimeout(() => {
-      timedOut = true
-      controller.abort()
-    }, timeoutMs)
+    // 默认不限时长——长任务可以跑几十小时，需要保险的脚本自己在 meta 里设 timeout。
+    // 超时同样走 abort，让脚本真正停下而不只是不再等待它。
+    const timeoutMs = script.meta.timeout ?? 0
+    const timer =
+      timeoutMs > 0
+        ? setTimeout(() => {
+            timedOut = true
+            controller.abort()
+          }, timeoutMs)
+        : undefined
 
     try {
       const result = await script.run(api)
       const durationMs = Date.now() - startedAt
-      emit('info', `✔ 运行完成，耗时 ${durationMs} ms`)
+      emit('info', `✔ 运行完成，耗时 ${formatDuration(durationMs)}`)
       return { runId, ok: true, result: toSerializable(result), durationMs }
     } finally {
-      clearTimeout(timer)
+      if (timer) clearTimeout(timer)
     }
   } catch (error) {
     const durationMs = Date.now() - startedAt
 
     if (error instanceof ScriptCancelledError || controller.signal.aborted) {
       const reason = timedOut
-        ? `脚本执行超时，已中断（耗时 ${durationMs} ms）`
-        : `脚本已停止（耗时 ${durationMs} ms）`
+        ? `脚本执行超时，已中断（耗时 ${formatDuration(durationMs)}）`
+        : `脚本已停止（耗时 ${formatDuration(durationMs)}）`
       emit('error', `■ ${reason}`)
       return { runId, ok: false, error: reason, cancelled: true, durationMs }
     }

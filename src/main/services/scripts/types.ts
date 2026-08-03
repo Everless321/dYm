@@ -11,7 +11,7 @@ export interface ScriptMeta {
   name: string
   /** 一句话说明脚本做什么 */
   description?: string
-  /** 执行超时（毫秒），默认 5 分钟 */
+  /** 执行超时（毫秒）。不填或填 0 表示不限时长，脚本可以跑几十小时 */
   timeout?: number
 }
 

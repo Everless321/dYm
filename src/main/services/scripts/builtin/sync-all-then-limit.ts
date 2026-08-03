@@ -15,9 +15,6 @@ const DELAY_MAX_MS = 60 * 1000
 /** 同步成功后写入的用户级下载上限 */
 const MAX_DOWNLOAD_COUNT = 10
 
-/** 整体超时：用户多时全流程会很长，给 6 小时 */
-const TIMEOUT_MS = 6 * 60 * 60 * 1000
-
 function randomDelay(): number {
   return DELAY_MIN_MS + Math.floor(Math.random() * (DELAY_MAX_MS - DELAY_MIN_MS + 1))
 }
@@ -25,8 +22,7 @@ function randomDelay(): number {
 const script: ScriptModule = {
   meta: {
     name: '依次同步全部用户并限流',
-    description: `按顺序同步每个用户，成功后把该用户下载上限设为 ${MAX_DOWNLOAD_COUNT}，用户之间随机延迟避免风控`,
-    timeout: TIMEOUT_MS
+    description: `按顺序同步每个用户，成功后把该用户下载上限设为 ${MAX_DOWNLOAD_COUNT}，用户之间随机延迟避免风控`
   },
 
   async run(api: ScriptApi) {
