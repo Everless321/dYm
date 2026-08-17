@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "dym-docs",
+  "compatibility_date": "2026-08-06",
+  "observability": { "enabled": true },
+
+  // 纯静态资源 Worker：没有 main，全部请求由 Asset Worker 处理。
+  // 产物由 `npm run docs:build` 生成，部署前记得先构建。
+  "assets": {
+    "directory": "./docs/.vitepress/dist",
+    // VitePress 会生成 404.html，未命中的路径交给它渲染
+    "not_found_handling": "404-page"
+  },
+
+  // 自定义域名，DNS 记录由 wrangler 自动创建并走 Cloudflare 代理
+  "routes": [
+    {
+      "pattern": "dym-doc.everless.app",
+      "custom_domain": true
+    }
+  ]
+}

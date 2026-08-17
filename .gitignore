@@ -15,6 +15,13 @@ out
 # Build info
 *.tsbuildinfo
 
+# VitePress
+docs/.vitepress/cache
+docs/.vitepress/dist
+
+# Wrangler
+.wrangler/
+
 # Downloaded data
 packages/server/data/
 
