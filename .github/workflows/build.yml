@@ -43,7 +43,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 22
+          # 24 起自带 npm 11，与本地开发环境一致。停在 22（npm 10）时，
+          # 任何人在本地用 npm 11 跑一次 npm i 重写 lock 都会让 npm ci 报不同步
+          node-version: 24
           cache: 'npm'
 
       - name: Cache Electron binaries
@@ -123,16 +125,31 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      # 不能用 merge-multiple：两个 mac 架构产出的 latest-mac.yml 同名，
+      # 平铺时会互相覆盖，导致一半 Mac 用户自动更新拿到错架构的包。
+      # 这里每个 artifact 落到各自子目录，再由脚本合并后汇总。
       - name: Download all artifacts
         uses: actions/download-artifact@v5
         with:
           path: artifacts
-          merge-multiple: true
+
+      - name: Merge mac update manifests
+        run: |
+          npm install --no-save --no-audit --no-fund js-yaml
+          node .github/scripts/merge-latest-mac.mjs artifacts release-files
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*
+          files: release-files/*
           draft: false
           generate_release_notes: true
         env:
