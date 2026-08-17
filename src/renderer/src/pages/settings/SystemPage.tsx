@@ -62,6 +62,9 @@ export default function SystemPage() {
   // 开发者模式（默认关闭）
   const [developerMode, setDeveloperMode] = useState(false)
 
+  // 允许脚本执行本地命令（默认关闭）
+  const [allowShell, setAllowShell] = useState(false)
+
   // 更新
   const [currentVersion, setCurrentVersion] = useState('')
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
@@ -117,6 +120,7 @@ export default function SystemPage() {
     setLiveMaxDuration(settings.live_max_duration || '0')
     setTelemetryEnabled(settings.telemetry_enabled !== 'false')
     setDeveloperMode(settings.developer_mode === 'true')
+    setAllowShell(settings.scripts_allow_shell === 'true')
   }
 
   const handleToggleTelemetry = async () => {
@@ -131,6 +135,13 @@ export default function SystemPage() {
     await window.api.settings.set('developer_mode', next ? 'true' : 'false')
     emitDeveloperModeChange(next)
     toast.success(next ? '开发者模式已开启' : '开发者模式已关闭')
+  }
+
+  const handleToggleAllowShell = async (): Promise<void> => {
+    const next = !allowShell
+    setAllowShell(next)
+    await window.api.settings.set('scripts_allow_shell', next ? 'true' : 'false')
+    toast.success(next ? '脚本已可执行本地命令' : '已禁止脚本执行本地命令')
   }
 
   // Cookie handlers
@@ -1002,6 +1013,34 @@ export default function SystemPage() {
                       />
                     </button>
                   </div>
+
+                  {/* 只在开发者模式下露出——没有脚本功能时这个开关没有意义 */}
+                  {developerMode && (
+                    <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-sm text-[#1D1D1F]">允许脚本执行本地命令</p>
+                        <p className="text-xs text-[#A1A1A6] mt-1">
+                          开启后脚本可通过 api.shell 调用 python、ffmpeg 等本地程序
+                        </p>
+                        <p className="text-xs text-[#FF9500] mt-1">
+                          脚本将能在这台电脑上执行任意命令，只在运行你信任的脚本时开启
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleToggleAllowShell}
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                          allowShell ? 'bg-[#FF9500]' : 'bg-[#D1D1D6]'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                            allowShell ? 'translate-x-[22px]' : 'translate-x-0.5'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 

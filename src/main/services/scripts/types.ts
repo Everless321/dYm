@@ -28,6 +28,8 @@ export interface ScriptDescriptor {
   source: 'builtin' | 'external'
   name: string
   description: string
+  /** 外部脚本的文件名（含 .js）；内置为 null。重命名/删除以此为准 */
+  fileName: string | null
   /** 外部脚本的文件绝对路径；内置为 null */
   filePath: string | null
   /** 加载失败时的原因，非空表示该脚本不可运行 */
@@ -71,6 +73,119 @@ export interface UserSettingsPatch {
   live_check_cron?: string
 }
 
+/** 当前 cookie 对应的登录账号 */
+export interface DouyinAccount {
+  /** 抖音 uid，未登录时为 null */
+  uid: string | null
+  /** 抖音号，未登录时为 null */
+  uniqueId: string | null
+  loggedIn: boolean
+}
+
+/** 一个收藏夹 */
+export interface DouyinCollect {
+  id: string
+  name: string
+  /** 收藏夹里的作品数 */
+  total: number
+}
+
+/** 作品列表里的一条摘要（收藏、收藏夹、作者作品列表共用） */
+export interface CollectedAweme {
+  awemeId: string
+  desc: string
+  /** 作者昵称 */
+  nickname: string
+  /** 作者 sec_uid */
+  secUid: string
+  /** 发布时间，Unix 秒；拿不到时为 0 */
+  createTime: number
+}
+
+/** 单个作品的详细信息 */
+export interface DouyinVideoInfo {
+  awemeId: string
+  desc: string
+  /** 发布时间，Unix 秒 */
+  createTime: number
+  /** 时长（毫秒），图文作品为 null */
+  duration: number | null
+  /** 0 = 视频，其它值为图文；拿不到时为 null */
+  awemeType: number | null
+  /** 封面图地址 */
+  cover: string | null
+  /** 视频播放地址（无水印），图文作品为 null */
+  videoUrl: string | null
+  /** 图文作品的图片地址，视频作品为 null */
+  images: string[] | null
+  author: {
+    secUid: string
+    nickname: string
+    uid: string | null
+    uniqueId: string | null
+  }
+  stats: {
+    digg: number | null
+    comment: number | null
+    collect: number | null
+    share: number | null
+  }
+  /** 话题标签名 */
+  hashtags: string[]
+}
+
+/** 作者资料 */
+export interface DouyinUserInfo {
+  secUid: string
+  uid: string | null
+  nickname: string
+  signature: string
+  /** 头像地址 */
+  avatar: string | null
+  /** 抖音号 */
+  uniqueId: string | null
+  shortId: string | null
+  followerCount: number | null
+  followingCount: number | null
+  /** 作品数 */
+  awemeCount: number | null
+  /** 获赞总数 */
+  totalFavorited: number | null
+}
+
+/** 执行本地命令的可选项 */
+export interface ShellOptions {
+  /** 工作目录，默认脚本目录 */
+  cwd?: string
+  /** 追加的环境变量，会与应用自身的环境合并 */
+  env?: Record<string, string>
+  /** 写给命令 stdin 的内容 */
+  input?: string
+  /** 超时毫秒数，不填或 0 表示不限时长 */
+  timeout?: number
+  /** 是否把 stdout / stderr 按行实时输出到运行面板，默认 false */
+  log?: boolean
+}
+
+/** 命令执行结果 */
+export interface ShellResult {
+  /** 退出码；被信号杀掉时为 null */
+  code: number | null
+  /** 退出码是否为 0 */
+  ok: boolean
+  stdout: string
+  stderr: string
+  /** 被信号终止时的信号名，正常退出为 null */
+  signal: NodeJS.Signals | null
+}
+
+/** 抖音链接的识别结果 */
+export interface DouyinLink {
+  type: 'user' | 'video' | 'unknown'
+  /** 用户链接为 sec_uid，作品链接为 aweme_id，识别失败为空串 */
+  id: string
+}
+
 /** 传给脚本的能力对象 */
 export interface ScriptApi {
   /** 输出一行日志到运行面板 */
@@ -92,6 +207,7 @@ export interface ScriptApi {
     exec: (sql: string, params?: unknown[]) => { changes: number; lastInsertRowid: number }
     users: {
       list: () => Row[]
+      getById: (id: number) => Row | undefined
       getBySecUid: (secUid: string) => Row | undefined
       /** 更新用户设置，只传需要改的字段 */
       updateSettings: (id: number, patch: UserSettingsPatch) => Row | undefined
@@ -99,6 +215,7 @@ export interface ScriptApi {
     }
     posts: {
       listByUserId: (userId: number) => Row[]
+      getById: (id: number) => Row | undefined
       getByAwemeId: (awemeId: string) => Row | undefined
       setTags: (id: number, input: { aiTags?: string[]; manualTags?: string[] }) => void
       delete: (id: number) => Row | undefined
@@ -119,6 +236,8 @@ export interface ScriptApi {
   actions: {
     /** 通过主页/作品链接添加用户（作品链接会按设置自动下载该作品） */
     addUser: (url: string) => Promise<unknown>
+    /** 添加单个作品：入库作者并按设置下载该作品。入参可以是作品链接或裸 aweme_id */
+    addVideo: (urlOrAwemeId: string) => Promise<unknown>
     /** 同步指定用户的作品列表 */
     syncUser: (userId: number) => Promise<void>
     /** 执行下载任务 */
@@ -134,6 +253,8 @@ export interface ScriptApi {
     downloadRoot: string
     /** 用户数据目录绝对路径（数据库、脚本目录所在处） */
     userDataRoot: string
+    /** 按当前系统的分隔符拼接路径 */
+    join: (...segments: string[]) => string
     exists: (path: string) => boolean
     /** 列出目录内容，返回名称与是否为目录 */
     list: (dir: string) => { name: string; path: string; isDirectory: boolean; size: number }[]
@@ -143,6 +264,45 @@ export interface ScriptApi {
     remove: (path: string) => void
     move: (from: string, to: string) => void
     mkdir: (path: string) => void
+  }
+
+  /**
+   * 抖音只读接口，走应用里配置的 cookie 与签名。
+   * 收藏相关接口没有用户参数，抖音按 cookie 判断「我」是谁，拿到的都是登录账号自己的数据。
+   */
+  douyin: {
+    /** 当前 cookie 对应的登录账号 */
+    me: () => Promise<DouyinAccount>
+    /** 查作品信息，入参可以是作品链接或裸 aweme_id */
+    video: (urlOrAwemeId: string) => Promise<DouyinVideoInfo>
+    /** 查作者资料，入参可以是主页链接或 sec_uid */
+    user: (urlOrSecUid: string) => Promise<DouyinUserInfo>
+    /** 拉作者的作品列表；不传 limit 会一直翻到最后一页 */
+    userVideos: (secUid: string, limit?: number) => Promise<CollectedAweme[]>
+    /** 识别抖音链接是主页还是作品，支持短链 */
+    parseUrl: (url: string) => Promise<DouyinLink>
+    /** 收藏夹列表 */
+    collects: () => Promise<DouyinCollect[]>
+    /** 指定收藏夹里的全部作品 */
+    collectsVideos: (collectsId: string) => Promise<CollectedAweme[]>
+    /** 「收藏」里的全部作品（含未归入收藏夹的） */
+    collectionVideos: () => Promise<CollectedAweme[]>
+  }
+
+  /**
+   * 执行本地命令。
+   *
+   * 需要在「设置 - 系统 - 允许脚本执行本地命令」里开启，默认关闭；
+   * 关闭时调用会直接抛错。这是唯一能跳出应用边界的接口，开启后脚本能做的事
+   * 与你在终端里能做的一样多。
+   */
+  shell: {
+    /** 直接执行程序，args 自动转义，不经过 shell */
+    run: (file: string, args?: string[], options?: ShellOptions) => Promise<ShellResult>
+    /** 经系统 shell 执行整条命令，可用管道和重定向 */
+    exec: (command: string, options?: ShellOptions) => Promise<ShellResult>
+    /** 当前是否已在设置里开启 */
+    readonly allowed: boolean
   }
 
   net: {

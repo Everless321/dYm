@@ -3,7 +3,10 @@
  */
 export const SCRIPTS_README = `# 自定义脚本
 
-把 \`.js\` 文件放进本目录，在应用「自定义脚本」页点「重新扫描」即可看到。
+脚本可以直接在应用「自定义脚本」页里写：点「新建脚本」建一个，在「代码」标签页编辑，
+⌘/Ctrl+S 保存，点「运行」会先保存再执行。内置脚本只读，可以「以此为模板新建」复制一份来改。
+
+也可以把 \`.js\` 文件放进本目录，回到应用点「重新扫描」即可看到。两种方式改的是同一批文件。
 
 ## 脚本结构
 
@@ -83,6 +86,7 @@ api.db.query(sql, params?)   // 只读查询，仅允许 SELECT / WITH
 api.db.exec(sql, params?)    // 写入，返回 { changes, lastInsertRowid }
 
 api.db.users.list()
+api.db.users.getById(id)
 api.db.users.getBySecUid(secUid)
 api.db.users.updateSettings(id, patch)  // patch 可含 max_download_count、auto_sync、
                                         // sync_cron、remark、show_in_home、
@@ -90,6 +94,7 @@ api.db.users.updateSettings(id, patch)  // patch 可含 max_download_count、aut
 api.db.users.delete(id)
 
 api.db.posts.listByUserId(userId)
+api.db.posts.getById(id)
 api.db.posts.getByAwemeId(awemeId)
 api.db.posts.setTags(id, { aiTags, manualTags })
 api.db.posts.delete(id)
@@ -104,7 +109,7 @@ api.db.settings.get(key)
 api.db.settings.set(key, value)
 \`\`\`
 
-主要表：\`users\`、\`posts\`、\`tasks\`、\`settings\`、\`live_records\`。
+主要表：\`users\`、\`posts\`、\`download_tasks\`、\`task_users\`、\`settings\`、\`live_records\`。
 \`posts\` 常用字段：\`id\`、\`aweme_id\`、\`user_id\`、\`sec_uid\`、\`nickname\`、\`desc\`、
 \`folder_name\`、\`video_path\`、\`cover_path\`、\`downloaded_at\`、\`analysis_tags\`、\`manual_tags\`。
 
@@ -112,11 +117,32 @@ api.db.settings.set(key, value)
 
 \`\`\`js
 await api.actions.addUser(url)            // 主页/作品链接添加用户
+await api.actions.addVideo(urlOrAwemeId)  // 添加单个作品，可直接传 aweme_id
 await api.actions.syncUser(userId)        // 同步作品列表
 await api.actions.runTask(taskId)         // 执行下载任务
 await api.actions.analyze(secUid?)        // 分析未分析作品
 await api.actions.reanalyzePosts(postIds) // 重新分析
 \`\`\`
+
+## api.douyin — 抖音只读接口
+
+走应用里配置的 cookie 与签名。收藏相关接口没有用户参数，抖音按 cookie 判断「我」是谁，
+拿到的都是当前登录账号自己的数据。翻页间隔内置 1.5 秒，点「停止」会立即中断。
+
+\`\`\`js
+await api.douyin.me()                     // { uid, uniqueId, loggedIn }
+await api.douyin.video(urlOrAwemeId)      // 作品详情
+await api.douyin.user(urlOrSecUid)        // 作者资料
+await api.douyin.userVideos(secUid, 50)   // 作者作品列表，第二个参数是条数上限（0=不限）
+await api.douyin.parseUrl(url)            // { type: 'user'|'video'|'unknown', id }
+await api.douyin.collects()               // 收藏夹列表 [{ id, name, total }]
+await api.douyin.collectsVideos(id)       // 某收藏夹的全部作品
+await api.douyin.collectionVideos()       // 「收藏」里的全部作品
+\`\`\`
+
+作品列表类接口返回 \`[{ awemeId, desc, nickname, secUid, createTime }]\`，
+\`createTime\` 是 Unix 秒。拿到 awemeId 后 \`await api.actions.addVideo(awemeId)\`
+即可入库并下载，可参考内置脚本「同步收藏夹作品并下载」。
 
 ## api.fs — 文件系统
 
@@ -125,6 +151,7 @@ await api.actions.reanalyzePosts(postIds) // 重新分析
 \`\`\`js
 api.fs.downloadRoot      // 下载根目录绝对路径
 api.fs.userDataRoot      // 用户数据目录绝对路径
+api.fs.join(...segments) // 按当前系统的分隔符拼路径
 api.fs.exists(path)
 api.fs.list(dir)         // [{ name, path, isDirectory, size }]
 api.fs.read(path)
@@ -133,6 +160,28 @@ api.fs.remove(path)      // 文件或整个目录
 api.fs.move(from, to)
 api.fs.mkdir(path)
 \`\`\`
+
+## api.shell — 执行本地命令
+
+**需要在「设置 - 系统 - 允许脚本执行本地命令」里开启，默认关闭。**
+开启后脚本能在这台电脑上执行任意命令，只在跑你信任的脚本时开。
+
+\`\`\`js
+api.shell.allowed                                  // 当前是否已开启
+
+// run：不经过 shell，参数自动转义，不用自己加引号
+await api.shell.run('python3', ['a.py', '--in', filePath])
+
+// exec：走系统 shell，可用管道和重定向
+await api.shell.exec('ffmpeg -i in.mp4 out.mp4')
+\`\`\`
+
+两者返回 \`{ ok, code, stdout, stderr, signal }\`，\`ok\` 即退出码为 0。
+可选项：\`{ cwd, env, input, timeout, log }\`——\`cwd\` 默认脚本目录，
+\`input\` 写入 stdin，\`log: true\` 把输出按行实时推到运行面板。
+
+点「停止」会连子进程一起杀掉。应用从图形界面启动时 PATH 很短，
+已自动补上 /opt/homebrew/bin、/usr/local/bin 等常见位置，仍找不到就写绝对路径。
 
 ## api.net — 网络请求
 

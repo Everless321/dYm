@@ -14,10 +14,12 @@ import { inspect } from 'util'
 import {
   getDatabase,
   getAllUsers,
+  getUserById,
   getUserBySecUid,
   updateUserSettings,
   deleteUser,
   getPostsByUserIdAll,
+  getPostById,
   getPostByAwemeId,
   setPostTags,
   deletePost,
@@ -34,6 +36,8 @@ import { addUserByUrl } from '../user-add'
 import { startUserSync } from '../syncer'
 import { startDownloadTask } from '../downloader'
 import { startAnalysis, reanalyzePosts } from '../analyzer'
+import { createDouyinApi } from './douyin-api'
+import { createShellApi } from './shell-api'
 import type { Row, ScriptApi } from './types'
 
 /** 脚本被用户停止或超时中断时抛出的错误 */
@@ -70,6 +74,28 @@ function assertReadOnly(sql: string): void {
   }
 }
 
+/** 等待期间响应停止，否则长延迟的脚本要等满整个间隔才停得下来 */
+function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) return reject(new ScriptCancelledError())
+    const onAbort = (): void => {
+      clearTimeout(timer)
+      reject(new ScriptCancelledError())
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+/** 裸 aweme_id 补成作品链接，链接原样返回——让脚本不用自己拼 URL */
+function toVideoUrl(urlOrAwemeId: string): string {
+  const input = urlOrAwemeId.trim()
+  return /^\d+$/.test(input) ? `https://www.douyin.com/video/${input}` : input
+}
+
 function formatLogArgs(args: unknown[]): string {
   return args
     .map((arg) => (typeof arg === 'string' ? arg : inspect(arg, { depth: 4, breakLength: 100 })))
@@ -97,20 +123,7 @@ export function createScriptApi(
 
     throwIfCancelled,
 
-    // 等待期间响应停止，否则长延迟的脚本要等满整个间隔才停得下来
-    sleep: (ms: number) =>
-      new Promise<void>((resolve, reject) => {
-        if (signal.aborted) return reject(new ScriptCancelledError())
-        const onAbort = (): void => {
-          clearTimeout(timer)
-          reject(new ScriptCancelledError())
-        }
-        const timer = setTimeout(() => {
-          signal.removeEventListener('abort', onAbort)
-          resolve()
-        }, ms)
-        signal.addEventListener('abort', onAbort, { once: true })
-      }),
+    sleep: (ms: number) => abortableSleep(ms, signal),
 
     db: {
       query: <T = Row>(sql: string, params: unknown[] = []): T[] => {
@@ -127,12 +140,14 @@ export function createScriptApi(
       },
       users: {
         list: () => getAllUsers() as unknown as Row[],
+        getById: (id: number) => getUserById(id) as unknown as Row | undefined,
         getBySecUid: (secUid: string) => getUserBySecUid(secUid) as unknown as Row | undefined,
         updateSettings: (id, patch) => updateUserSettings(id, patch) as unknown as Row | undefined,
         delete: (id: number) => deleteUser(id)
       },
       posts: {
         listByUserId: (userId: number) => getPostsByUserIdAll(userId) as unknown as Row[],
+        getById: (id: number) => getPostById(id) as unknown as Row | undefined,
         getByAwemeId: (awemeId: string) => getPostByAwemeId(awemeId) as unknown as Row | undefined,
         setTags: (id, input) => setPostTags(id, input),
         delete: (id: number) => deletePost(id) as unknown as Row | undefined
@@ -152,6 +167,7 @@ export function createScriptApi(
 
     actions: {
       addUser: (url: string) => addUserByUrl(url),
+      addVideo: (urlOrAwemeId: string) => addUserByUrl(toVideoUrl(urlOrAwemeId)),
       syncUser: (userId: number) => startUserSync(userId, { source: 'manual' }),
       runTask: (taskId: number) => startDownloadTask(taskId, { source: 'manual' }),
       analyze: (secUid?: string) => startAnalysis(secUid),
@@ -161,6 +177,7 @@ export function createScriptApi(
     fs: {
       downloadRoot: getDownloadPath(),
       userDataRoot: app.getPath('userData'),
+      join: (...segments: string[]) => join(...segments),
       exists: (path: string) => existsSync(assertAllowedPath(path)),
       list: (dir: string) => {
         const root = assertAllowedPath(dir)
@@ -185,6 +202,10 @@ export function createScriptApi(
         mkdirSync(assertAllowedPath(path), { recursive: true })
       }
     },
+
+    douyin: createDouyinApi((ms) => abortableSleep(ms, signal), throwIfCancelled),
+
+    shell: createShellApi(emit, signal),
 
     net: {
       fetch: async (url, init) => {
