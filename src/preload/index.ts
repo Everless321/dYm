@@ -329,6 +329,15 @@ const scriptsAPI = {
   clearLogs: (id: string): Promise<void> => ipcRenderer.invoke('scripts:clearLogs', id),
   getDir: (): Promise<string> => ipcRenderer.invoke('scripts:getDir'),
   openDir: (): Promise<void> => ipcRenderer.invoke('scripts:openDir'),
+  read: (id: string): Promise<string> => ipcRenderer.invoke('scripts:read', id),
+  template: (name: string): Promise<string> => ipcRenderer.invoke('scripts:template', name),
+  create: (fileName: string, source: string): Promise<ScriptDescriptor> =>
+    ipcRenderer.invoke('scripts:create', fileName, source),
+  save: (fileName: string, source: string): Promise<ScriptDescriptor> =>
+    ipcRenderer.invoke('scripts:save', fileName, source),
+  rename: (from: string, to: string): Promise<ScriptDescriptor> =>
+    ipcRenderer.invoke('scripts:rename', from, to),
+  delete: (fileName: string): Promise<void> => ipcRenderer.invoke('scripts:delete', fileName),
   onLog: (callback: (entry: ScriptLogEntry) => void): (() => void) => {
     const listener = (_event: unknown, entry: ScriptLogEntry): void => callback(entry)
     ipcRenderer.on('scripts:log', listener)

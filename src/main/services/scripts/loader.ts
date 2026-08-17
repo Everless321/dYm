@@ -2,7 +2,7 @@ import { app } from 'electron'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import vm from 'vm'
-import { builtinScripts } from './builtin'
+import { builtinSources } from './builtin'
 import { SCRIPTS_README } from './readme'
 import type { ScriptDescriptor, ScriptModule } from './types'
 
@@ -22,9 +22,13 @@ export function ensureScriptsDir(): string {
   return dir
 }
 
-/** 把外部 .js 文件当作 CommonJS 模块在 vm 里求值，取出 meta / run */
-function loadExternalModule(filePath: string): ScriptModule {
-  const code = readFileSync(filePath, 'utf-8')
+/** 外部脚本文件的绝对路径 */
+export function getScriptPath(fileName: string): string {
+  return join(getScriptsDir(), fileName)
+}
+
+/** 把脚本源码当作 CommonJS 模块在 vm 里求值，取出 meta / run */
+export function evaluateScript(code: string, filename: string): ScriptModule {
   const moduleShim = { exports: {} as Record<string, unknown> }
   const sandbox = {
     module: moduleShim,
@@ -39,7 +43,7 @@ function loadExternalModule(filePath: string): ScriptModule {
     TextDecoder
   }
 
-  vm.runInNewContext(code, vm.createContext(sandbox), { filename: filePath, timeout: 5000 })
+  vm.runInNewContext(code, vm.createContext(sandbox), { filename, timeout: 5000 })
 
   const exported = (moduleShim.exports ?? {}) as Partial<ScriptModule>
   if (typeof exported.run !== 'function') {
@@ -51,63 +55,64 @@ function loadExternalModule(filePath: string): ScriptModule {
   return { meta: exported.meta, run: exported.run }
 }
 
-/** 加载单个脚本模块，id 为 list() 返回的 id */
-export function loadScript(id: string): ScriptModule {
+/** 取脚本源码。内置脚本读编译进包的字符串，外部脚本读磁盘文件 */
+export function getScriptSource(id: string): string {
   if (id.startsWith('builtin:')) {
     const key = id.slice('builtin:'.length)
-    const script = builtinScripts[key]
-    if (!script) throw new Error(`内置脚本不存在：${key}`)
-    return script
+    const source = builtinSources[key]
+    if (source === undefined) throw new Error(`内置脚本不存在：${key}`)
+    return source
   }
   if (id.startsWith('external:')) {
-    const fileName = id.slice('external:'.length)
-    const filePath = join(getScriptsDir(), fileName)
+    const filePath = getScriptPath(id.slice('external:'.length))
     if (!existsSync(filePath)) throw new Error(`脚本文件不存在：${filePath}`)
-    return loadExternalModule(filePath)
+    return readFileSync(filePath, 'utf-8')
   }
   throw new Error(`无法识别的脚本 id：${id}`)
 }
 
-/** 列出全部脚本；外部脚本加载失败时保留条目并附带错误原因 */
-export function listScripts(): ScriptDescriptor[] {
-  const builtin: ScriptDescriptor[] = Object.entries(builtinScripts).map(([key, script]) => ({
-    id: `builtin:${key}`,
-    source: 'builtin',
-    name: script.meta.name,
-    description: script.meta.description ?? '',
-    filePath: null,
-    error: null
-  }))
+/** 加载单个脚本模块，id 为 list() 返回的 id */
+export function loadScript(id: string): ScriptModule {
+  return evaluateScript(getScriptSource(id), id)
+}
 
-  const dir = ensureScriptsDir()
-  const files = readdirSync(dir, { withFileTypes: true })
+/** 生成一条列表条目，求值失败时保留条目并附带错误原因 */
+function describe(id: string, fileName: string | null): ScriptDescriptor {
+  const base = {
+    id,
+    source: (fileName === null ? 'builtin' : 'external') as ScriptDescriptor['source'],
+    fileName,
+    filePath: fileName === null ? null : getScriptPath(fileName)
+  }
+  try {
+    const { meta } = loadScript(id)
+    return { ...base, name: meta.name, description: meta.description ?? '', error: null }
+  } catch (error) {
+    return {
+      ...base,
+      name: fileName ?? id,
+      description: '',
+      error: (error as Error).message
+    }
+  }
+}
+
+/** 列出脚本目录里的 .js 文件名 */
+export function listScriptFiles(): string[] {
+  return readdirSync(ensureScriptsDir(), { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith('.js'))
     .map((entry) => entry.name)
     .sort()
+}
 
-  const external: ScriptDescriptor[] = files.map((fileName) => {
-    const filePath = join(dir, fileName)
-    try {
-      const { meta } = loadExternalModule(filePath)
-      return {
-        id: `external:${fileName}`,
-        source: 'external',
-        name: meta.name,
-        description: meta.description ?? '',
-        filePath,
-        error: null
-      }
-    } catch (error) {
-      return {
-        id: `external:${fileName}`,
-        source: 'external',
-        name: fileName,
-        description: '',
-        filePath,
-        error: (error as Error).message
-      }
-    }
-  })
+/** 单个外部脚本的列表条目，写入后回传给渲染层用 */
+export function describeExternal(fileName: string): ScriptDescriptor {
+  return describe(`external:${fileName}`, fileName)
+}
 
+/** 列出全部脚本；加载失败时保留条目并附带错误原因 */
+export function listScripts(): ScriptDescriptor[] {
+  const builtin = Object.keys(builtinSources).map((key) => describe(`builtin:${key}`, null))
+  const external = listScriptFiles().map(describeExternal)
   return [...builtin, ...external]
 }

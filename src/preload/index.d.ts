@@ -238,6 +238,7 @@ declare global {
     source: 'builtin' | 'external'
     name: string
     description: string
+    fileName: string | null
     filePath: string | null
     error: string | null
   }
@@ -269,6 +270,12 @@ declare global {
     clearLogs: (id: string) => Promise<void>
     getDir: () => Promise<string>
     openDir: () => Promise<void>
+    read: (id: string) => Promise<string>
+    template: (name: string) => Promise<string>
+    create: (fileName: string, source: string) => Promise<ScriptDescriptor>
+    save: (fileName: string, source: string) => Promise<ScriptDescriptor>
+    rename: (from: string, to: string) => Promise<ScriptDescriptor>
+    delete: (fileName: string) => Promise<void>
     onLog: (callback: (entry: ScriptLogEntry) => void) => () => void
     onRunningChange: (callback: (ids: string[]) => void) => () => void
   }

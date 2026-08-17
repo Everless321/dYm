@@ -148,7 +148,7 @@ import {
   type TagPostFilters
 } from './database'
 import { findCoverFile, findMediaFiles, fromUrlPath, getDownloadPath } from './services/media'
-import { ensureScriptsDir, listScripts } from './services/scripts/loader'
+import { ensureScriptsDir, getScriptSource, listScripts } from './services/scripts/loader'
 import {
   clearScriptLogs,
   getRunningScripts,
@@ -156,6 +156,13 @@ import {
   runScript,
   stopScript
 } from './services/scripts/runner'
+import {
+  buildScriptTemplate,
+  createScript,
+  deleteScript,
+  renameScript,
+  saveScript
+} from './services/scripts/store'
 import { refreshUserProfile, getBatchRefreshDelay, sleep } from './services/user-refresh'
 import {
   getWebServerInfo,
@@ -942,6 +949,20 @@ app.whenReady().then(async () => {
   ipcMain.handle('scripts:getDir', () => ensureScriptsDir())
   ipcMain.handle('scripts:openDir', () => {
     shell.openPath(ensureScriptsDir())
+  })
+
+  // 应用内编辑：读源码 / 新建 / 保存 / 重命名 / 删除
+  ipcMain.handle('scripts:read', (_event, id: string) => getScriptSource(id))
+  ipcMain.handle('scripts:template', (_event, name: string) => buildScriptTemplate(name))
+  ipcMain.handle('scripts:create', (_event, fileName: string, source: string) =>
+    createScript(fileName, source)
+  )
+  ipcMain.handle('scripts:save', (_event, fileName: string, source: string) =>
+    saveScript(fileName, source)
+  )
+  ipcMain.handle('scripts:rename', (_event, from: string, to: string) => renameScript(from, to))
+  ipcMain.handle('scripts:delete', (_event, fileName: string) => {
+    deleteScript(fileName)
   })
 
   // Grok API verification
