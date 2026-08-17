@@ -29,6 +29,11 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  # 显式带上 ${arch}：默认模板对 x64 会省略架构，产出 dYm-x.y.z-mac.zip，
+  # 从 Release 页面手动下载的人会以为那是通用包。arm64 的文件名不受影响，
+  # 仍是 dYm-x.y.z-arm64-mac.zip——electron-updater 靠 arm64 子串分流，
+  # 加上 x64 不含该子串，自动更新的判定不变。
+  artifactName: ${productName}-${version}-${arch}-mac.${ext}
   identity: null
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
