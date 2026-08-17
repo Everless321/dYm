@@ -103,6 +103,8 @@ jobs:
         if: matrix.platform == 'linux'
         run: npx electron-builder --linux --${{ matrix.arch }} --publish never
 
+      # 排除 builder-debug.yml：electron-builder 的调试转储，每个平台都会生成一份
+      # 同名文件。它会泄露构建路径与配置，对用户也没用，此前一直被误发到 Release 里。
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
         with:
@@ -115,6 +117,7 @@ jobs:
             dist/*.deb
             dist/*.yml
             dist/*.blockmap
+            !dist/builder-debug.yml
           if-no-files-found: ignore
 
   release:

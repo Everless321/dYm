@@ -35,19 +35,29 @@ mkdirSync(outputDir, { recursive: true })
 /** 各架构的 latest-mac.yml 路径 */
 const manifestPaths = subDirs.map((dir) => join(dir, MANIFEST)).filter(existsSync)
 
-// 先把除 latest-mac.yml 之外的所有产物平铺过去，同名文件视为异常
+// 先把除 latest-mac.yml 之外的所有产物平铺过去。
+// 重名一律视为异常：一次把全部冲突收集完再退出，避免「修一个跑一轮」。
 const seen = new Map()
+const collisions = []
 for (const dir of subDirs) {
   for (const name of readdirSync(dir)) {
     if (name === MANIFEST) continue
     if (seen.has(name)) {
-      console.error(`✖ 产物重名：${name}\n  来自 ${seen.get(name)} 与 ${dir}`)
-      console.error('  同名文件会互相覆盖，请在 electron-builder 的 artifactName 里加上 ${arch}')
-      process.exit(1)
+      collisions.push({ name, first: seen.get(name), second: dir })
+      continue
     }
     seen.set(name, dir)
     copyFileSync(join(dir, name), join(outputDir, name))
   }
+}
+
+if (collisions.length > 0) {
+  console.error(`✖ 发现 ${collisions.length} 个重名产物，同名文件会互相覆盖：`)
+  collisions.forEach(({ name, first, second }) => {
+    console.error(`  - ${name}\n      ${first}\n      ${second}`)
+  })
+  console.error('  发布用的产物请在 artifactName 里加上 ${arch}；非发布用的中间文件请别上传。')
+  process.exit(1)
 }
 console.log(`已汇总 ${seen.size} 个产物到 ${outputDir}`)
 
