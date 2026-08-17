@@ -15,6 +15,13 @@ jobs:
           - os: macos-latest
             arch: arm64
             platform: mac
+          # Intel Mac：macos-13 已于 2025-12 退役，现在的 Intel 标签是 macos-15-intel，
+          # GitHub 声明可用到 2027-08，之后 Actions 不再提供 x86_64 macOS 环境。
+          # 用原生 Intel runner 而不是在 arm64 上交叉编译，是因为 npmRebuild: false ——
+          # better-sqlite3 只由 npm ci 的 postinstall 按宿主架构编译一次。
+          - os: macos-15-intel
+            arch: x64
+            platform: mac
           - os: windows-latest
             arch: x64
             platform: win
