@@ -143,7 +143,9 @@ jobs:
 
       - name: Merge mac update manifests
         run: |
-          npm install --no-save --no-audit --no-fund js-yaml
+          # 钉死大版本：不钉的话会装到 js-yaml 5，与本地开发时解析到的
+          # 传递依赖 4.x 不是同一份，容易出现本地能跑、CI 挂掉
+          npm install --no-save --no-audit --no-fund js-yaml@4
           node .github/scripts/merge-latest-mac.mjs artifacts release-files
 
       - name: Create Release

@@ -14,7 +14,9 @@
  */
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import yaml from 'js-yaml'
+// 具名导入：js-yaml 4 是 CJS、5 是 ESM，只有具名形式在两者下都成立
+// （`import yaml from 'js-yaml'` 在 5 上会报 does not provide an export named 'default'）
+import { dump, load } from 'js-yaml'
 
 const [inputDir, outputDir] = process.argv.slice(2)
 if (!inputDir || !outputDir) {
@@ -54,7 +56,7 @@ if (manifestPaths.length === 0) {
   process.exit(0)
 }
 
-const docs = manifestPaths.map((path) => ({ path, doc: yaml.load(readFileSync(path, 'utf-8')) }))
+const docs = manifestPaths.map((path) => ({ path, doc: load(readFileSync(path, 'utf-8')) }))
 
 if (docs.length === 1) {
   copyFileSync(docs[0].path, join(outputDir, MANIFEST))
@@ -108,7 +110,7 @@ const merged = {
   ...(releaseDate ? { releaseDate } : {})
 }
 
-writeFileSync(join(outputDir, MANIFEST), yaml.dump(merged, { lineWidth: -1 }), 'utf-8')
+writeFileSync(join(outputDir, MANIFEST), dump(merged, { lineWidth: -1 }), 'utf-8')
 
 console.log(`已合并 ${docs.length} 份 ${MANIFEST}：`)
 files.forEach((file) => console.log(`  - ${file.url}`))
