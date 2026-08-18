@@ -27,10 +27,23 @@ version="${TAG#v}"
 release_url="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
 download_base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
 
-assets="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq '.assets[].name')"
+release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}")"
+assets="$(jq -r '.assets[].name' <<<"$release_json")"
 if [[ -z "$assets" ]]; then
   echo "✖ Release ${TAG} 没有任何资产，不发送通知"
   exit 1
+fi
+
+# 更新内容取自 Release 正文（由 release-notes.sh 从 tag 说明生成）。
+# Telegram 单条消息上限 4096 字符，给下载链接与标题留出余量后截断正文。
+NOTES_LIMIT=2600
+notes="$(jq -r '.body // ""' <<<"$release_json")"
+# 先转义 HTML 实体，再把 **粗体** 还原成 <b>，其余 Markdown 记号原样保留
+notes="$(printf '%s' "$notes" |
+  sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' |
+  perl -pe 's{\*\*(.+?)\*\*}{<b>$1</b>}g')"
+if [[ ${#notes} -gt $NOTES_LIMIT ]]; then
+  notes="${notes:0:$NOTES_LIMIT}…"
 fi
 
 # 按后缀挑出各平台的主安装包；.blockmap 与 .yml 是给自动更新用的，不放进消息
@@ -58,10 +71,13 @@ if [[ ${#lines[@]} -eq 0 ]]; then
 fi
 
 text="🚀 <b>dYm ${version}</b> 已发布
-
+${notes:+
+$notes
+}
+📦 下载
 $(printf '%s\n' "${lines[@]}")
 
-完整更新说明：${release_url}"
+完整说明：${release_url}"
 
 # 用 jq 组装 JSON，避免版本号或文件名里的特殊字符破坏转义
 payload="$(jq -n \

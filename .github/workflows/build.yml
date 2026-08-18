@@ -130,11 +130,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # 需要完整历史与 tag 对象才能读出 annotated tag 的说明正文
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
           node-version: 24
+
+      - name: Generate release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: bash .github/scripts/release-notes.sh "$TAG" | tee release-notes.md
 
       # 不能用 merge-multiple：两个 mac 架构产出的 latest-mac.yml 同名，
       # 平铺时会互相覆盖，导致一半 Mac 用户自动更新拿到错架构的包。
@@ -156,6 +164,9 @@ jobs:
         with:
           files: release-files/*
           draft: false
+          # 正文来自 tag 说明；generate_release_notes 仍开着，它会在正文之后
+          # 追加 Full Changelog 对比链接（本仓库无 PR，它只能生成这一行）
+          body_path: release-notes.md
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
