@@ -139,6 +139,14 @@ jobs:
         with:
           node-version: 24
 
+      # checkout 检出 tag 时建的是指向 commit 的轻量 ref，annotated tag 对象不会被带下来，
+      # 于是 release-notes.sh 判定「不是 tag 对象」并回退到提交消息 —— v2.7.0 就这么翻过车。
+      # 显式再取一次 tag 对象，把本地那个轻量 ref 覆盖掉。
+      - name: Fetch annotated tag object
+        env:
+          TAG: ${{ github.ref_name }}
+        run: git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+
       - name: Generate release notes
         env:
           TAG: ${{ github.ref_name }}
