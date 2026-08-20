@@ -222,6 +222,8 @@ const tagAPI = {
     pageSize?: number
   ): Promise<{ posts: DbPost[]; total: number }> =>
     ipcRenderer.invoke('tag:queryPosts', filters, page, pageSize),
+  queryPostIds: (filters?: TagPostFilters): Promise<number[]> =>
+    ipcRenderer.invoke('tag:queryPostIds', filters),
   addTags: (postIds: number[], tags: string[]): Promise<number> =>
     ipcRenderer.invoke('tag:addTags', postIds, tags),
   setPostTags: (

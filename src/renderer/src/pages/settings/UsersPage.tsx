@@ -593,7 +593,7 @@ export default function UsersPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-auto px-6 py-8">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-[1600px]">
           {/* User List Card */}
           <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm overflow-hidden">
             {/* List Header */}

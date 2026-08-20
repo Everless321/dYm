@@ -135,6 +135,7 @@ import {
   getTagsWithFrequency,
   getTagCategories,
   queryPostsForTags,
+  queryPostIdsForTags,
   getTagFilterFacets,
   addTagsToPosts,
   getPostById,
@@ -1015,6 +1016,9 @@ app.whenReady().then(async () => {
     'tag:queryPosts',
     (_event, filters?: TagPostFilters, page?: number, pageSize?: number) =>
       queryPostsForTags(filters, page, pageSize)
+  )
+  ipcMain.handle('tag:queryPostIds', (_event, filters?: TagPostFilters) =>
+    queryPostIdsForTags(filters)
   )
   ipcMain.handle('tag:addTags', (_event, postIds: number[], tags: string[]) =>
     addTagsToPosts(postIds, tags)

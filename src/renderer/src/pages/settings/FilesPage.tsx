@@ -496,7 +496,7 @@ export default function FilesPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-auto px-6 pb-8">
-        <div className="mx-auto max-w-6xl">
+        <div>
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0A84FF]" />
@@ -529,7 +529,7 @@ export default function FilesPage() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 pt-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-5 pt-4">
                 {posts.map((post) => (
                   <ContextMenu key={post.id}>
                     <ContextMenuTrigger asChild>

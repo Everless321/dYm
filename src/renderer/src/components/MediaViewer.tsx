@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
@@ -190,28 +190,48 @@ export function MediaViewer({
     }
   }, [open, isImages, hasMultipleImages, images.length, manualOverride])
 
-  const handlePrev = () => {
+  const handlePrev = useCallback(() => {
     setManualOverride(true)
     setCurrentIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1))
-  }
+  }, [images.length])
 
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     setManualOverride(true)
     setCurrentIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0))
-  }
+  }, [images.length])
 
   const handleSelectIndex = (idx: number) => {
     setManualOverride(true)
     setCurrentIndex(idx)
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (isImages && hasMultipleImages) {
-      if (e.key === 'ArrowLeft') handlePrev()
-      if (e.key === 'ArrowRight') handleNext()
+  /**
+   * Esc 关闭，←/→ 翻图集。
+   * 原先挂在弹层 div 的 React onKeyDown 上，但那个 div 从没获得过焦点，
+   * 这段一直没生效过，故改为 window 监听。
+   * 视频作品不在这里处理 ←/→ —— 那是播放器的快进快退。
+   */
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent): void => {
+      const el = e.target as HTMLElement | null
+      if (el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA' || el?.isContentEditable) return
+      if (e.key === 'Escape') {
+        onOpenChange(false)
+        return
+      }
+      if (!isImages || !hasMultipleImages) return
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        handlePrev()
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        handleNext()
+      }
     }
-    if (e.key === 'Escape') onOpenChange(false)
-  }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, isImages, hasMultipleImages, handlePrev, handleNext, onOpenChange])
 
   const handleDownload = async () => {
     if (!post) return
@@ -242,8 +262,6 @@ export function MediaViewer({
         className="flex bg-white rounded-2xl overflow-hidden shadow-xl border border-[#E5E5E7]"
         style={{ width: 780, height: 520 }}
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={handleKeyDown}
-        tabIndex={0}
       >
         {/* 左侧 - 视频/图片区域 */}
         <div className="relative bg-black flex items-center justify-center" style={{ width: 380 }}>

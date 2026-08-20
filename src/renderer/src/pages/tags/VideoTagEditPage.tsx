@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
@@ -17,10 +17,7 @@ import { Input } from '@/components/ui/input'
 import { MediaViewer } from '@/components/MediaViewer'
 import { parseTags } from '@/lib/utils'
 import { PageHeader, BackLink } from './components/PageHeader'
-import { parseTagFilters } from './filters'
-
-/** 上/下一条的可切换范围上限（一次拉够，避免翻页逻辑） */
-const SIBLING_LIMIT = 2000
+import { parseTagFilters, stripNavMarkers } from './filters'
 
 export default function VideoTagEditPage() {
   const { postId = '' } = useParams()
@@ -61,21 +58,24 @@ export default function VideoTagEditPage() {
     return unsub
   }, [load])
 
-  // 上/下一条沿工作台传来的筛选队列走；没带筛选时退化为「同用户全部视频」
+  // 上/下一条沿工作台传来的队列走：带 query 就用同一套筛选条件解析
+  //（无筛选时只有 FROM_LIST 标记，解析出来是默认值，即全库）。
+  // 完全不带 query 的入口（视频浏览右键进来）才退化为「同作者全部作品」。
   const search = searchParams.toString()
-  const backTo = `/tags${search ? `?${search}` : ''}`
-  const siblingFilters = useMemo<TagPostFilters | null>(() => {
-    if (search) return parseTagFilters(searchParams)
-    return post?.sec_uid ? { secUid: post.sec_uid } : null
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, post?.sec_uid])
+  const backSearch = stripNavMarkers(search)
+  const backTo = `/tags${backSearch ? `?${backSearch}` : ''}`
+  // secUid 只在没有 query 时才参与，否则换作者会让队列白重查一次
+  const queueSecUid = search ? null : (post?.sec_uid ?? null)
 
   useEffect(() => {
-    if (!siblingFilters) return
-    window.api.tag
-      .queryPosts(siblingFilters, 1, SIBLING_LIMIT)
-      .then((res) => setSiblings(res.posts.map((p) => p.id)))
-  }, [siblingFilters])
+    const filters: TagPostFilters | null = search
+      ? parseTagFilters(new URLSearchParams(search))
+      : queueSecUid
+        ? { secUid: queueSecUid }
+        : null
+    if (!filters) return
+    window.api.tag.queryPostIds(filters).then(setSiblings)
+  }, [search, queueSecUid])
 
   const idx = siblings.indexOf(id)
   const prevId = idx > 0 ? siblings[idx - 1] : null
@@ -85,17 +85,25 @@ export default function VideoTagEditPage() {
     [navigate, search]
   )
 
-  // 键盘 ←/→ 切换（输入框聚焦时不拦截）
+  /**
+   * ↑/↓ 恒为「切换作品」；←/→ 只在播放器关着时才切。
+   * 播放器打开时 ←/→ 属于当前这条内容自己 —— 图集翻页或视频快进快退，
+   * 页面不能再抢，否则会出现「快进着突然跳到下一个作品」。
+   */
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
-      if (e.key === 'ArrowLeft' && prevId) go(prevId)
-      else if (e.key === 'ArrowRight' && nextId) go(nextId)
+    const onKey = (e: KeyboardEvent): void => {
+      const el = e.target as HTMLElement | null
+      if (el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA' || el?.isContentEditable) return
+      const toPrev = e.key === 'ArrowUp' || (!viewerOpen && e.key === 'ArrowLeft')
+      const toNext = e.key === 'ArrowDown' || (!viewerOpen && e.key === 'ArrowRight')
+      if (!toPrev && !toNext) return
+      e.preventDefault() // ↑/↓ 默认会滚动页面
+      if (toPrev && prevId) go(prevId)
+      else if (toNext && nextId) go(nextId)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [prevId, nextId, go])
+  }, [prevId, nextId, go, viewerOpen])
 
   if (!post) {
     return <div className="p-10 text-sm text-[#A1A1A6]">加载中…</div>
@@ -152,7 +160,7 @@ export default function VideoTagEditPage() {
                 variant="outline"
                 disabled={!prevId}
                 onClick={() => prevId && go(prevId)}
-                title="上一条（←）"
+                title="上一条（↑ 或 ←）"
               >
                 <ChevronLeft className="h-4 w-4" />
                 上一条
@@ -162,7 +170,7 @@ export default function VideoTagEditPage() {
                 variant="outline"
                 disabled={!nextId}
                 onClick={() => nextId && go(nextId)}
-                title="下一条（→）"
+                title="下一条（↓ 或 →）"
               >
                 下一条
                 <ChevronRight className="h-4 w-4" />

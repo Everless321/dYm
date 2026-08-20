@@ -557,6 +557,8 @@ declare global {
       page?: number,
       pageSize?: number
     ) => Promise<{ posts: DbPost[]; total: number }>
+    /** 同筛选条件下的全部作品 id，顺序与 queryPosts 一致；详情页的上/下一条队列用 */
+    queryPostIds: (filters?: TagPostFilters) => Promise<number[]>
     addTags: (postIds: number[], tags: string[]) => Promise<number>
     setPostTags: (
       postId: number,

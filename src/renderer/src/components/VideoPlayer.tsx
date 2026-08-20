@@ -33,7 +33,11 @@ export function VideoPlayer({ url, poster, className }: VideoPlayerProps): React
       download: false,
       pip: true,
       rotate: true,
-      screenShot: false
+      screenShot: false,
+      // ↑/↓ 在本应用里是「切换作品」，不让播放器拿去调音量。
+      // 必须显式关掉：播放器挂在 root 上的监听器不看 noBodyTarget，
+      // 用户点过视频之后 ↑/↓ 会被它 stopPropagation 掉，页面就收不到了。
+      keyboard: { keyCodeMap: { up: { disable: true }, down: { disable: true } } }
     })
     return () => player.destroy()
   }, [url, poster])

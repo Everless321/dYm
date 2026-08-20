@@ -1,16 +1,22 @@
-import { ReactNode, useState } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { ReactNode } from 'react'
+import { ChevronDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /**
  * 筛选栏里的可折叠分组。activeCount > 0 时标题旁显示已选数量。
  * search 固定在顶部不随列表滚动；children 超过高度后独立滚动，
  * 避免上千项的分组把整个筛选栏撑开。
+ *
+ * 展开状态与排序都由外部持有（见 panel-prefs.ts）—— 本页会因为进详情页而卸载，
+ * 状态放在组件内部就会在返回时全部丢失。
  */
 export function FilterSection({
   title,
   activeCount = 0,
-  defaultOpen = true,
+  open,
+  onToggle,
+  onMoveUp,
+  onMoveDown,
   onClear,
   search,
   footer,
@@ -18,7 +24,11 @@ export function FilterSection({
 }: {
   title: string
   activeCount?: number
-  defaultOpen?: boolean
+  open: boolean
+  onToggle: () => void
+  /** 传入才显示对应按钮；已在首位/末位时由调用方传 undefined */
+  onMoveUp?: () => void
+  onMoveDown?: () => void
   onClear?: () => void
   /** 固定在列表上方的搜索框 */
   search?: ReactNode
@@ -26,30 +36,42 @@ export function FilterSection({
   footer?: ReactNode
   children: ReactNode
 }): React.JSX.Element {
-  const [open, setOpen] = useState(defaultOpen)
   return (
     <div className="border-b border-[#F0F0F2] last:border-b-0 py-3">
-      <div className="flex items-center justify-between gap-2 px-1">
+      <div className="group flex items-center justify-between gap-1 px-1">
         <button
-          onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-1.5 text-xs font-medium text-[#6E6E73] hover:text-[#1D1D1F]"
+          onClick={onToggle}
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-medium text-[#6E6E73] hover:text-[#1D1D1F]"
         >
-          <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', !open && '-rotate-90')} />
-          {title}
+          <ChevronDown
+            className={cn('h-3.5 w-3.5 shrink-0 transition-transform', !open && '-rotate-90')}
+          />
+          <span className="truncate">{title}</span>
           {activeCount > 0 && (
-            <span className="ml-0.5 rounded-full bg-[#0A84FF] px-1.5 text-[10px] font-semibold text-white tabular-nums">
+            <span className="ml-0.5 shrink-0 rounded-full bg-[#0A84FF] px-1.5 text-[10px] font-semibold text-white tabular-nums">
               {activeCount}
             </span>
           )}
         </button>
-        {activeCount > 0 && onClear && (
-          <button
-            onClick={onClear}
-            className="text-[10px] text-[#A1A1A6] hover:text-[#0A84FF] shrink-0"
-          >
-            清除
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-0.5">
+          {activeCount > 0 && onClear && (
+            <button
+              onClick={onClear}
+              className="text-[10px] text-[#A1A1A6] hover:text-[#0A84FF] shrink-0"
+            >
+              清除
+            </button>
+          )}
+          {/* 排序按钮平时隐去，避免六个分组各挂两个按钮把筛选栏塞满 */}
+          <div className="flex opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+            <MoveButton label="上移" onClick={onMoveUp} icon={<ArrowUp className="h-3 w-3" />} />
+            <MoveButton
+              label="下移"
+              onClick={onMoveDown}
+              icon={<ArrowDown className="h-3 w-3" />}
+            />
+          </div>
+        </div>
       </div>
       {open && (
         <div className="mt-2 space-y-1.5">
@@ -59,6 +81,28 @@ export function FilterSection({
         </div>
       )}
     </div>
+  )
+}
+
+function MoveButton({
+  label,
+  onClick,
+  icon
+}: {
+  label: string
+  onClick?: () => void
+  icon: ReactNode
+}): React.JSX.Element {
+  return (
+    <button
+      onClick={onClick}
+      disabled={!onClick}
+      title={label}
+      aria-label={label}
+      className="rounded p-0.5 text-[#A1A1A6] hover:bg-[#F5F5F7] hover:text-[#1D1D1F] disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[#A1A1A6]"
+    >
+      {icon}
+    </button>
   )
 }
 

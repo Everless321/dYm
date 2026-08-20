@@ -1217,12 +1217,15 @@ export function getAllPosts(
 
   if (filters?.keyword?.trim()) {
     // posts.nickname 存的是净化过的文件夹名（emoji/特殊字符被转义成下划线），
-    // 故按真实作者名搜索时还需匹配 users.nickname
+    // 故按真实作者名搜索时还需匹配 users.nickname。
+    // 标签是 JSON 数组字符串，直接对整串模糊匹配即可命中其中任一标签。
     conditions.push(
-      '(caption LIKE ? OR desc LIKE ? OR nickname LIKE ? OR sec_uid IN (SELECT sec_uid FROM users WHERE nickname LIKE ?))'
+      '(caption LIKE ? OR desc LIKE ? OR nickname LIKE ?' +
+        ' OR analysis_tags LIKE ? OR manual_tags LIKE ?' +
+        ' OR sec_uid IN (SELECT sec_uid FROM users WHERE nickname LIKE ?))'
     )
     const keyword = `%${filters.keyword.trim()}%`
-    params.push(keyword, keyword, keyword, keyword)
+    params.push(keyword, keyword, keyword, keyword, keyword, keyword)
   }
 
   const whereClause = `WHERE ${conditions.join(' AND ')}`
@@ -1831,9 +1834,9 @@ function buildTagWhere(
 
   // 关键词是自由文本，任何分面统计都应受它约束，故不参与 omit
   if (filters?.keyword?.trim()) {
-    conditions.push('(caption LIKE ? OR desc LIKE ?)')
+    conditions.push('(caption LIKE ? OR desc LIKE ? OR analysis_tags LIKE ? OR manual_tags LIKE ?)')
     const kw = `%${filters.keyword.trim()}%`
-    params.push(kw, kw)
+    params.push(kw, kw, kw, kw)
   }
 
   return {
@@ -1859,6 +1862,20 @@ export function queryPostsForTags(
     .prepare(`SELECT COUNT(*) as count FROM posts ${clause}`)
     .get(...params) as { count: number }
   return { posts, total: countRow.count }
+}
+
+/**
+ * 同筛选条件下的全部作品 id，顺序与 queryPostsForTags 一致。
+ * 详情页的上/下一条队列用它 —— 只取 id 是因为整行有 desc/summary 等长文本，
+ * 全库上万条时按行拉会有几 MB 走 IPC。
+ */
+export function queryPostIdsForTags(filters?: TagPostFilters): number[] {
+  const { clause, params } = buildTagWhere(filters)
+  const orderBy = TAG_SORT_SQL[filters?.sort || 'downloaded']
+  const rows = getDatabase()
+    .prepare(`SELECT id FROM posts ${clause} ORDER BY ${orderBy} NULLS LAST`)
+    .all(...params) as { id: number }[]
+  return rows.map((row) => row.id)
 }
 
 export interface TagFilterFacets {

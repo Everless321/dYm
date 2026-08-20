@@ -166,7 +166,7 @@ export default function LiveRecordPage() {
 
       {/* Content - Records Grid */}
       <div className="flex-1 overflow-auto px-6 pb-8 pt-6">
-        <div className="mx-auto max-w-6xl">
+        <div>
           {records.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <div className="rounded-full bg-[#F2F2F4] p-6 mb-4">
@@ -178,7 +178,7 @@ export default function LiveRecordPage() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-5">
               {records.map((rec) => {
                 const sc = STATUS_CONFIG[rec.status]
                 const isRecording = rec.status === 'recording'

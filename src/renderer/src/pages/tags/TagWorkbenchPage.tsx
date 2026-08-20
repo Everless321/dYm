@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Library, Search, CheckSquare, Trash2, RotateCw, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -13,7 +13,13 @@ import { FilterSection, FilterRow } from './components/FilterSection'
 import { VideoCard } from './components/VideoCard'
 import { UserProfileBar } from './components/UserProfileBar'
 import { ACCENT } from './components/tokens'
-import { parseTagFilters, countActiveFilters, readList } from './filters'
+import { parseTagFilters, countActiveFilters, readList, FROM_LIST } from './filters'
+import {
+  readPanelPrefs,
+  writePanelPrefs,
+  type FilterSectionId,
+  type PanelPrefs
+} from './panel-prefs'
 
 const PAGE_SIZE = 60
 const LEVEL_MIN = 1
@@ -83,6 +89,55 @@ export default function TagWorkbenchPage(): React.JSX.Element {
   // 结果区滚动容器；prevSearch 用于区分「换筛选条件」和「加载更多追加数据」
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevSearchRef = useRef('')
+
+  // 筛选栏的顺序/折叠属于个人偏好，存本地；本页会因为进详情页而卸载，放组件 state 留不住
+  const [panelPrefs, setPanelPrefs] = useState<PanelPrefs>(readPanelPrefs)
+
+  const updatePanelPrefs = useCallback((next: PanelPrefs) => {
+    setPanelPrefs(next)
+    writePanelPrefs(next)
+  }, [])
+
+  const toggleSection = useCallback(
+    (id: FilterSectionId) => {
+      const collapsed = panelPrefs.collapsed.includes(id)
+        ? panelPrefs.collapsed.filter((x) => x !== id)
+        : [...panelPrefs.collapsed, id]
+      updatePanelPrefs({ ...panelPrefs, collapsed })
+    },
+    [panelPrefs, updatePanelPrefs]
+  )
+
+  const moveSection = useCallback(
+    (id: FilterSectionId, delta: -1 | 1) => {
+      const from = panelPrefs.order.indexOf(id)
+      const to = from + delta
+      if (from < 0 || to < 0 || to >= panelPrefs.order.length) return
+      const order = [...panelPrefs.order]
+      order[from] = order[to]
+      order[to] = id
+      updatePanelPrefs({ ...panelPrefs, order })
+    },
+    [panelPrefs, updatePanelPrefs]
+  )
+
+  /** 每个分组都要的公共 props：展开状态 + 到顶/到底时禁用移动 */
+  const sectionProps = (
+    id: FilterSectionId
+  ): {
+    open: boolean
+    onToggle: () => void
+    onMoveUp?: () => void
+    onMoveDown?: () => void
+  } => {
+    const index = panelPrefs.order.indexOf(id)
+    return {
+      open: !panelPrefs.collapsed.includes(id),
+      onToggle: () => toggleSection(id),
+      onMoveUp: index > 0 ? () => moveSection(id, -1) : undefined,
+      onMoveDown: index < panelPrefs.order.length - 1 ? () => moveSection(id, 1) : undefined
+    }
+  }
 
   const [selectMode, setSelectMode] = useState(false)
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -242,7 +297,8 @@ export default function TagWorkbenchPage(): React.JSX.Element {
         pages: page,
         scrollTop: scrollRef.current?.scrollTop ?? 0
       })
-      navigate(`/tags/video/${postId}${search ? `?${search}` : ''}`)
+      // 无筛选时补 FROM_LIST，好让详情页知道队列该是整个列表而不是「同作者」
+      navigate(`/tags/video/${postId}?${search || FROM_LIST}`)
     },
     [search, page, navigate]
   )
@@ -459,183 +515,210 @@ export default function TagWorkbenchPage(): React.JSX.Element {
             </div>
 
             <div className="flex-1 overflow-y-auto px-3 pb-3">
-              <FilterSection title="标注状态" activeCount={status !== 'all' ? 1 : 0}>
-                {STATUS_OPTIONS.map((s) => (
-                  <FilterRow
-                    key={s.key}
-                    label={s.label}
-                    count={s.key === 'all' ? facets.total : facets.statusCounts[s.key]}
-                    active={status === s.key}
-                    onClick={() => patch({ status: s.key === 'all' ? undefined : s.key })}
-                  />
-                ))}
-              </FilterSection>
-
-              <FilterSection
-                title="用户"
-                activeCount={secUid ? 1 : 0}
-                onClear={() => patch({ user: undefined })}
-                search={
-                  <FilterSearch
-                    value={userSearch}
-                    onChange={setUserSearch}
-                    placeholder={`搜索用户（共 ${facets.users.length}）`}
-                  />
-                }
-                footer={
-                  <TruncatedHint shown={visibleUsers.items.length} matched={visibleUsers.matched} />
-                }
-              >
-                {visibleUsers.items.map((u) => (
-                  <FilterRow
-                    key={u.sec_uid}
-                    label={u.nickname || u.sec_uid}
-                    count={u.count}
-                    active={secUid === u.sec_uid}
-                    onClick={() => patch({ user: secUid === u.sec_uid ? undefined : u.sec_uid })}
-                  />
-                ))}
-                {visibleUsers.items.length === 0 && (
-                  <p className="px-2 py-1 text-xs text-[#C7C7CC]">没有匹配的用户</p>
-                )}
-              </FilterSection>
-
-              <FilterSection
-                title="标签"
-                activeCount={tags.length}
-                onClear={() => patch({ tags: undefined })}
-                search={
-                  <>
-                    {tags.length > 1 && (
-                      <div className="flex items-center rounded-lg bg-[#F2F2F4] p-0.5 mb-1.5">
-                        {(['any', 'all'] as const).map((m) => (
-                          <button
-                            key={m}
-                            onClick={() => patch({ tagMode: m === 'any' ? undefined : m })}
-                            className={cn(
-                              'flex-1 rounded-md py-1 text-[11px] font-medium transition-colors',
-                              tagMode === m
-                                ? 'bg-white text-[#1D1D1F] shadow-sm'
-                                : 'text-[#6E6E73] hover:text-[#1D1D1F]'
-                            )}
-                          >
-                            {m === 'any' ? '任一标签' : '同时满足'}
-                          </button>
-                        ))}
+              {(() => {
+                // 六个分组先各自建好，再按用户保存的顺序渲染
+                const nodes: Record<FilterSectionId, React.JSX.Element> = {
+                  status: (
+                    <FilterSection
+                      {...sectionProps('status')}
+                      title="标注状态"
+                      activeCount={status !== 'all' ? 1 : 0}
+                    >
+                      {STATUS_OPTIONS.map((s) => (
+                        <FilterRow
+                          key={s.key}
+                          label={s.label}
+                          count={s.key === 'all' ? facets.total : facets.statusCounts[s.key]}
+                          active={status === s.key}
+                          onClick={() => patch({ status: s.key === 'all' ? undefined : s.key })}
+                        />
+                      ))}
+                    </FilterSection>
+                  ),
+                  user: (
+                    <FilterSection
+                      {...sectionProps('user')}
+                      title="用户"
+                      activeCount={secUid ? 1 : 0}
+                      onClear={() => patch({ user: undefined })}
+                      search={
+                        <FilterSearch
+                          value={userSearch}
+                          onChange={setUserSearch}
+                          placeholder={`搜索用户（共 ${facets.users.length}）`}
+                        />
+                      }
+                      footer={
+                        <TruncatedHint
+                          shown={visibleUsers.items.length}
+                          matched={visibleUsers.matched}
+                        />
+                      }
+                    >
+                      {visibleUsers.items.map((u) => (
+                        <FilterRow
+                          key={u.sec_uid}
+                          label={u.nickname || u.sec_uid}
+                          count={u.count}
+                          active={secUid === u.sec_uid}
+                          onClick={() =>
+                            patch({ user: secUid === u.sec_uid ? undefined : u.sec_uid })
+                          }
+                        />
+                      ))}
+                      {visibleUsers.items.length === 0 && (
+                        <p className="px-2 py-1 text-xs text-[#C7C7CC]">没有匹配的用户</p>
+                      )}
+                    </FilterSection>
+                  ),
+                  tag: (
+                    <FilterSection
+                      {...sectionProps('tag')}
+                      title="标签"
+                      activeCount={tags.length}
+                      onClear={() => patch({ tags: undefined })}
+                      search={
+                        <>
+                          {tags.length > 1 && (
+                            <div className="flex items-center rounded-lg bg-[#F2F2F4] p-0.5 mb-1.5">
+                              {(['any', 'all'] as const).map((m) => (
+                                <button
+                                  key={m}
+                                  onClick={() => patch({ tagMode: m === 'any' ? undefined : m })}
+                                  className={cn(
+                                    'flex-1 rounded-md py-1 text-[11px] font-medium transition-colors',
+                                    tagMode === m
+                                      ? 'bg-white text-[#1D1D1F] shadow-sm'
+                                      : 'text-[#6E6E73] hover:text-[#1D1D1F]'
+                                  )}
+                                >
+                                  {m === 'any' ? '任一标签' : '同时满足'}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          <FilterSearch
+                            value={tagSearch}
+                            onChange={setTagSearch}
+                            placeholder={`搜索标签（共 ${facets.tags.length}）`}
+                          />
+                        </>
+                      }
+                      footer={
+                        <TruncatedHint
+                          shown={visibleTags.items.length}
+                          matched={visibleTags.matched}
+                        />
+                      }
+                    >
+                      {visibleTags.items.map((t) => (
+                        <FilterRow
+                          key={t.tag}
+                          label={t.tag}
+                          count={t.count}
+                          active={tags.includes(t.tag)}
+                          onClick={() => toggleInList('tags', t.tag)}
+                        />
+                      ))}
+                      {visibleTags.items.length === 0 && (
+                        <p className="px-2 py-1 text-xs text-[#C7C7CC]">
+                          {tagSearch.trim() ? '没有匹配的标签' : '当前条件下没有可用标签'}
+                        </p>
+                      )}
+                    </FilterSection>
+                  ),
+                  category: (
+                    <FilterSection
+                      {...sectionProps('category')}
+                      title="分类"
+                      activeCount={categories.length}
+                      onClear={() => patch({ cat: undefined })}
+                    >
+                      {facets.categories.map((c) => (
+                        <FilterRow
+                          key={c.category}
+                          label={c.category}
+                          count={c.count}
+                          active={categories.includes(c.category)}
+                          onClick={() => toggleInList('cat', c.category)}
+                        />
+                      ))}
+                      {facets.categories.length === 0 && (
+                        <p className="px-2 text-xs text-[#C7C7CC]">暂无分类</p>
+                      )}
+                    </FilterSection>
+                  ),
+                  scene: (
+                    <FilterSection
+                      {...sectionProps('scene')}
+                      title="场景"
+                      activeCount={scenes.length}
+                      onClear={() => patch({ scene: undefined })}
+                      search={
+                        facets.scenes.length > 8 ? (
+                          <FilterSearch
+                            value={sceneSearch}
+                            onChange={setSceneSearch}
+                            placeholder={`搜索场景（共 ${facets.scenes.length}）`}
+                          />
+                        ) : undefined
+                      }
+                      footer={
+                        <TruncatedHint
+                          shown={visibleScenes.items.length}
+                          matched={visibleScenes.matched}
+                        />
+                      }
+                    >
+                      {visibleScenes.items.map((s) => (
+                        <FilterRow
+                          key={s.scene}
+                          label={s.scene}
+                          count={s.count}
+                          active={scenes.includes(s.scene)}
+                          onClick={() => toggleInList('scene', s.scene)}
+                        />
+                      ))}
+                      {visibleScenes.items.length === 0 && (
+                        <p className="px-2 py-1 text-xs text-[#C7C7CC]">
+                          {sceneSearch.trim() ? '没有匹配的场景' : '暂无场景数据'}
+                        </p>
+                      )}
+                    </FilterSection>
+                  ),
+                  level: (
+                    <FilterSection
+                      {...sectionProps('level')}
+                      title="内容评级"
+                      activeCount={minLevel !== undefined || maxLevel !== undefined ? 1 : 0}
+                      onClear={() => patch({ minLevel: undefined, maxLevel: undefined })}
+                    >
+                      <div className="flex items-center gap-1.5 px-1">
+                        <Input
+                          type="number"
+                          min={LEVEL_MIN}
+                          max={LEVEL_MAX}
+                          value={minLevel ?? ''}
+                          onChange={(e) => patch({ minLevel: e.target.value })}
+                          placeholder={String(LEVEL_MIN)}
+                          className="h-7 text-xs"
+                        />
+                        <span className="text-xs text-[#A1A1A6]">—</span>
+                        <Input
+                          type="number"
+                          min={LEVEL_MIN}
+                          max={LEVEL_MAX}
+                          value={maxLevel ?? ''}
+                          onChange={(e) => patch({ maxLevel: e.target.value })}
+                          placeholder={String(LEVEL_MAX)}
+                          className="h-7 text-xs"
+                        />
                       </div>
-                    )}
-                    <FilterSearch
-                      value={tagSearch}
-                      onChange={setTagSearch}
-                      placeholder={`搜索标签（共 ${facets.tags.length}）`}
-                    />
-                  </>
+                    </FilterSection>
+                  )
                 }
-                footer={
-                  <TruncatedHint shown={visibleTags.items.length} matched={visibleTags.matched} />
-                }
-              >
-                {visibleTags.items.map((t) => (
-                  <FilterRow
-                    key={t.tag}
-                    label={t.tag}
-                    count={t.count}
-                    active={tags.includes(t.tag)}
-                    onClick={() => toggleInList('tags', t.tag)}
-                  />
-                ))}
-                {visibleTags.items.length === 0 && (
-                  <p className="px-2 py-1 text-xs text-[#C7C7CC]">
-                    {tagSearch.trim() ? '没有匹配的标签' : '当前条件下没有可用标签'}
-                  </p>
-                )}
-              </FilterSection>
-
-              <FilterSection
-                title="分类"
-                activeCount={categories.length}
-                defaultOpen={false}
-                onClear={() => patch({ cat: undefined })}
-              >
-                {facets.categories.map((c) => (
-                  <FilterRow
-                    key={c.category}
-                    label={c.category}
-                    count={c.count}
-                    active={categories.includes(c.category)}
-                    onClick={() => toggleInList('cat', c.category)}
-                  />
-                ))}
-                {facets.categories.length === 0 && (
-                  <p className="px-2 text-xs text-[#C7C7CC]">暂无分类</p>
-                )}
-              </FilterSection>
-
-              <FilterSection
-                title="场景"
-                activeCount={scenes.length}
-                defaultOpen={false}
-                onClear={() => patch({ scene: undefined })}
-                search={
-                  facets.scenes.length > 8 ? (
-                    <FilterSearch
-                      value={sceneSearch}
-                      onChange={setSceneSearch}
-                      placeholder={`搜索场景（共 ${facets.scenes.length}）`}
-                    />
-                  ) : undefined
-                }
-                footer={
-                  <TruncatedHint
-                    shown={visibleScenes.items.length}
-                    matched={visibleScenes.matched}
-                  />
-                }
-              >
-                {visibleScenes.items.map((s) => (
-                  <FilterRow
-                    key={s.scene}
-                    label={s.scene}
-                    count={s.count}
-                    active={scenes.includes(s.scene)}
-                    onClick={() => toggleInList('scene', s.scene)}
-                  />
-                ))}
-                {visibleScenes.items.length === 0 && (
-                  <p className="px-2 py-1 text-xs text-[#C7C7CC]">
-                    {sceneSearch.trim() ? '没有匹配的场景' : '暂无场景数据'}
-                  </p>
-                )}
-              </FilterSection>
-
-              <FilterSection
-                title="内容评级"
-                activeCount={minLevel !== undefined || maxLevel !== undefined ? 1 : 0}
-                defaultOpen={false}
-                onClear={() => patch({ minLevel: undefined, maxLevel: undefined })}
-              >
-                <div className="flex items-center gap-1.5 px-1">
-                  <Input
-                    type="number"
-                    min={LEVEL_MIN}
-                    max={LEVEL_MAX}
-                    value={minLevel ?? ''}
-                    onChange={(e) => patch({ minLevel: e.target.value })}
-                    placeholder={String(LEVEL_MIN)}
-                    className="h-7 text-xs"
-                  />
-                  <span className="text-xs text-[#A1A1A6]">—</span>
-                  <Input
-                    type="number"
-                    min={LEVEL_MIN}
-                    max={LEVEL_MAX}
-                    value={maxLevel ?? ''}
-                    onChange={(e) => patch({ maxLevel: e.target.value })}
-                    placeholder={String(LEVEL_MAX)}
-                    className="h-7 text-xs"
-                  />
-                </div>
-              </FilterSection>
+                return panelPrefs.order.map((id) => <Fragment key={id}>{nodes[id]}</Fragment>)
+              })()}
             </div>
           </aside>
 
@@ -669,7 +752,7 @@ export default function TagWorkbenchPage(): React.JSX.Element {
                   <Input
                     value={searchDraft}
                     onChange={(e) => setSearchDraft(e.target.value)}
-                    placeholder="搜索标题 / 描述"
+                    placeholder="搜索标题 / 描述 / 标签"
                     className="pl-9 h-8"
                   />
                 </div>
@@ -698,7 +781,7 @@ export default function TagWorkbenchPage(): React.JSX.Element {
             )}
 
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-5">
-              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-5">
                 {posts.map((p) => (
                   <VideoCard
                     key={p.id}

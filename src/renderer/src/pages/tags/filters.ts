@@ -1,5 +1,22 @@
 /** 标签工作台的筛选条件全部存在 URL query 里，此处是唯一的读写约定。 */
 
+/**
+ * 「从工作台列表进来的」标记。无筛选条件时 query 是空串，
+ * 光看 query 分不出「没有筛选」和「不是从列表进来的」，
+ * 于是补一个占位参数。parseTagFilters 不认识它，不影响筛选结果。
+ */
+export const FROM_LIST = 'from=list'
+
+/**
+ * 去掉只用于导航的标记，得到可以写回工作台 URL 的 query。
+ * 工作台的列表位置缓存以 query 为 key，标记漏回去就会认不出原来的位置。
+ */
+export function stripNavMarkers(search: string): string {
+  const params = new URLSearchParams(search)
+  params.delete('from')
+  return params.toString()
+}
+
 /** URL 里的逗号分隔多值参数 */
 export function readList(params: URLSearchParams, key: string): string[] {
   const raw = params.get(key)

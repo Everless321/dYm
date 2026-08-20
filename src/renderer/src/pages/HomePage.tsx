@@ -262,7 +262,7 @@ export default function HomePage() {
               type="text"
               value={searchKeyword}
               onChange={(e) => setSearchKeyword(e.target.value)}
-              placeholder="搜索视频..."
+              placeholder="搜索标题 / 作者 / 标签"
               className="h-10 w-[280px] pl-10 pr-4 rounded-lg border border-[#E5E5E7] bg-white text-sm placeholder:text-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-[#0A84FF]/20 focus:border-[#0A84FF]"
             />
           </div>
@@ -516,7 +516,7 @@ export default function HomePage() {
 
       {/* Main Content - Video Grid */}
       <div ref={gridScrollRef} className="flex-1 overflow-auto px-6 pb-8">
-        <div className="mx-auto max-w-6xl">
+        <div>
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0A84FF]" />
@@ -531,8 +531,8 @@ export default function HomePage() {
             </div>
           ) : (
             <>
-              {/* 4-Column Masonry Grid */}
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+              {/* 自适应列数网格：卡片最窄 220px，宽屏自动加列 */}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-5">
                 {posts.map((post) => (
                   <ContextMenu key={post.id}>
                     <ContextMenuTrigger asChild>
