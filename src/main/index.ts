@@ -110,7 +110,10 @@ import {
   getSchedulerLogs,
   clearSchedulerLogs,
   scheduleCollectSync,
-  executeCollectSync
+  executeCollectSync,
+  rescheduleScript,
+  unscheduleScript,
+  getScriptNextRun
 } from './services/scheduler'
 import {
   checkAndRecordUser,
@@ -145,6 +148,10 @@ import {
   mergeTags,
   deleteTags,
   addCustomTag,
+  getScriptSchedules,
+  setScriptSchedule,
+  deleteScriptSchedule,
+  renameScriptSchedule,
   type ClearTagScope,
   type TagPostFilters
 } from './database'
@@ -961,10 +968,52 @@ app.whenReady().then(async () => {
   ipcMain.handle('scripts:save', (_event, fileName: string, source: string) =>
     saveScript(fileName, source)
   )
-  ipcMain.handle('scripts:rename', (_event, from: string, to: string) => renameScript(from, to))
+  ipcMain.handle('scripts:rename', (_event, from: string, to: string) => {
+    const descriptor = renameScript(from, to)
+    // 计划挂在脚本 id 上，改名后得跟着搬，否则会留下一条指向不存在脚本的计划
+    unscheduleScript(`external:${from}`)
+    renameScriptSchedule(`external:${from}`, descriptor.id)
+    rescheduleScript(descriptor.id)
+    return descriptor
+  })
   ipcMain.handle('scripts:delete', (_event, fileName: string) => {
     deleteScript(fileName)
+    unscheduleScript(`external:${fileName}`)
+    deleteScriptSchedule(`external:${fileName}`)
   })
+
+  // 脚本定时执行
+  ipcMain.handle('scripts:getSchedules', () =>
+    getScriptSchedules().map((row) => ({
+      scriptId: row.script_id,
+      cron: row.cron,
+      enabled: !!row.enabled,
+      nextRun: getScriptNextRun(row.script_id)
+    }))
+  )
+  ipcMain.handle(
+    'scripts:setSchedule',
+    (_event, scriptId: string, cron: string, enabled: boolean) => {
+      const expression = cron.trim()
+      // 关掉定时的时候允许留空表达式，开着就必须给出合法的 cron
+      if (enabled && !validateCronExpression(expression)) {
+        throw new Error(`Cron 表达式无效：${expression || '(空)'}`)
+      }
+      if (!enabled && !expression) {
+        unscheduleScript(scriptId)
+        deleteScriptSchedule(scriptId)
+        return null
+      }
+      setScriptSchedule(scriptId, expression, enabled)
+      rescheduleScript(scriptId)
+      return {
+        scriptId,
+        cron: expression,
+        enabled,
+        nextRun: getScriptNextRun(scriptId)
+      }
+    }
+  )
 
   // Grok API verification
   ipcMain.handle('grok:verify', async (_event, apiKey: string, apiUrl: string, model: string) => {

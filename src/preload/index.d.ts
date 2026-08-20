@@ -261,6 +261,14 @@ declare global {
     durationMs: number
   }
 
+  interface ScriptScheduleInfo {
+    scriptId: string
+    cron: string
+    enabled: boolean
+    /** 下次执行时间戳；未启用或表达式无效时为 null */
+    nextRun: number | null
+  }
+
   interface ScriptsAPI {
     list: () => Promise<ScriptDescriptor[]>
     run: (id: string) => Promise<ScriptRunResult>
@@ -278,6 +286,12 @@ declare global {
     delete: (fileName: string) => Promise<void>
     onLog: (callback: (entry: ScriptLogEntry) => void) => () => void
     onRunningChange: (callback: (ids: string[]) => void) => () => void
+    getSchedules: () => Promise<ScriptScheduleInfo[]>
+    setSchedule: (
+      scriptId: string,
+      cron: string,
+      enabled: boolean
+    ) => Promise<ScriptScheduleInfo | null>
   }
 
   interface LiveProgress {

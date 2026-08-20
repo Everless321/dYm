@@ -340,6 +340,13 @@ const scriptsAPI = {
   rename: (from: string, to: string): Promise<ScriptDescriptor> =>
     ipcRenderer.invoke('scripts:rename', from, to),
   delete: (fileName: string): Promise<void> => ipcRenderer.invoke('scripts:delete', fileName),
+  getSchedules: (): Promise<ScriptScheduleInfo[]> => ipcRenderer.invoke('scripts:getSchedules'),
+  setSchedule: (
+    scriptId: string,
+    cron: string,
+    enabled: boolean
+  ): Promise<ScriptScheduleInfo | null> =>
+    ipcRenderer.invoke('scripts:setSchedule', scriptId, cron, enabled),
   onLog: (callback: (entry: ScriptLogEntry) => void): (() => void) => {
     const listener = (_event: unknown, entry: ScriptLogEntry): void => callback(entry)
     ipcRenderer.on('scripts:log', listener)

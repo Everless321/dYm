@@ -4,15 +4,20 @@ import {
   getAutoSyncUsers,
   getAutoSyncTasks,
   getLiveRecordUsers,
+  getScriptSchedules,
+  getScriptSchedule,
   updateTaskLastSyncAt,
   type DbUser,
-  type DbTaskWithUsers
+  type DbTaskWithUsers,
+  type DbScriptSchedule
 } from '../database'
 import { startUserSync, isUserSyncing } from './syncer'
 import { startDownloadTask, isTaskRunning } from './downloader'
 import { addUserByUrl } from './user-add'
 import { isCollectSyncEnabled, getCollectCron, pullCollectedItems } from './collect-sync'
 import { checkAndRecordUser, isRecordingLive } from './live-recorder'
+import { runScript, isScriptRunning } from './scripts/runner'
+import { listScripts } from './scripts/loader'
 
 export interface SchedulerLog {
   timestamp: number
@@ -384,6 +389,116 @@ export function unscheduleCollectSync(): void {
   }
 }
 
+// 脚本定时执行：计划存在 script_schedules 表，脚本文件本身不进库
+const scheduledScriptTasks: Map<string, CronScheduledTask> = new Map()
+
+/** 取脚本的展示名，脚本已被删除或加载失败时退回 id */
+function scriptDisplayName(scriptId: string): string {
+  return listScripts().find((item) => item.id === scriptId)?.name ?? scriptId
+}
+
+async function executeScriptRun(scriptId: string): Promise<void> {
+  const name = scriptDisplayName(scriptId)
+
+  // 手动运行与定时运行共用 runner 的运行集合，这里先挡一道以便记录「跳过」
+  if (isScriptRunning(scriptId)) {
+    sendSchedulerLog({
+      level: 'warn',
+      message: '脚本正在运行中，跳过本次定时执行',
+      type: 'system',
+      targetName: name
+    })
+    return
+  }
+
+  sendSchedulerLog({ level: 'info', message: '开始定时执行脚本', type: 'system', targetName: name })
+  try {
+    // runScript 自己把失败收敛进返回值，只有加载不出脚本这类问题才会抛
+    const result = await runScript(scriptId)
+    if (result.ok) {
+      sendSchedulerLog({
+        level: 'info',
+        message: '脚本执行完成',
+        type: 'system',
+        targetName: name
+      })
+    } else {
+      sendSchedulerLog({
+        level: result.cancelled ? 'warn' : 'error',
+        message: `脚本执行未成功: ${result.error ?? '未知原因'}`,
+        type: 'system',
+        targetName: name
+      })
+    }
+  } catch (error) {
+    sendSchedulerLog({
+      level: 'error',
+      message: `脚本执行失败: ${(error as Error).message}`,
+      type: 'system',
+      targetName: name
+    })
+  }
+}
+
+export function scheduleScript(schedule: DbScriptSchedule): void {
+  unscheduleScript(schedule.script_id)
+
+  if (!schedule.enabled || !schedule.cron) {
+    return
+  }
+
+  const name = scriptDisplayName(schedule.script_id)
+
+  if (!isValidCron(schedule.cron)) {
+    sendSchedulerLog({
+      level: 'error',
+      message: `脚本定时无效的 Cron 表达式: ${schedule.cron}`,
+      type: 'system',
+      targetName: name
+    })
+    return
+  }
+
+  const task = cron.schedule(schedule.cron, () => {
+    void executeScriptRun(schedule.script_id)
+  })
+
+  scheduledScriptTasks.set(schedule.script_id, task)
+  sendSchedulerLog({
+    level: 'info',
+    message: `已注册脚本定时执行 (${schedule.cron})`,
+    type: 'system',
+    targetName: name
+  })
+}
+
+export function unscheduleScript(scriptId: string): void {
+  const task = scheduledScriptTasks.get(scriptId)
+  if (task) {
+    task.stop()
+    scheduledScriptTasks.delete(scriptId)
+  }
+}
+
+/** 按数据库里的最新计划重建某个脚本的定时任务 */
+export function rescheduleScript(scriptId: string): void {
+  const schedule = getScriptSchedule(scriptId)
+  if (schedule) {
+    scheduleScript(schedule)
+  } else {
+    unscheduleScript(scriptId)
+  }
+}
+
+/**
+ * 下次执行时间，未注册定时任务时为 null。
+ * 直接问 node-cron，避免自己再实现一遍 cron 推算。
+ */
+export function getScriptNextRun(scriptId: string): number | null {
+  const next = scheduledScriptTasks.get(scriptId)?.getNextRun()
+  return next ? next.getTime() : null
+}
+
 export function initScheduler(): void {
   // Initialize user-level scheduling
   const users = getAutoSyncUsers()
@@ -410,6 +525,17 @@ export function initScheduler(): void {
   // Initialize collect (favorites) sync
   scheduleCollectSync()
 
+  // Initialize script scheduling
+  const scriptSchedules = getScriptSchedules().filter((item) => item.enabled && item.cron)
+  sendSchedulerLog({
+    level: 'info',
+    message: `初始化完成，${scriptSchedules.length} 个脚本定时执行`,
+    type: 'system'
+  })
+  for (const schedule of scriptSchedules) {
+    scheduleScript(schedule)
+  }
+
   // Initialize live recording scheduling
   const liveUsers = getLiveRecordUsers()
   sendSchedulerLog({
@@ -431,6 +557,9 @@ export function stopScheduler(): void {
   }
   for (const [userId] of scheduledLiveTasks) {
     unscheduleUserLive(userId)
+  }
+  for (const scriptId of [...scheduledScriptTasks.keys()]) {
+    unscheduleScript(scriptId)
   }
   unscheduleCollectSync()
   sendSchedulerLog({ level: 'info', message: '所有定时任务已停止', type: 'system' })

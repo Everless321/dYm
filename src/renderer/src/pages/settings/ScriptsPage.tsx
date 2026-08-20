@@ -12,6 +12,7 @@ import {
   Pencil,
   RefreshCw,
   AlertTriangle,
+  CalendarClock,
   Save,
   Square,
   Terminal,
@@ -28,6 +29,7 @@ import { Button } from '@/components/ui/button'
 import CodeEditor from '@/components/CodeEditor'
 import { cn } from '@/lib/utils'
 import { ScriptNameDialog } from './ScriptNameDialog'
+import { ScriptScheduleDialog } from './ScriptScheduleDialog'
 
 /** 界面上最多渲染的日志条数（主进程每个脚本另有 1000 条的缓存上限） */
 const MAX_VISIBLE_LOGS = 500
@@ -52,6 +54,14 @@ function mergeLogs(a: ScriptLogEntry[], b: ScriptLogEntry[]): ScriptLogEntry[] {
   return [...bySeq.values()].sort((x, y) => x.seq - y.seq).slice(-MAX_VISIBLE_LOGS)
 }
 
+/** 定时计划的下次执行时间，展示到分钟即可 */
+function formatNextRun(time: number | null): string {
+  if (!time) return '—'
+  const d = new Date(time)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 function isDirty(entry: SourceEntry | undefined): boolean {
   return !!entry && entry.saved !== entry.draft
 }
@@ -72,19 +82,24 @@ export default function ScriptsPage(): React.JSX.Element {
   const [createOpen, setCreateOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+  /** 按脚本 id 索引的定时计划，没设过的脚本不在表里 */
+  const [schedules, setSchedules] = useState<Record<string, ScriptScheduleInfo>>({})
   const logBoxRef = useRef<HTMLDivElement>(null)
 
   const refresh = useCallback(async (preferId?: string): Promise<void> => {
     setLoading(true)
     try {
-      const [list, running, dir] = await Promise.all([
+      const [list, running, dir, scheduleList] = await Promise.all([
         window.api.scripts.list(),
         window.api.scripts.running(),
-        window.api.scripts.getDir()
+        window.api.scripts.getDir(),
+        window.api.scripts.getSchedules()
       ])
       setScripts(list)
       setRunningIds(running)
       setScriptsDir(dir)
+      setSchedules(Object.fromEntries(scheduleList.map((item) => [item.scriptId, item])))
       setSelectedId((prev) => {
         const wanted = preferId ?? prev
         return wanted && list.some((s) => s.id === wanted) ? wanted : (list[0]?.id ?? null)
@@ -171,6 +186,7 @@ export default function ScriptsPage(): React.JSX.Element {
   }, [logs, tab])
 
   const selected = scripts.find((s) => s.id === selectedId) ?? null
+  const selectedSchedule = selectedId ? schedules[selectedId] : undefined
   const isRunning = selected ? runningIds.includes(selected.id) : false
   const entry = selectedId ? sources[selectedId] : undefined
   const dirty = isDirty(entry)
@@ -437,6 +453,15 @@ export default function ScriptsPage(): React.JSX.Element {
                       <p className="text-sm text-[#6E6E73] mt-1">
                         {selected.description || '（无描述）'}
                       </p>
+                      {selectedSchedule?.enabled && (
+                        <p className="text-xs text-[#0A84FF] mt-1.5 flex items-center gap-1.5">
+                          <CalendarClock className="h-3.5 w-3.5 flex-shrink-0" />
+                          <span className="font-mono">{selectedSchedule.cron}</span>
+                          <span className="text-[#A1A1A6]">
+                            下次 {formatNextRun(selectedSchedule.nextRun)}
+                          </span>
+                        </p>
+                      )}
                       {selected.filePath && (
                         <p className="text-xs text-[#A1A1A6] mt-1.5 font-mono break-all">
                           {selected.filePath}
@@ -445,6 +470,22 @@ export default function ScriptsPage(): React.JSX.Element {
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => setScheduleOpen(true)}
+                        title={
+                          selectedSchedule?.enabled
+                            ? `定时执行：${selectedSchedule.cron}`
+                            : '设置定时执行'
+                        }
+                        className={cn(
+                          'h-9 w-9 rounded-lg border transition-colors flex items-center justify-center',
+                          selectedSchedule?.enabled
+                            ? 'border-[#0A84FF] bg-[#E8F0FE] text-[#0A84FF]'
+                            : 'border-[#E5E5E7] text-[#6E6E73] hover:bg-[#F2F2F4]'
+                        )}
+                      >
+                        <CalendarClock className="h-4 w-4" />
+                      </button>
                       {editable && (
                         <>
                           <button
@@ -672,6 +713,24 @@ export default function ScriptsPage(): React.JSX.Element {
         initialFileName={selected?.fileName ?? ''}
         onConfirm={handleRename}
       />
+
+      {selected && (
+        <ScriptScheduleDialog
+          open={scheduleOpen}
+          onOpenChange={setScheduleOpen}
+          scriptId={selected.id}
+          scriptName={selected.name}
+          schedule={selectedSchedule ?? null}
+          onSaved={(info) =>
+            setSchedules((prev) => {
+              const next = { ...prev }
+              if (info) next[info.scriptId] = info
+              else delete next[selected.id]
+              return next
+            })
+          }
+        />
+      )}
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="sm:max-w-md">

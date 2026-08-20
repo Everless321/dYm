@@ -286,6 +286,16 @@ export function initDatabase(): void {
     `CREATE INDEX IF NOT EXISTS idx_live_records_started_at ON live_records(started_at DESC)`
   )
 
+  // 脚本定时执行计划。脚本本身是磁盘上的文件，不进数据库，这里只按 id 关联：
+  // 内置为 builtin:<key>，外部为 external:<文件名>
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS script_schedules (
+      script_id TEXT PRIMARY KEY,
+      cron TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1
+    )
+  `)
+
   // 初始化默认设置
   const defaultSettings = [
     { key: 'douyin_cookie', value: '' },
@@ -2163,6 +2173,51 @@ export function getPostsByUserIdAll(userId: number): DbPost[] {
   return database
     .prepare('SELECT * FROM posts WHERE user_id = ? ORDER BY downloaded_at DESC')
     .all(userId) as DbPost[]
+}
+
+// ============ 脚本定时计划 ============
+
+export interface DbScriptSchedule {
+  /** 脚本 id：内置为 builtin:<key>，外部为 external:<文件名> */
+  script_id: string
+  cron: string
+  enabled: number
+}
+
+export function getScriptSchedules(): DbScriptSchedule[] {
+  return getDatabase()
+    .prepare('SELECT * FROM script_schedules ORDER BY script_id')
+    .all() as DbScriptSchedule[]
+}
+
+export function getScriptSchedule(scriptId: string): DbScriptSchedule | null {
+  const row = getDatabase()
+    .prepare('SELECT * FROM script_schedules WHERE script_id = ?')
+    .get(scriptId) as DbScriptSchedule | undefined
+  return row ?? null
+}
+
+/** 写入或覆盖某个脚本的定时计划 */
+export function setScriptSchedule(scriptId: string, cron: string, enabled: boolean): void {
+  getDatabase()
+    .prepare(
+      `INSERT INTO script_schedules (script_id, cron, enabled) VALUES (?, ?, ?)
+       ON CONFLICT(script_id) DO UPDATE SET cron = excluded.cron, enabled = excluded.enabled`
+    )
+    .run(scriptId, cron, enabled ? 1 : 0)
+}
+
+export function deleteScriptSchedule(scriptId: string): void {
+  getDatabase().prepare('DELETE FROM script_schedules WHERE script_id = ?').run(scriptId)
+}
+
+/** 脚本改名后计划要跟着走，否则计划会挂在一个不存在的 id 上 */
+export function renameScriptSchedule(fromId: string, toId: string): void {
+  const database = getDatabase()
+  database.prepare('DELETE FROM script_schedules WHERE script_id = ?').run(toId)
+  database
+    .prepare('UPDATE script_schedules SET script_id = ? WHERE script_id = ?')
+    .run(toId, fromId)
 }
 
 export function closeDatabase(): void {
