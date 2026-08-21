@@ -1034,6 +1034,9 @@ function bindVideoControls(story, video) {
   video.addEventListener('pointerup', exitSpeed)
   video.addEventListener('pointercancel', exitSpeed)
   video.addEventListener('pointerleave', exitSpeed)
+  // 键盘长按 → 复用同一套倍速（含角标），见下方 keydown/keyup 处理
+  video.enterSpeed = enterSpeed
+  video.exitSpeed = exitSpeed
   // 阻止长按时弹出原生菜单（iOS 存储视频 / 桌面右键），以免打断倍速手势
   video.addEventListener('contextmenu', (event) => event.preventDefault())
 
@@ -1131,6 +1134,61 @@ function scrollToSiblingStory(delta) {
   if (target) target.scrollIntoView({ behavior: 'smooth' })
 }
 
+// 键盘的 ←/→：点按快进快退，长按 → 进 2 倍速、长按 ← 连续快退。
+// 长按用定时器判定而非按键重复事件 —— 按键重复的首次延迟取决于系统键盘设置，
+// 有的系统还能把按键重复整个关掉，那样长按就永远进不了倍速。
+const KEY_HOLD_MS = 250
+const KEY_SEEK_STEP = 5
+const KEY_REWIND_INTERVAL = 200
+const keyHold = { key: null, mode: 'idle', timer: null, rewind: null }
+
+function seekActiveVideo(delta) {
+  const video = getActiveVideo()
+  if (!video || !video.duration) return
+  video.currentTime = Math.min(Math.max(video.currentTime + delta, 0), video.duration - 0.05)
+}
+
+/** 结束按键长按的一切效果；tapped 为真时按「点按」补一次快进快退 */
+function releaseKeyHold(tapped) {
+  if (keyHold.timer) {
+    clearTimeout(keyHold.timer)
+    keyHold.timer = null
+  }
+  if (keyHold.rewind) {
+    clearInterval(keyHold.rewind)
+    keyHold.rewind = null
+  }
+  if (keyHold.mode === 'pending' && tapped) {
+    seekActiveVideo(keyHold.key === 'ArrowLeft' ? -KEY_SEEK_STEP : KEY_SEEK_STEP)
+  }
+  if (keyHold.mode === 'boost') getActiveVideo()?.exitSpeed?.()
+  keyHold.mode = 'idle'
+  keyHold.key = null
+}
+
+function beginKeyHold(key) {
+  keyHold.mode = 'pending'
+  keyHold.key = key
+  keyHold.timer = setTimeout(() => {
+    keyHold.timer = null
+    if (keyHold.mode !== 'pending') return
+    if (key === 'ArrowRight') {
+      keyHold.mode = 'boost'
+      getActiveVideo()?.enterSpeed?.()
+    } else {
+      keyHold.mode = 'rewind'
+      seekActiveVideo(-KEY_SEEK_STEP)
+      keyHold.rewind = setInterval(() => seekActiveVideo(-KEY_SEEK_STEP), KEY_REWIND_INTERVAL)
+    }
+  }, KEY_HOLD_MS)
+}
+
+document.addEventListener('keyup', (event) => {
+  if (event.key === keyHold.key) releaseKeyHold(true)
+})
+// 长按期间切走标签页收不到 keyup，不兜底会一直卡在倍速上
+window.addEventListener('blur', () => releaseKeyHold(false))
+
 document.addEventListener('keydown', (event) => {
   if (!el.authorModal.hidden && event.key === 'Escape') {
     event.preventDefault()
@@ -1181,14 +1239,11 @@ document.addEventListener('keydown', (event) => {
     else video.pause()
     return
   }
-  if (event.key === 'ArrowLeft') {
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
     event.preventDefault()
-    if (video.duration) video.currentTime = Math.max(0, video.currentTime - 5)
-    return
-  }
-  if (event.key === 'ArrowRight') {
-    event.preventDefault()
-    if (video.duration) video.currentTime = Math.min(video.duration - 0.05, video.currentTime + 5)
+    // 这里先不快进：是点按还是长按，要等定时器（长按）或 keyup（点按）才知道
+    if (event.repeat || keyHold.mode !== 'idle') return
+    beginKeyHold(event.key)
   }
 })
 
