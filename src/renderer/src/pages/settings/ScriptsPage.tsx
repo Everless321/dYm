@@ -16,7 +16,11 @@ import {
   Save,
   Square,
   Terminal,
-  Trash2
+  Trash2,
+  Zap,
+  Check,
+  Minus,
+  X
 } from 'lucide-react'
 import {
   Dialog,
@@ -26,13 +30,19 @@ import {
   DialogDescription
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import CodeEditor from '@/components/CodeEditor'
 import { cn } from '@/lib/utils'
+import { scriptHookLabel, scriptHookOption } from '@/lib/script-hooks'
+import { groupLogsIntoRuns, type ScriptRun } from '@/lib/script-runs'
+import { HookParamHelp } from './HookParamHelp'
 import { ScriptNameDialog } from './ScriptNameDialog'
 import { ScriptScheduleDialog } from './ScriptScheduleDialog'
 
-/** 界面上最多渲染的日志条数（主进程每个脚本另有 1000 条的缓存上限） */
+/** 界面上最多渲染的日志条数。磁盘留存由每个脚本自己的 logLimit 决定 */
 const MAX_VISIBLE_LOGS = 500
+
+const LOG_LIMIT_PRESETS = [200, 500, 1000, 5000, 10000]
 
 /** 一个脚本的磁盘内容与编辑中的内容，两者不同即为未保存 */
 interface SourceEntry {
@@ -51,7 +61,7 @@ function mergeLogs(a: ScriptLogEntry[], b: ScriptLogEntry[]): ScriptLogEntry[] {
   const bySeq = new Map<number, ScriptLogEntry>()
   for (const entry of a) bySeq.set(entry.seq, entry)
   for (const entry of b) bySeq.set(entry.seq, entry)
-  return [...bySeq.values()].sort((x, y) => x.seq - y.seq).slice(-MAX_VISIBLE_LOGS)
+  return [...bySeq.values()].sort((x, y) => x.seq - y.seq)
 }
 
 /** 定时计划的下次执行时间，展示到分钟即可 */
@@ -64,6 +74,19 @@ function formatNextRun(time: number | null): string {
 
 function isDirty(entry: SourceEntry | undefined): boolean {
   return !!entry && entry.saved !== entry.draft
+}
+
+function RunStatusIcon({ status }: { status: ScriptRun['status'] }): React.JSX.Element {
+  if (status === 'running') {
+    return <Loader2 className="h-3 w-3 text-[#0A84FF] animate-spin flex-shrink-0" />
+  }
+  if (status === 'error') {
+    return <X className="h-3 w-3 text-[#FF3B30] flex-shrink-0" />
+  }
+  if (status === 'cancelled') {
+    return <Minus className="h-3 w-3 text-[#A1A1A6] flex-shrink-0" />
+  }
+  return <Check className="h-3 w-3 text-[#34C759] flex-shrink-0" />
 }
 
 export default function ScriptsPage(): React.JSX.Element {
@@ -83,6 +106,9 @@ export default function ScriptsPage(): React.JSX.Element {
   const [renameOpen, setRenameOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [logLimitDraft, setLogLimitDraft] = useState('')
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+  const [followLatestRun, setFollowLatestRun] = useState(true)
   /** 按脚本 id 索引的定时计划，没设过的脚本不在表里 */
   const [schedules, setSchedules] = useState<Record<string, ScriptScheduleInfo>>({})
   const logBoxRef = useRef<HTMLDivElement>(null)
@@ -170,6 +196,13 @@ export default function ScriptsPage(): React.JSX.Element {
     return window.api.scripts.onLog((entry) => {
       if (entry.scriptId !== selectedId) return
       setLogs((prev) => mergeLogs(prev, [entry]))
+      if (entry.message.startsWith('⚡ 钩子')) {
+        setScripts((prev) =>
+          prev.map((item) =>
+            item.id === entry.scriptId ? { ...item, hasLastHookEvent: true } : item
+          )
+        )
+      }
     })
   }, [selectedId])
 
@@ -178,16 +211,34 @@ export default function ScriptsPage(): React.JSX.Element {
     return window.api.scripts.onRunningChange(setRunningIds)
   }, [])
 
+  const selected = scripts.find((s) => s.id === selectedId) ?? null
+  const isRunning = selected ? runningIds.includes(selected.id) : false
+  const runs = groupLogsIntoRuns(logs, isRunning)
+  const latestRunId = runs[0]?.runId ?? null
+  const selectedRun = runs.find((run) => run.runId === selectedRunId) ?? runs[0] ?? null
+
   // 新日志到达时滚到底。直接改 scrollTop——scrollIntoView 在嵌套滚动容器里会滚错层级
   useEffect(() => {
     const box = logBoxRef.current
     if (box) box.scrollTop = box.scrollHeight
-    // 输出面板没显示时不必滚
-  }, [logs, tab])
+  }, [selectedRun?.runId, selectedRun?.logs.length, tab])
 
-  const selected = scripts.find((s) => s.id === selectedId) ?? null
+  useEffect(() => {
+    if (selected) setLogLimitDraft(String(selected.logLimit))
+    // 只跟当前脚本和已保存的留存条数走，不要跟着整个 selected 对象刷新
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, selected?.logLimit])
+
+  useEffect(() => {
+    setFollowLatestRun(true)
+    setSelectedRunId(null)
+  }, [selectedId])
+
+  useEffect(() => {
+    if (followLatestRun && latestRunId) setSelectedRunId(latestRunId)
+  }, [followLatestRun, latestRunId])
+
   const selectedSchedule = selectedId ? schedules[selectedId] : undefined
-  const isRunning = selected ? runningIds.includes(selected.id) : false
   const entry = selectedId ? sources[selectedId] : undefined
   const dirty = isDirty(entry)
   const editable = selected?.source === 'external'
@@ -265,15 +316,43 @@ export default function ScriptsPage(): React.JSX.Element {
     if (!selectedId) return
     await window.api.scripts.clearLogs(selectedId)
     setLogs([])
+    setSelectedRunId(null)
+    setFollowLatestRun(true)
   }
 
-  const handleCreate = async (fileName: string): Promise<void> => {
+  const handleLogLimit = async (limit: number): Promise<void> => {
+    if (!selected) return
+    try {
+      const next = await window.api.scripts.setLogLimit(selected.id, limit)
+      setScripts((prev) =>
+        prev.map((item) => (item.id === selected.id ? { ...item, logLimit: next } : item))
+      )
+      setLogs((prev) => prev.slice(-Math.min(next, MAX_VISIBLE_LOGS)))
+    } catch (error) {
+      toast.error((error as Error).message)
+    }
+  }
+
+  const handleCreate = async (fileName: string, hook?: ScriptHookName | null): Promise<void> => {
     const source =
-      pendingSource ?? (await window.api.scripts.template(fileName.replace(/\.js$/, '')))
+      pendingSource ??
+      (await window.api.scripts.template(fileName.replace(/\.js$/, ''), hook ?? null))
     const descriptor = await window.api.scripts.create(fileName, source)
     await refresh(descriptor.id)
     setTab('code')
     toast.success(`已创建 ${fileName}`)
+  }
+
+  const handleHookEnabled = async (enabled: boolean): Promise<void> => {
+    if (!selected) return
+    try {
+      const next = await window.api.scripts.setHookEnabled(selected.id, enabled)
+      setScripts((prev) =>
+        prev.map((item) => (item.id === selected.id ? { ...item, hookEnabled: next } : item))
+      )
+    } catch (error) {
+      toast.error((error as Error).message)
+    }
   }
 
   const handleRename = async (fileName: string): Promise<void> => {
@@ -355,6 +434,14 @@ export default function ScriptsPage(): React.JSX.Element {
                 )}
                 {script.error && (
                   <AlertTriangle className="h-3.5 w-3.5 text-[#FF9500] flex-shrink-0" />
+                )}
+                {script.hook && (
+                  <span
+                    title={scriptHookLabel(script.hook)}
+                    className="text-[10px] px-1.5 py-0.5 rounded bg-[#E8F0FE] text-[#0A84FF] flex-shrink-0"
+                  >
+                    钩子
+                  </span>
                 )}
                 {runningIds.includes(script.id) && (
                   <Loader2 className="h-3.5 w-3.5 text-[#0A84FF] animate-spin flex-shrink-0" />
@@ -453,6 +540,13 @@ export default function ScriptsPage(): React.JSX.Element {
                       <p className="text-sm text-[#6E6E73] mt-1">
                         {selected.description || '（无描述）'}
                       </p>
+                      {selected.hook && (
+                        <p className="text-xs text-[#0A84FF] mt-1.5 flex items-center gap-1.5">
+                          <Zap className="h-3.5 w-3.5 flex-shrink-0" />
+                          <span>{scriptHookLabel(selected.hook)}</span>
+                          {!selected.hookEnabled && <span className="text-[#A1A1A6]">已暂停</span>}
+                        </p>
+                      )}
                       {selectedSchedule?.enabled && (
                         <p className="text-xs text-[#0A84FF] mt-1.5 flex items-center gap-1.5">
                           <CalendarClock className="h-3.5 w-3.5 flex-shrink-0" />
@@ -520,17 +614,54 @@ export default function ScriptsPage(): React.JSX.Element {
                       ) : (
                         <button
                           onClick={handleRun}
-                          disabled={!!selected.error || saving}
-                          title={dirty ? '会先保存再运行' : undefined}
+                          disabled={saving || (!!selected.error && !dirty)}
+                          title={
+                            selected.error && !dirty
+                              ? selected.error
+                              : selected.hook && selected.hasLastHookEvent
+                                ? '用上次钩子入参再执行一次，上次失败也可以再跑'
+                                : dirty
+                                  ? '会先保存再运行'
+                                  : selected.hook
+                                    ? '还没有钩子入参时 event 为空，等自动触发一次后就可以带着上次数据再跑'
+                                    : undefined
+                          }
                           className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors flex items-center gap-2 disabled:opacity-50"
                         >
                           <Play className="h-4 w-4" />
-                          运行
+                          {selected.hook && selected.hasLastHookEvent ? '再次运行' : '运行'}
                         </button>
                       )}
                     </div>
                   </div>
 
+                  {selected.hookWarning && (
+                    <div className="mt-3 flex items-start gap-2 rounded-lg bg-[#FFF8ED] border border-[#FF9500]/25 px-3 py-2">
+                      <AlertTriangle className="h-4 w-4 text-[#FF9500] flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-[#8A5A00]">{selected.hookWarning}</p>
+                    </div>
+                  )}
+                  {selected.hook && (
+                    <div className="mt-3 flex items-start justify-between gap-3 rounded-lg border border-[#E5E5E7] bg-[#F5F5F7] px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-xs text-[#1D1D1F] mb-2">
+                          {selected.source === 'builtin'
+                            ? `范例：复制后才会在「${scriptHookLabel(selected.hook)}」时自动运行`
+                            : `会在「${scriptHookLabel(selected.hook)}」时自动运行`}
+                        </p>
+                        <HookParamHelp option={scriptHookOption(selected.hook)} compact />
+                      </div>
+                      {selected.source === 'external' && (
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-[11px] text-[#6E6E73]">启用</span>
+                          <Switch
+                            checked={selected.hookEnabled}
+                            onCheckedChange={handleHookEnabled}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {selected.error && (
                     <div className="mt-3 flex items-start gap-2 rounded-lg bg-[#FFF8ED] border border-[#FF9500]/25 px-3 py-2">
                       <AlertTriangle className="h-4 w-4 text-[#FF9500] flex-shrink-0 mt-0.5" />
@@ -548,7 +679,7 @@ export default function ScriptsPage(): React.JSX.Element {
                       { key: 'code', label: '代码', icon: <Code2 className="h-3.5 w-3.5" /> },
                       {
                         key: 'output',
-                        label: logs.length > 0 ? `输出 · ${logs.length}` : '输出',
+                        label: runs.length > 0 ? `输出 · ${runs.length}` : '输出',
                         icon: <Terminal className="h-3.5 w-3.5" />
                       }
                     ] as const
@@ -628,46 +759,136 @@ export default function ScriptsPage(): React.JSX.Element {
                       )}
                     </div>
                   </>
-                ) : logs.length === 0 ? (
-                  <div className="flex-1 flex items-center justify-center px-6">
-                    <p className="text-sm text-[#A1A1A6]">点击「运行」，脚本输出会显示在这里</p>
-                  </div>
                 ) : (
                   <>
-                    <div className="flex items-center justify-end px-6 pt-2 pb-1 flex-shrink-0">
+                    <div className="flex items-center justify-between px-6 pt-2 pb-1 flex-shrink-0 gap-3">
+                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                        <span className="text-[11px] text-[#A1A1A6] flex-shrink-0">日志留存</span>
+                        <input
+                          type="number"
+                          min={50}
+                          max={20000}
+                          value={logLimitDraft}
+                          onChange={(e) => setLogLimitDraft(e.target.value)}
+                          onBlur={() => {
+                            const value = Number(logLimitDraft)
+                            if (Number.isFinite(value)) void handleLogLimit(value)
+                            else setLogLimitDraft(String(selected.logLimit))
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                          }}
+                          className="h-7 w-16 rounded-md border border-[#E5E5E7] bg-white px-1.5 text-[11px] text-[#1D1D1F] tabular-nums"
+                        />
+                        <span className="text-[11px] text-[#A1A1A6]">条</span>
+                        <div className="flex flex-wrap gap-1">
+                          {LOG_LIMIT_PRESETS.map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => void handleLogLimit(preset)}
+                              className={cn(
+                                'h-6 px-1.5 rounded border text-[10px] tabular-nums',
+                                selected.logLimit === preset
+                                  ? 'border-[#0A84FF] bg-[#E8F0FE] text-[#0A84FF]'
+                                  : 'border-[#E5E5E7] text-[#6E6E73] hover:bg-[#F2F2F4]'
+                              )}
+                            >
+                              {preset}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <button
                         onClick={handleClearLogs}
-                        className="h-7 px-2 rounded-md text-[11px] text-[#A1A1A6] hover:text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center gap-1"
+                        className="h-7 px-2 rounded-md text-[11px] text-[#A1A1A6] hover:text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center gap-1 flex-shrink-0"
                       >
                         <Trash2 className="h-3 w-3" />
                         清空
                       </button>
                     </div>
 
-                    {/* items-start + max-h-full：框高跟随日志行数，超出可用空间才滚动 */}
-                    <div className="flex-1 min-h-0 flex items-start overflow-hidden px-6 pb-6">
-                      <div
-                        ref={logBoxRef}
-                        className="w-full max-h-full overflow-auto rounded-xl bg-[#F5F5F7] border border-[#E5E5E7] px-4 py-3"
-                      >
-                        <div className="font-mono text-xs leading-[1.7]">
-                          {logs.map((log, index) => (
-                            <div
-                              key={`${log.runId}-${index}`}
-                              className={cn(
-                                'flex gap-2 whitespace-pre-wrap break-all',
-                                log.level === 'error' ? 'text-[#D70015]' : 'text-[#1D1D1F]'
-                              )}
-                            >
-                              <span className="text-[#C7C7CC] select-none flex-shrink-0 tabular-nums">
-                                {formatTime(log.time)}
-                              </span>
-                              <span className="min-w-0">{log.message}</span>
+                    {runs.length === 0 ? (
+                      <div className="flex-1 flex items-center justify-center px-6">
+                        <p className="text-sm text-[#A1A1A6]">
+                          {selected.hook
+                            ? '钩子触发或点「运行」后，这里会列出每次执行'
+                            : '点击「运行」后，这里会列出每次执行'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex-1 min-h-0 flex gap-3 overflow-hidden px-6 pb-6">
+                        <aside className="w-56 flex-shrink-0 overflow-y-auto rounded-xl border border-[#E5E5E7] bg-white p-1.5">
+                          {runs.map((run) => {
+                            const active = selectedRun?.runId === run.runId
+                            return (
+                              <button
+                                key={run.runId}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedRunId(run.runId)
+                                  setFollowLatestRun(run.runId === latestRunId)
+                                }}
+                                className={cn(
+                                  'w-full text-left rounded-lg px-2.5 py-2 mb-0.5 transition-colors',
+                                  active ? 'bg-[#E8F0FE]' : 'hover:bg-[#F2F2F4]'
+                                )}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span
+                                    className={cn(
+                                      'text-[11px] tabular-nums',
+                                      active ? 'text-[#0A84FF]' : 'text-[#A1A1A6]'
+                                    )}
+                                  >
+                                    {formatTime(run.startedAt)}
+                                  </span>
+                                  <RunStatusIcon status={run.status} />
+                                </div>
+                                <p
+                                  className={cn(
+                                    'text-xs mt-0.5 truncate',
+                                    active ? 'text-[#0A84FF] font-medium' : 'text-[#1D1D1F]'
+                                  )}
+                                >
+                                  {run.title}
+                                </p>
+                                <p className="text-[11px] text-[#A1A1A6] mt-0.5 truncate">
+                                  {run.preview ||
+                                    (run.status === 'running' ? '正在运行…' : '无输出')}
+                                  {run.durationLabel ? ` · ${run.durationLabel}` : ''}
+                                </p>
+                              </button>
+                            )
+                          })}
+                        </aside>
+                        <div
+                          ref={logBoxRef}
+                          className="flex-1 min-w-0 overflow-auto rounded-xl bg-[#F5F5F7] border border-[#E5E5E7] px-4 py-3"
+                        >
+                          {selectedRun ? (
+                            <div className="font-mono text-xs leading-[1.7]">
+                              {selectedRun.logs.map((log, index) => (
+                                <div
+                                  key={`${log.runId}-${index}`}
+                                  className={cn(
+                                    'flex gap-2 whitespace-pre-wrap break-all',
+                                    log.level === 'error' ? 'text-[#D70015]' : 'text-[#1D1D1F]'
+                                  )}
+                                >
+                                  <span className="text-[#C7C7CC] select-none flex-shrink-0 tabular-nums">
+                                    {formatTime(log.time)}
+                                  </span>
+                                  <span className="min-w-0">{log.message}</span>
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          ) : (
+                            <p className="text-sm text-[#A1A1A6]">选一次执行看日志</p>
+                          )}
                         </div>
                       </div>
-                    </div>
+                    )}
                   </>
                 )}
               </>
@@ -697,10 +918,11 @@ export default function ScriptsPage(): React.JSX.Element {
         title={pendingSource === null ? '新建脚本' : '复制为我的脚本'}
         description={
           pendingSource === null
-            ? '会在脚本目录创建一个带起手模板的 .js 文件'
+            ? '先选什么时候运行，模板会带上对应的 event 入参'
             : '会把当前脚本的内容复制成一份可编辑的 .js 文件'
         }
         confirmLabel="创建"
+        pickTrigger={pendingSource === null}
         onConfirm={handleCreate}
       />
 

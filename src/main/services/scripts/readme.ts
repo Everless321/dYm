@@ -10,24 +10,62 @@ export const SCRIPTS_README = `# 自定义脚本
 
 ## 脚本结构
 
-CommonJS 风格，必须导出 \`meta\` 和 \`run\`：
+CommonJS 风格，必须导出 \`meta\` 和 \`run\`。
+新建时选「什么时候运行」：仅手动/定时，或挂到一个应用事件。
+钩子位置写入 \`meta.hook\`，对应入参会出现在模板注释里，不用自己注册函数。
 
 \`\`\`js
 exports.meta = {
   name: '脚本名称',          // 必填
   description: '一句话说明', // 可选
-  timeout: 0                 // 可选，执行超时（毫秒）。不填或 0 = 不限时长
+  timeout: 0,                // 可选，执行超时（毫秒）。不填或 0 = 不限时长
+  hook: 'post.downloaded'    // 可选。创建时选「作品下载完成」会自动写上
 }
 
-exports.run = async (api) => {
+exports.run = async (api, event) => {
   api.log('开始')
-  // ...
-  return { done: true }   // 返回值会显示在运行结果里（需 JSON 可序列化）
+  // 钩子触发时 event 带这次的数据；手动点运行时 event 为空
+  return { done: true }
 }
 \`\`\`
 
 脚本在 vm 沙箱里求值，**没有 \`require\`**，所有能力都通过 \`run(api)\` 的入参获得。
 顶层代码在扫描列表时就会执行，所以顶层只做声明，实际逻辑写在 \`run\` 里。
+
+## 事件钩子
+
+\`meta.hook\` 可选值：
+
+- \`post.downloaded\` 作品下载完成（任务 / 同步 / 单条添加都会触发）
+- \`post.analyzed\` 作品分析完成
+- \`user.added\` 新作者入库（已存在的不会再触发）
+- \`live.converted\` 直播 FLV 转成 MP4 之后
+
+\`post.downloaded\` 的 event：
+
+\`\`\`js
+event.hook            // 固定 'post.downloaded'，用来和手动运行区分
+event.source          // 'task' 下载任务 / 'sync' 用户同步 / 'single' 单条添加
+event.folderPath      // 本地文件夹绝对路径，视频/封面/文案都在里面
+event.post.id         // 数据库主键，打标签用
+event.post.awemeId    // 抖音作品 id
+event.post.userId     // 作者本地 id
+event.post.secUid     // 作者 sec_uid，也是下载目录第一层
+event.post.nickname   // 下载当时的昵称
+event.post.folderName // 作品文件夹名，一般等于 awemeId
+event.post.desc       // 文案
+event.post.awemeType  // 0 = 视频，其它 = 图文
+// tags / category / summary 等分析字段此时通常为空
+\`\`\`
+
+\`post.analyzed\` 的 \`event.post\` 形状相同，但 tags、category、summary、scene、contentLevel 已填上。
+
+\`user.added\`：\`event.user.id / secUid / uid / nickname / uniqueId\`（已存在的作者不会再触发）。
+
+\`live.converted\`：\`event.record.id / userId / nickname / roomId / filePath / fileSize\`，此时 filePath 已是 mp4。
+
+钩子默认 10 分钟超时，和手动运行共用「同一脚本不能并发」：新事件排队，点停止会清队列。
+详情页可以暂停钩子而不改代码。手动运行时 event 为空。
 
 ## api.log / api.sleep
 
@@ -77,7 +115,11 @@ exports.meta = { name: '...', timeout: 2 * 60 * 60 * 1000 }  // 2 小时后自�
 超时走的是和「停止」同一套 abort 机制，所以同样要求脚本会交出控制权。
 纯计算死循环既停不掉也超时不了，长循环记得插 \`api.throwIfCancelled()\`。
 
-注意应用退出会一并结束运行中的脚本，日志缓存也在内存里，不跨重启保留。
+注意应用退出会一并结束运行中的脚本。运行日志写在用户数据目录的 \`script-logs/\`，
+每个脚本的留存条数可在「输出」里单独设（默认 1000）。关掉应用再打开还在。
+点「清空」或删除脚本会去掉对应文件。
+
+钩子脚本执行失败后，页面「再次运行」会用上次的 event 再跑一次。
 
 ## api.db — 数据库
 

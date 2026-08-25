@@ -16,6 +16,7 @@ import {
   type DbPost,
   type AnalysisResult
 } from '../database'
+import { emitPostAnalyzed } from './scripts/emit'
 
 ffmpeg.setFfmpegPath(ffmpegPath)
 ffmpeg.setFfprobePath(ffprobePath)
@@ -494,6 +495,8 @@ async function runAnalysisForPosts(posts: DbPost[]): Promise<void> {
         config.prompt
       )
       updatePostAnalysis(post.id, result)
+      const updated = getPostById(post.id)
+      if (updated) emitPostAnalyzed(updated)
       return result
     })
 

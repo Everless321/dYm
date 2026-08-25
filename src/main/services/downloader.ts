@@ -18,6 +18,7 @@ import {
   type DbUser
 } from '../database'
 import { validateDownloadFolder, cleanupFailedDownload, expectsMusic } from './download-validator'
+import { emitPostDownloaded } from './scripts/emit'
 import { track } from './telemetry'
 
 /** 下载任务触发来源：手动点开始 / 定时调度 */
@@ -411,7 +412,7 @@ async function downloadUserVideos(
               await convertFolderImagesToJpg(folderPath)
             }
 
-            createPost({
+            const post = createPost({
               aweme_id: awemeId,
               user_id: user.id,
               sec_uid: user.sec_uid,
@@ -426,6 +427,7 @@ async function downloadUserVideos(
               cover_path: join(userPath, folderName),
               music_path: join(userPath, folderName)
             })
+            emitPostDownloaded(post, folderPath, 'task')
 
             return true
           } catch (error) {
@@ -582,7 +584,7 @@ async function downloadSinglePostInner(
       await convertFolderImagesToJpg(folderPath)
     }
 
-    createPost({
+    const post = createPost({
       aweme_id: awemeId,
       user_id: user.id,
       sec_uid: user.sec_uid,
@@ -597,6 +599,7 @@ async function downloadSinglePostInner(
       cover_path: folderPath,
       music_path: folderPath
     })
+    emitPostDownloaded(post, folderPath, 'single')
 
     track('download_finished', {
       kind: 'single',

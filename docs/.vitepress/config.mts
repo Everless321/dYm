@@ -28,7 +28,8 @@ export default defineConfig({
           items: [
             { text: '总览', link: '/scripts/' },
             { text: '快速开始', link: '/scripts/getting-started' },
-            { text: '运行与停止', link: '/scripts/lifecycle' }
+            { text: '运行与停止', link: '/scripts/lifecycle' },
+            { text: '事件钩子', link: '/scripts/hooks' }
           ]
         },
         {

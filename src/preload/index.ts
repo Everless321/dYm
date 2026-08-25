@@ -332,7 +332,8 @@ const scriptsAPI = {
   getDir: (): Promise<string> => ipcRenderer.invoke('scripts:getDir'),
   openDir: (): Promise<void> => ipcRenderer.invoke('scripts:openDir'),
   read: (id: string): Promise<string> => ipcRenderer.invoke('scripts:read', id),
-  template: (name: string): Promise<string> => ipcRenderer.invoke('scripts:template', name),
+  template: (name: string, hook?: ScriptHookName | null): Promise<string> =>
+    ipcRenderer.invoke('scripts:template', name, hook),
   create: (fileName: string, source: string): Promise<ScriptDescriptor> =>
     ipcRenderer.invoke('scripts:create', fileName, source),
   save: (fileName: string, source: string): Promise<ScriptDescriptor> =>
@@ -347,6 +348,10 @@ const scriptsAPI = {
     enabled: boolean
   ): Promise<ScriptScheduleInfo | null> =>
     ipcRenderer.invoke('scripts:setSchedule', scriptId, cron, enabled),
+  setHookEnabled: (scriptId: string, enabled: boolean): Promise<boolean> =>
+    ipcRenderer.invoke('scripts:setHookEnabled', scriptId, enabled),
+  setLogLimit: (scriptId: string, limit: number): Promise<number> =>
+    ipcRenderer.invoke('scripts:setLogLimit', scriptId, limit),
   onLog: (callback: (entry: ScriptLogEntry) => void): (() => void) => {
     const listener = (_event: unknown, entry: ScriptLogEntry): void => callback(entry)
     ipcRenderer.on('scripts:log', listener)

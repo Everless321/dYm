@@ -296,6 +296,22 @@ export function initDatabase(): void {
     )
   `)
 
+  // 钩子开关。脚本挂在哪个事件由文件里的 meta.hook 决定，这里只记启用/暂停。
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS script_hook_settings (
+      script_id TEXT PRIMARY KEY,
+      enabled INTEGER NOT NULL DEFAULT 1
+    )
+  `)
+
+  // 每个脚本自己的日志留存条数。没写过就用默认 1000。
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS script_log_settings (
+      script_id TEXT PRIMARY KEY,
+      log_limit INTEGER NOT NULL DEFAULT 1000
+    )
+  `)
+
   // 初始化默认设置
   const defaultSettings = [
     { key: 'douyin_cookie', value: '' },
@@ -1174,28 +1190,32 @@ export function getAllPosts(
   const database = getDatabase()
   const offset = (page - 1) * pageSize
 
-  // 获取可见用户的 sec_uid 列表
-  const visibleUsers = database
-    .prepare('SELECT sec_uid FROM users WHERE show_in_home = 1')
-    .all() as { sec_uid: string }[]
-  const visibleSecUids = visibleUsers.map((u) => u.sec_uid)
-
-  if (visibleSecUids.length === 0) {
+  const hasVisible = database
+    .prepare('SELECT 1 AS ok FROM users WHERE show_in_home = 1 LIMIT 1')
+    .get() as { ok: number } | undefined
+  if (!hasVisible) {
     return { posts: [], total: 0, authors: [] }
   }
 
-  // 获取可见作者列表
-  const placeholders = visibleSecUids.map(() => '?').join(',')
-  const authorsRows = database
+  // 下拉以 users 当前昵称为准、一人一条。posts.nickname 是下载时的快照，
+  // 用户改名后同一 sec_uid 会冒出多个名字，DISTINCT(sec_uid, nickname)
+  // 会让筛选列表重复，find() 还可能显示成改名前的名字。
+  const authors = database
     .prepare(
-      `SELECT DISTINCT sec_uid, nickname FROM posts WHERE sec_uid IN (${placeholders}) ORDER BY nickname`
+      `SELECT u.sec_uid, u.nickname
+       FROM users u
+       WHERE u.show_in_home = 1
+         AND u.sec_uid != ''
+         AND u.nickname IS NOT NULL AND u.nickname != ''
+         AND EXISTS (SELECT 1 FROM posts p WHERE p.sec_uid = u.sec_uid)
+       ORDER BY u.nickname`
     )
-    .all(...visibleSecUids) as PostAuthor[]
-  const authors = authorsRows.filter((r) => r.sec_uid && r.nickname)
+    .all() as PostAuthor[]
+  const nameBySec = new Map(authors.map((a) => [a.sec_uid, a.nickname]))
 
-  // 构建查询
-  const conditions: string[] = [`sec_uid IN (${placeholders})`]
-  const params: unknown[] = [...visibleSecUids]
+  // 构建查询（子查询代替把全部 sec_uid 展开成 IN (?,?,…)，可见用户上千时会顶变量上限）
+  const conditions: string[] = [`sec_uid IN (SELECT sec_uid FROM users WHERE show_in_home = 1)`]
+  const params: unknown[] = []
 
   if (filters?.secUid) {
     conditions.push('sec_uid = ?')
@@ -1240,13 +1260,19 @@ export function getAllPosts(
 
   const whereClause = `WHERE ${conditions.join(' AND ')}`
 
-  const posts = database
+  const rows = database
     .prepare(`SELECT * FROM posts ${whereClause} ${buildOrderBy(sort)} LIMIT ? OFFSET ?`)
     .all(...params, pageSize, offset) as DbPost[]
 
   const countRow = database
     .prepare(`SELECT COUNT(*) as count FROM posts ${whereClause}`)
     .get(...params) as { count: number }
+
+  const posts = rows.map((p) => {
+    const current = nameBySec.get(p.sec_uid)
+    if (!current || current === p.nickname) return p
+    return { ...p, nickname: current }
+  })
 
   return { posts, total: countRow.count, authors }
 }
@@ -2217,6 +2243,83 @@ export function renameScriptSchedule(fromId: string, toId: string): void {
   database.prepare('DELETE FROM script_schedules WHERE script_id = ?').run(toId)
   database
     .prepare('UPDATE script_schedules SET script_id = ? WHERE script_id = ?')
+    .run(toId, fromId)
+}
+
+// ============ 脚本钩子开关 ============
+
+export interface DbScriptHookSetting {
+  script_id: string
+  enabled: number
+}
+
+/** 没写过设置视为开启：创建时选了钩子就该立刻生效 */
+export function isScriptHookEnabled(scriptId: string): boolean {
+  const row = getDatabase()
+    .prepare('SELECT enabled FROM script_hook_settings WHERE script_id = ?')
+    .get(scriptId) as { enabled: number } | undefined
+  return row ? row.enabled === 1 : true
+}
+
+export function setScriptHookEnabled(scriptId: string, enabled: boolean): void {
+  getDatabase()
+    .prepare(
+      `INSERT INTO script_hook_settings (script_id, enabled) VALUES (?, ?)
+       ON CONFLICT(script_id) DO UPDATE SET enabled = excluded.enabled`
+    )
+    .run(scriptId, enabled ? 1 : 0)
+}
+
+export function deleteScriptHookSetting(scriptId: string): void {
+  getDatabase().prepare('DELETE FROM script_hook_settings WHERE script_id = ?').run(scriptId)
+}
+
+export function renameScriptHookSetting(fromId: string, toId: string): void {
+  const database = getDatabase()
+  database.prepare('DELETE FROM script_hook_settings WHERE script_id = ?').run(toId)
+  database
+    .prepare('UPDATE script_hook_settings SET script_id = ? WHERE script_id = ?')
+    .run(toId, fromId)
+}
+
+// ============ 脚本日志留存 ============
+
+export const DEFAULT_SCRIPT_LOG_LIMIT = 1000
+export const MIN_SCRIPT_LOG_LIMIT = 50
+export const MAX_SCRIPT_LOG_LIMIT = 20000
+
+export function clampScriptLogLimit(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_SCRIPT_LOG_LIMIT
+  return Math.min(MAX_SCRIPT_LOG_LIMIT, Math.max(MIN_SCRIPT_LOG_LIMIT, Math.floor(value)))
+}
+
+export function getScriptLogLimit(scriptId: string): number {
+  const row = getDatabase()
+    .prepare('SELECT log_limit FROM script_log_settings WHERE script_id = ?')
+    .get(scriptId) as { log_limit: number } | undefined
+  return row ? clampScriptLogLimit(row.log_limit) : DEFAULT_SCRIPT_LOG_LIMIT
+}
+
+export function setScriptLogLimit(scriptId: string, limit: number): number {
+  const logLimit = clampScriptLogLimit(limit)
+  getDatabase()
+    .prepare(
+      `INSERT INTO script_log_settings (script_id, log_limit) VALUES (?, ?)
+       ON CONFLICT(script_id) DO UPDATE SET log_limit = excluded.log_limit`
+    )
+    .run(scriptId, logLimit)
+  return logLimit
+}
+
+export function deleteScriptLogSetting(scriptId: string): void {
+  getDatabase().prepare('DELETE FROM script_log_settings WHERE script_id = ?').run(scriptId)
+}
+
+export function renameScriptLogSetting(fromId: string, toId: string): void {
+  const database = getDatabase()
+  database.prepare('DELETE FROM script_log_settings WHERE script_id = ?').run(toId)
+  database
+    .prepare('UPDATE script_log_settings SET script_id = ? WHERE script_id = ?')
     .run(toId, fromId)
 }
 

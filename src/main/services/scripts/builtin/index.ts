@@ -1,6 +1,7 @@
 import checkMissingFiles from './check-missing-files.js?raw'
 import syncAllThenLimit from './sync-all-then-limit.js?raw'
 import syncCollects from './sync-collects.js?raw'
+import logNewDownloads from './log-new-downloads.js?raw'
 
 /**
  * 内置脚本注册表。键即脚本 id 的后半段（builtin:<key>），新增脚本在此登记。
@@ -11,5 +12,6 @@ import syncCollects from './sync-collects.js?raw'
 export const builtinSources: Record<string, string> = {
   'check-missing-files': checkMissingFiles,
   'sync-all-then-limit': syncAllThenLimit,
-  'sync-collects': syncCollects
+  'sync-collects': syncCollects,
+  'log-new-downloads': logNewDownloads
 }

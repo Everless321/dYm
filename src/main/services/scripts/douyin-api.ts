@@ -6,6 +6,7 @@ import {
   getDouyinHandler,
   parseDouyinUrl
 } from '../douyin'
+import { fetchGuarded } from '../douyin-page'
 import type {
   CollectedAweme,
   DouyinAccount,
@@ -25,6 +26,15 @@ import type {
 
 /** 翻页之间的间隔，连续请求容易触发风控 */
 const PAGE_INTERVAL_MS = 1500
+
+/** 受 Argus 保护、必须在页面上下文里请求的三个接口 */
+const COLLECTS_PATH = '/aweme/v1/web/collects/list/'
+const COLLECTS_VIDEO_PATH = '/aweme/v1/web/collects/video/list/'
+const COLLECTION_PATH = '/aweme/v1/web/aweme/listcollection/'
+
+/** 每页条数。抖音对这几个接口的上限就是 20，填 50 会直接返回 status_code=5 */
+const PAGE_SIZE = 20
+const MAX_PAGES = 200
 
 /** 抖音接口返回里作品列表的形状，只取脚本用得上的字段 */
 interface RawAweme {
@@ -169,6 +179,40 @@ export function createDouyinApi(
     return out
   }
 
+  /**
+   * 翻完受保护接口的全部分页。
+   * 这些接口不走 polydl，所以分页逻辑得自己写：读 has_more 与 cursor，逐页累加。
+   */
+  async function drainPage<T>(
+    path: string,
+    extraParams: Record<string, string | number>,
+    method: 'GET' | 'POST',
+    take: (raw: Record<string, unknown>) => T[]
+  ): Promise<T[]> {
+    const out: T[] = []
+    let cursor = 0
+    // 记下用过的游标，重复出现就说明翻不动了，直接停，避免原地打转刷接口。
+    // 不能用「游标必须递增」来判断——收藏接口的 cursor 是递减的时间戳，
+    // 而收藏夹列表的是递增偏移量，两种都得认。
+    const usedCursors = new Set<number>([0])
+
+    for (let page = 0; page < MAX_PAGES; page++) {
+      throwIfCancelled()
+      const raw = await fetchGuarded(path, { ...extraParams, cursor, count: PAGE_SIZE }, method)
+      out.push(...take(raw))
+
+      if (!raw.has_more) break
+      const next = Number(raw.cursor ?? raw.max_cursor ?? 0)
+      if (!Number.isFinite(next) || next === 0 || usedCursors.has(next)) break
+      usedCursors.add(next)
+      cursor = next
+
+      await sleep(PAGE_INTERVAL_MS)
+    }
+
+    return out
+  }
+
   return {
     me: async (): Promise<DouyinAccount> => {
       const user = await requireHandler().fetchQueryUser()
@@ -204,8 +248,10 @@ export function createDouyinApi(
       return { type, id }
     },
 
+    // 下面三个走页面上下文：它们被抖音 ArgusSecurityPlugin 保护，直连必定 403，
+    // 详见 ../douyin-page.ts
     collects: async (): Promise<DouyinCollect[]> =>
-      drain(requireHandler().fetchUserCollects({ interval: 0 }), (raw) =>
+      drainPage(COLLECTS_PATH, {}, 'GET', (raw) =>
         ((raw.collects_list ?? []) as RawCollect[])
           .filter((item) => item.collects_id)
           .map((item) => ({
@@ -216,12 +262,10 @@ export function createDouyinApi(
       ),
 
     collectsVideos: async (collectsId: string): Promise<CollectedAweme[]> =>
-      drain(
-        requireHandler().fetchUserCollectsVideos(collectsId, { interval: 0 }),
-        toCollectedAwemes
-      ),
+      drainPage(COLLECTS_VIDEO_PATH, { collects_id: collectsId }, 'GET', toCollectedAwemes),
 
+    // listcollection 只认 POST，用 GET 会返回 404 Unsupported path(Janus)
     collectionVideos: async (): Promise<CollectedAweme[]> =>
-      drain(requireHandler().fetchUserCollectionVideos({ interval: 0 }), toCollectedAwemes)
+      drainPage(COLLECTION_PATH, {}, 'POST', toCollectedAwemes)
   }
 }

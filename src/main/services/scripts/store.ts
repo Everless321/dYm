@@ -1,8 +1,8 @@
 import { existsSync, renameSync, rmSync, writeFileSync } from 'fs'
 import { dirname, resolve } from 'path'
 import { describeExternal, ensureScriptsDir, getScriptPath, getScriptsDir } from './loader'
-import { clearScriptLogs, isScriptRunning } from './runner'
-import type { ScriptDescriptor } from './types'
+import { forgetScriptRuntime, isScriptRunning } from './runner'
+import type { ScriptDescriptor, ScriptHookName } from './types'
 
 /** Windows 与 macOS 都不接受的文件名字符 */
 const INVALID_FILENAME_CHARS = /[\\/:*?"<>|]/
@@ -41,10 +41,15 @@ function assertNotRunning(fileName: string): void {
   }
 }
 
-/** 新建脚本用的起手模板 */
-export function buildScriptTemplate(name: string): string {
-  const safeName = name.replace(/'/g, "\\'")
-  return `exports.meta = {
+function escapeTemplateName(name: string): string {
+  return name.replace(/'/g, "\\'")
+}
+
+/** 新建脚本用的起手模板。hook 在创建对话框里选好，写入 meta.hook，并把对应入参写进注释 */
+export function buildScriptTemplate(name: string, hook?: ScriptHookName | null): string {
+  const safeName = escapeTemplateName(name)
+  if (!hook) {
+    return `exports.meta = {
   name: '${safeName}',
   description: ''
   // timeout: 0   // 可选，执行超时（毫秒）。不填或 0 = 不限时长
@@ -58,6 +63,117 @@ exports.run = async (api) => {
   // await api.actions.syncUser(users[0].id)
 
   return { done: true }
+}
+`
+  }
+
+  if (hook === 'post.downloaded') {
+    return `exports.meta = {
+  name: '${safeName}',
+  description: '每个作品下载完成后自动运行',
+  hook: 'post.downloaded'
+  // timeout: 10 * 60 * 1000  // 钩子默认 10 分钟；填 0 = 不限
+}
+
+exports.run = async (api, event) => {
+  // 手动点「运行」或 cron 时没有 event，不要往下读
+  if (!event || event.hook !== 'post.downloaded') {
+    api.log('这是「作品下载完成」钩子脚本，请等作品下完后自动触发。')
+    return
+  }
+
+  const post = event.post
+  const dir = event.folderPath
+  // event.source     'task' 下载任务 / 'sync' 用户同步 / 'single' 单条添加
+  // event.folderPath 本地文件夹绝对路径（视频/封面/文案都在里面）
+  // post.id          数据库主键，打标签用 api.db.tags.addToPosts([post.id], ['待看'])
+  // post.awemeId     抖音作品 id
+  // post.userId      作者本地 id
+  // post.secUid      作者 sec_uid，也是下载目录第一层文件夹名
+  // post.nickname    下载当时的作者昵称
+  // post.folderName  作品文件夹名，一般等于 awemeId
+  // post.desc        作品文案
+  // post.awemeType   0 = 视频，其它 = 图文
+  // post.tags 等分析字段此时通常还是空的，要等「作品分析完成」
+  api.log(post.nickname, post.awemeId, event.source)
+  api.log(dir)
+}
+`
+  }
+
+  if (hook === 'post.analyzed') {
+    return `exports.meta = {
+  name: '${safeName}',
+  description: '每个作品分析完成后自动运行',
+  hook: 'post.analyzed'
+  // timeout: 10 * 60 * 1000
+}
+
+exports.run = async (api, event) => {
+  if (!event || event.hook !== 'post.analyzed') {
+    api.log('这是「作品分析完成」钩子脚本，请等分析结束后自动触发。')
+    return
+  }
+
+  const post = event.post
+  // post.id / awemeId / userId / secUid / nickname / folderName / desc / awemeType
+  // post.tags          AI 标签数组
+  // post.manualTags    手打标签
+  // post.category      主分类
+  // post.summary       一句话摘要
+  // post.scene         场景
+  // post.contentLevel  内容分级数字
+  api.log(post.nickname, post.awemeId, post.category, post.tags.join(', '))
+}
+`
+  }
+
+  if (hook === 'user.added') {
+    return `exports.meta = {
+  name: '${safeName}',
+  description: '添加新作者后自动运行',
+  hook: 'user.added'
+  // timeout: 10 * 60 * 1000
+}
+
+exports.run = async (api, event) => {
+  if (!event || event.hook !== 'user.added') {
+    api.log('这是「新作者添加」钩子脚本，请等添加作者后自动触发。')
+    return
+  }
+
+  const user = event.user
+  // user.id        本地用户 id，改设置：api.db.users.updateSettings(user.id, { auto_sync: true })
+  // user.secUid    抖音稳定身份
+  // user.uid       抖音 uid，可能是空字符串
+  // user.nickname  入库时的昵称
+  // user.uniqueId  抖音号，可能是空字符串
+  api.log('新作者', user.nickname, user.secUid)
+}
+`
+  }
+
+  return `exports.meta = {
+  name: '${safeName}',
+  description: '直播转成可播放 MP4 后自动运行',
+  hook: 'live.converted'
+  // timeout: 10 * 60 * 1000
+}
+
+exports.run = async (api, event) => {
+  if (!event || event.hook !== 'live.converted') {
+    api.log('这是「直播转封装完成」钩子脚本，请等录制转 MP4 后自动触发。')
+    return
+  }
+
+  const rec = event.record
+  // rec.id        录制记录主键
+  // rec.userId    作者本地 id
+  // rec.nickname  录制时昵称
+  // rec.roomId    直播间房间号
+  // rec.filePath  已经是 mp4 的绝对路径
+  // rec.fileSize  字节
+  api.log(rec.nickname, rec.filePath)
 }
 `
 }
@@ -103,6 +219,5 @@ export function deleteScript(fileName: string): void {
   const name = assertValidFileName(fileName)
   assertNotRunning(name)
   rmSync(getScriptPath(name), { force: true })
-  // 文件没了，留着日志缓存只会占内存
-  clearScriptLogs(`external:${name}`)
+  forgetScriptRuntime(`external:${name}`)
 }

@@ -2,9 +2,16 @@ import { app } from 'electron'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import vm from 'vm'
+import { getScriptLogLimit, isScriptHookEnabled } from '../../database'
 import { builtinSources } from './builtin'
+import { hasLastHookEvent } from './log-store'
 import { SCRIPTS_README } from './readme'
-import type { ScriptDescriptor, ScriptModule } from './types'
+import {
+  isScriptHookName,
+  type ScriptDescriptor,
+  type ScriptMeta,
+  type ScriptModule
+} from './types'
 
 /** 外部脚本目录：<用户数据>/scripts */
 export function getScriptsDir(): string {
@@ -27,6 +34,19 @@ export function getScriptPath(fileName: string): string {
   return join(getScriptsDir(), fileName)
 }
 
+function parseHook(
+  meta: ScriptMeta,
+  filename: string
+): { meta: ScriptMeta; warning: string | null } {
+  if (meta.hook === undefined) return { meta, warning: null }
+  if (!isScriptHookName(meta.hook)) {
+    const warning = `无法识别的 meta.hook「${String(meta.hook)}」，钩子未启用`
+    console.warn(`[scripts] ${filename} ${warning}`)
+    return { meta: { ...meta, hook: undefined }, warning }
+  }
+  return { meta, warning: null }
+}
+
 /** 把脚本源码当作 CommonJS 模块在 vm 里求值，取出 meta / run */
 export function evaluateScript(code: string, filename: string): ScriptModule {
   const moduleShim = { exports: {} as Record<string, unknown> }
@@ -47,12 +67,17 @@ export function evaluateScript(code: string, filename: string): ScriptModule {
 
   const exported = (moduleShim.exports ?? {}) as Partial<ScriptModule>
   if (typeof exported.run !== 'function') {
-    throw new Error('脚本必须导出 run 函数：exports.run = async (api) => {}')
+    throw new Error('脚本必须导出 run 函数：exports.run = async (api, event) => {}')
   }
   if (!exported.meta || typeof exported.meta.name !== 'string' || !exported.meta.name.trim()) {
     throw new Error('脚本必须导出 meta 且包含 name：exports.meta = { name: "..." }')
   }
-  return { meta: exported.meta, run: exported.run }
+  const parsed = parseHook(exported.meta, filename)
+  return {
+    meta: parsed.meta,
+    run: exported.run,
+    hookWarning: parsed.warning ?? undefined
+  }
 }
 
 /** 取脚本源码。内置脚本读编译进包的字符串，外部脚本读磁盘文件 */
@@ -82,11 +107,23 @@ function describe(id: string, fileName: string | null): ScriptDescriptor {
     id,
     source: (fileName === null ? 'builtin' : 'external') as ScriptDescriptor['source'],
     fileName,
-    filePath: fileName === null ? null : getScriptPath(fileName)
+    filePath: fileName === null ? null : getScriptPath(fileName),
+    hook: null as ScriptDescriptor['hook'],
+    hookEnabled: isScriptHookEnabled(id),
+    hookWarning: null as string | null,
+    logLimit: getScriptLogLimit(id),
+    hasLastHookEvent: hasLastHookEvent(id)
   }
   try {
-    const { meta } = loadScript(id)
-    return { ...base, name: meta.name, description: meta.description ?? '', error: null }
+    const { meta, hookWarning } = loadScript(id)
+    return {
+      ...base,
+      name: meta.name,
+      description: meta.description ?? '',
+      error: null,
+      hook: meta.hook ?? null,
+      hookWarning: hookWarning ?? null
+    }
   } catch (error) {
     return {
       ...base,

@@ -1,7 +1,8 @@
 # API 参考
 
-`run(api)` 的入参 `api` 是脚本的全部能力来源。沙箱里没有 `require`，
-所以文件、网络、数据库一律从这里走。
+`run(api, event?)` 的入参 `api` 是脚本的全部能力来源。沙箱里没有 `require`，
+所以文件、网络、数据库一律从这里走。第二个参数 `event` 只在[事件钩子](/scripts/hooks)
+触发时有值，手动运行或 cron 时为空。
 
 | 命名空间 | 作用 |
 | --- | --- |
@@ -222,8 +223,8 @@ const result = await api.actions.addUser('https://www.douyin.com/user/MS4wLjABAA
 | `not-video-link` | 传的是主页链接，没有作品要下 |
 
 ::: warning 下载是后台进行的
-返回时下载才刚开始排队，**不代表文件已经下完**。脚本没法等待它完成，
-进度要到「下载」页看。
+返回时下载才刚开始排队，**不代表文件已经下完**。要在文件落地之后接着处理，
+新建脚本时把触发时机选成「作品下载完成」，见[事件钩子](/scripts/hooks)。
 :::
 
 ### api.actions.addVideo()

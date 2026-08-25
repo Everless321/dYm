@@ -1,7 +1,26 @@
 # 示例脚本
 
-下面的例子可以直接复制到编辑器里跑。应用里还内置了三个完整脚本，
+下面的例子可以直接复制到编辑器里跑。应用里还内置了完整脚本，
 在「自定义脚本」页选中后能看到全部源码，点「以此为模板新建」就能改。
+
+新建时选「作品下载完成」会自动带上 `event` 入参，不必手写 `meta.hook`。
+
+## 下载完成后打标签
+
+创建脚本时选 **作品下载完成**。每个作品入库后给它加一个标签：
+
+```js
+exports.meta = {
+  name: '新作品打「待看」',
+  hook: 'post.downloaded'
+}
+
+exports.run = async (api, event) => {
+  if (!event || event.hook !== 'post.downloaded') return
+  api.db.tags.addToPosts([event.post.id], ['待看'])
+  api.log('已标记', event.post.nickname, event.post.awemeId)
+}
+```
 
 ## 统计每个用户的作品数
 

@@ -233,6 +233,8 @@ declare global {
     syncNow: () => Promise<void>
   }
 
+  type ScriptHookName = 'post.downloaded' | 'post.analyzed' | 'user.added' | 'live.converted'
+
   interface ScriptDescriptor {
     id: string
     source: 'builtin' | 'external'
@@ -241,6 +243,11 @@ declare global {
     fileName: string | null
     filePath: string | null
     error: string | null
+    hook: ScriptHookName | null
+    hookEnabled: boolean
+    hookWarning: string | null
+    logLimit: number
+    hasLastHookEvent: boolean
   }
 
   interface ScriptLogEntry {
@@ -279,7 +286,7 @@ declare global {
     getDir: () => Promise<string>
     openDir: () => Promise<void>
     read: (id: string) => Promise<string>
-    template: (name: string) => Promise<string>
+    template: (name: string, hook?: ScriptHookName | null) => Promise<string>
     create: (fileName: string, source: string) => Promise<ScriptDescriptor>
     save: (fileName: string, source: string) => Promise<ScriptDescriptor>
     rename: (from: string, to: string) => Promise<ScriptDescriptor>
@@ -292,6 +299,8 @@ declare global {
       cron: string,
       enabled: boolean
     ) => Promise<ScriptScheduleInfo | null>
+    setHookEnabled: (scriptId: string, enabled: boolean) => Promise<boolean>
+    setLogLimit: (scriptId: string, limit: number) => Promise<number>
   }
 
   interface LiveProgress {

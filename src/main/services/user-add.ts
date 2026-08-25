@@ -10,6 +10,7 @@ import {
 import { fetchUserProfileBySecUid, fetchVideoDetail, parseDouyinUrl } from './douyin'
 import { downloadSinglePost } from './downloader'
 import { downloadAvatar } from './avatar'
+import { emitUserAdded } from './scripts/emit'
 
 export type AddUserPostDownload =
   | { status: 'downloading'; awemeId: string }
@@ -136,6 +137,7 @@ export async function addUserByUrl(url: string): Promise<AddUserResult> {
     dbUser = createUser(input)
     isNewUser = true
     console.log('[User:add] User created:', dbUser.id)
+    emitUserAdded(dbUser)
 
     // 下载头像到本地（失败不影响添加流程）
     if (input.avatar) {

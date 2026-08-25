@@ -5,6 +5,83 @@
  * 后续开放给他人编写时运行时接口无需变动。
  */
 
+/** 脚本可以挂上的应用事件。创建时选一个，写入 meta.hook，run 的第二个参数就是对应入参 */
+export type ScriptHookName = 'post.downloaded' | 'post.analyzed' | 'user.added' | 'live.converted'
+
+export const SCRIPT_HOOK_NAMES: ScriptHookName[] = [
+  'post.downloaded',
+  'post.analyzed',
+  'user.added',
+  'live.converted'
+]
+
+export const SCRIPT_HOOK_LABELS: Record<ScriptHookName, string> = {
+  'post.downloaded': '作品下载完成',
+  'post.analyzed': '作品分析完成',
+  'user.added': '新作者添加',
+  'live.converted': '直播转封装完成'
+}
+
+/** 钩子触发默认超时。手动运行仍默认不限；meta.timeout 可覆盖，0 = 不限 */
+export const HOOK_DEFAULT_TIMEOUT_MS = 10 * 60 * 1000
+
+export function isScriptHookName(value: unknown): value is ScriptHookName {
+  return typeof value === 'string' && (SCRIPT_HOOK_NAMES as string[]).includes(value)
+}
+
+/** 钩子事件里的作品快照，字段用驼峰，避免脚本直接碰数据库列名 */
+export interface ScriptPostSnapshot {
+  id: number
+  awemeId: string
+  userId: number
+  secUid: string
+  nickname: string
+  folderName: string
+  desc: string
+  /** 0 = 视频，其它值为图文 */
+  awemeType: number
+  tags: string[]
+  manualTags: string[]
+  category: string | null
+  summary: string | null
+  scene: string | null
+  contentLevel: number | null
+}
+
+export type ScriptHookEvent =
+  | {
+      hook: 'post.downloaded'
+      /** task = 下载任务，sync = 用户同步，single = 单条添加 */
+      source: 'task' | 'sync' | 'single'
+      post: ScriptPostSnapshot
+      folderPath: string
+    }
+  | {
+      hook: 'post.analyzed'
+      post: ScriptPostSnapshot
+    }
+  | {
+      hook: 'user.added'
+      user: {
+        id: number
+        secUid: string
+        uid: string
+        nickname: string
+        uniqueId: string
+      }
+    }
+  | {
+      hook: 'live.converted'
+      record: {
+        id: number
+        userId: number
+        nickname: string | null
+        roomId: string
+        filePath: string | null
+        fileSize: number
+      }
+    }
+
 /** 脚本自述信息，内置与外部脚本都通过导出 meta 声明 */
 export interface ScriptMeta {
   /** 展示名称 */
@@ -13,12 +90,19 @@ export interface ScriptMeta {
   description?: string
   /** 执行超时（毫秒）。不填或填 0 表示不限时长，脚本可以跑几十小时 */
   timeout?: number
+  /**
+   * 挂到哪个应用事件。创建脚本时选好，写入这里。
+   * 有 hook 时 run(api, event) 的 event 就是该事件的入参；手动点运行时 event 为空。
+   */
+  hook?: ScriptHookName
 }
 
 /** 脚本模块的形状：导出 meta 与 run */
 export interface ScriptModule {
   meta: ScriptMeta
-  run: (api: ScriptApi) => unknown | Promise<unknown>
+  run: (api: ScriptApi, event?: ScriptHookEvent) => unknown | Promise<unknown>
+  /** meta.hook 无法识别时的提示，扫描列表时展示 */
+  hookWarning?: string
 }
 
 /** 列表展示用的脚本条目 */
@@ -34,6 +118,16 @@ export interface ScriptDescriptor {
   filePath: string | null
   /** 加载失败时的原因，非空表示该脚本不可运行 */
   error: string | null
+  /** 从 meta.hook 读出的触发事件；未设置或无法识别为 null */
+  hook: ScriptHookName | null
+  /** 钩子是否启用。没写过设置时默认 true；仅手动运行的脚本也是 true，只是不会被派发 */
+  hookEnabled: boolean
+  /** meta.hook 写了但无法识别时的提示，不阻止手动运行 */
+  hookWarning: string | null
+  /** 该脚本日志留存条数 */
+  logLimit: number
+  /** 是否有上次钩子入参，页面「运行」可以带着再跑一次 */
+  hasLastHookEvent: boolean
 }
 
 /** 单条运行日志 */

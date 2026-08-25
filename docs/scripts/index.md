@@ -26,23 +26,27 @@
 
 ## 脚本长什么样
 
-一个脚本就是一个 CommonJS 模块，导出 `meta` 和 `run` 两样东西：
+一个脚本就是一个 CommonJS 模块，导出 `meta` 和 `run` 两样东西。
+新建时会问「什么时候运行」——选「仅手动 / 定时」或挂到一个应用事件上。
+钩子脚本会把 `meta.hook` 和 `event` 入参写进模板，不用自己注册。
 
 ```js
 exports.meta = {
   name: '脚本名称', // 必填，列表里显示的名字
   description: '一句话说明', // 可选
-  timeout: 0 // 可选，超时毫秒数；不填或 0 = 不限时长
+  timeout: 0, // 可选，超时毫秒数；不填或 0 = 不限时长
+  hook: 'post.downloaded' // 可选，创建时选好；有则下载完成后自动跑
 }
 
-exports.run = async (api) => {
+exports.run = async (api, event) => {
   api.log('开始')
-  // 逻辑写在这里，能做什么见 API 参考
-  return { done: true } // 返回值会显示在运行结果里（需 JSON 可序列化）
+  // 钩子触发时 event 带这次的作品 / 作者 / 录制；手动点运行时 event 为空
+  return { done: true }
 }
 ```
 
 `run` 的入参 `api` 就是脚本的全部能力来源，详见 [API 参考](/scripts/api)。
+钩子的 `event` 形状见 [事件钩子](/scripts/hooks)。
 
 ## 沙箱限制
 
@@ -93,5 +97,6 @@ exports.run = async (api) => {
 
 - [快速开始](/scripts/getting-started) —— 从零写出第一个能跑的脚本
 - [运行与停止](/scripts/lifecycle) —— 长任务、协作式停止、超时的具体行为
+- [事件钩子](/scripts/hooks) —— 下载完成、分析完成时自动跑
 - [API 参考](/scripts/api) —— `api` 上每个方法的完整说明
 - [示例脚本](/scripts/examples) —— 可以直接抄的完整例子

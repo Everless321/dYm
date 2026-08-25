@@ -4,6 +4,7 @@ import { existsSync, renameSync, rmSync, statSync } from 'fs'
 import { ffmpegPath, ffprobePath } from '../utils/ffmpeg-path'
 import { getLiveRecords, getLiveRecordById, updateLiveRecord } from '../database'
 import type { LiveProgress } from './live-recorder'
+import { emitLiveConverted } from './scripts/emit'
 
 /**
  * 录制收尾转换：FLV -> MP4（视频 copy + 音频重编码 + faststart）。
@@ -56,7 +57,11 @@ export function enqueueConvert(recordId: number): void {
   queueTail = queueTail.then(async () => {
     try {
       progressOf(recordId, 'converting', '正在转换为可播放格式…')
-      await convertRecord(recordId)
+      const convertedOk = await convertRecord(recordId)
+      const converted = getLiveRecordById(recordId)
+      if (convertedOk && converted?.file_path?.toLowerCase().endsWith('.mp4')) {
+        emitLiveConverted(converted)
+      }
       progressOf(recordId, 'converted', '转换完成，可以观看了')
     } catch (err) {
       console.error(`[LiveConvert] 记录 ${recordId} 转换失败:`, err)
@@ -77,17 +82,18 @@ export function sweepUnconverted(): void {
   }
 }
 
-async function convertRecord(recordId: number): Promise<void> {
+async function convertRecord(recordId: number): Promise<boolean> {
   // 队列等待期间记录可能已被删除，重新取
   const rec = getLiveRecordById(recordId)
   const src = rec?.file_path
-  if (!src || !existsSync(src)) return
+  if (!src || !existsSync(src)) return false
 
   const dest = src.replace(/\.flv$/i, '.mp4')
   await remuxAtomic(src, dest)
 
   updateLiveRecord(recordId, { file_path: dest, file_size: statSync(dest).size })
   rmSync(src, { force: true })
+  return true
 }
 
 /**

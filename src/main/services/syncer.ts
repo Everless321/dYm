@@ -10,6 +10,7 @@ import {
 } from '../database'
 import { convertFolderImagesToJpg } from './downloader'
 import { validateDownloadFolder, cleanupFailedDownload, expectsMusic } from './download-validator'
+import { emitPostDownloaded } from './scripts/emit'
 import { track } from './telemetry'
 
 /** 同步触发来源：手动 / 定时调度 */
@@ -277,7 +278,7 @@ export async function startUserSync(
               await convertFolderImagesToJpg(join(userPath, awemeId))
             }
 
-            createPost({
+            const post = createPost({
               aweme_id: awemeId,
               user_id: user.id,
               sec_uid: user.sec_uid,
@@ -288,10 +289,11 @@ export async function startUserSync(
               aweme_type: awemeData.awemeType || 0,
               create_time: awemeData.createTime || '',
               folder_name: awemeId,
-              video_path: join(userPath, awemeId),
-              cover_path: join(userPath, awemeId),
-              music_path: join(userPath, awemeId)
+              video_path: folderPath,
+              cover_path: folderPath,
+              music_path: folderPath
             })
+            emitPostDownloaded(post, folderPath, 'sync')
 
             return true
           } catch (error) {

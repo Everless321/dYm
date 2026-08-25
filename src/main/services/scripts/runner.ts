@@ -1,11 +1,25 @@
 import { BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
 import { createScriptApi, ScriptCancelledError } from './api'
+import { getScriptLogLimit } from '../../database'
 import { loadScript } from './loader'
-import type { ScriptApi, ScriptLogEntry, ScriptRunResult } from './types'
-
-/** 每个脚本保留的日志条数上限 */
-const LOG_BUFFER_SIZE = 1000
+import {
+  appendScriptLogFile,
+  deleteLastHookEvent,
+  deleteScriptLogFile,
+  loadLastHookEvent,
+  loadScriptLogFile,
+  persistScriptLogFile,
+  renameLastHookEvent
+} from './log-store'
+import {
+  HOOK_DEFAULT_TIMEOUT_MS,
+  SCRIPT_HOOK_LABELS,
+  type ScriptApi,
+  type ScriptHookEvent,
+  type ScriptLogEntry,
+  type ScriptRunResult
+} from './types'
 
 /** 正在运行的脚本 id，用于阻止同一脚本并发执行 */
 const running = new Set<string>()
@@ -36,17 +50,51 @@ function withCancelGuard<T extends object>(target: T, check: () => void): T {
 /**
  * 按脚本缓存运行日志。
  * 日志必须存在主进程：渲染层页面一卸载 state 就没了，而脚本仍在后台继续跑。
+ * 同时落到 userData/script-logs，关掉应用再打开还能看到。
  */
 const logBuffers = new Map<string, ScriptLogEntry[]>()
 
 /** 全局自增序号，供渲染层去重与排序 */
 let logSeq = 0
 
+function logLimitOf(scriptId: string): number {
+  return getScriptLogLimit(scriptId)
+}
+
+function ensureLogsLoaded(scriptId: string): ScriptLogEntry[] {
+  let buffer = logBuffers.get(scriptId)
+  if (!buffer) {
+    buffer = loadScriptLogFile(scriptId, logLimitOf(scriptId))
+    logBuffers.set(scriptId, buffer)
+    for (const entry of buffer) {
+      if (entry.seq > logSeq) logSeq = entry.seq
+    }
+  }
+  return buffer
+}
+
+function persistTrimmed(scriptId: string, buffer: ScriptLogEntry[]): void {
+  try {
+    persistScriptLogFile(scriptId, buffer)
+  } catch (error) {
+    console.error('[scripts] 写日志文件失败:', error)
+  }
+}
+
 function recordAndBroadcast(entry: ScriptLogEntry): void {
-  const buffer = logBuffers.get(entry.scriptId) ?? []
+  const buffer = ensureLogsLoaded(entry.scriptId)
   buffer.push(entry)
-  if (buffer.length > LOG_BUFFER_SIZE) buffer.splice(0, buffer.length - LOG_BUFFER_SIZE)
-  logBuffers.set(entry.scriptId, buffer)
+  const limit = logLimitOf(entry.scriptId)
+  if (buffer.length > limit) {
+    buffer.splice(0, buffer.length - limit)
+    persistTrimmed(entry.scriptId, buffer)
+  } else {
+    try {
+      appendScriptLogFile(entry)
+    } catch (error) {
+      console.error('[scripts] 写日志文件失败:', error)
+    }
+  }
 
   BrowserWindow.getAllWindows().forEach((win) => {
     if (!win.isDestroyed()) win.webContents.send('scripts:log', entry)
@@ -55,12 +103,38 @@ function recordAndBroadcast(entry: ScriptLogEntry): void {
 
 /** 取某个脚本的历史日志，页面挂载时用来恢复运行记录 */
 export function getScriptLogs(scriptId: string): ScriptLogEntry[] {
-  return logBuffers.get(scriptId) ?? []
+  return ensureLogsLoaded(scriptId)
 }
 
-/** 清空某个脚本的日志 */
+/** 清空某个脚本的日志（内存和磁盘一起清） */
 export function clearScriptLogs(scriptId: string): void {
   logBuffers.delete(scriptId)
+  deleteScriptLogFile(scriptId)
+}
+
+/** 脚本改名后日志文件跟着搬，里面的 scriptId 也改掉，否则页面按 id 过滤会看不到 */
+export function renameScriptLogs(fromId: string, toId: string): void {
+  if (fromId === toId) return
+  const entries = ensureLogsLoaded(fromId).map((entry) => ({ ...entry, scriptId: toId }))
+  logBuffers.delete(fromId)
+  logBuffers.set(toId, entries)
+  persistScriptLogFile(toId, entries)
+  deleteScriptLogFile(fromId)
+  renameLastHookEvent(fromId, toId)
+}
+
+/** 按新的留存条数裁切内存和磁盘。改设置时立刻生效。 */
+export function applyScriptLogLimit(scriptId: string, limit: number): void {
+  const buffer = ensureLogsLoaded(scriptId)
+  if (buffer.length > limit) {
+    buffer.splice(0, buffer.length - limit)
+    persistTrimmed(scriptId, buffer)
+  }
+}
+
+export function forgetScriptRuntime(scriptId: string): void {
+  clearScriptLogs(scriptId)
+  deleteLastHookEvent(scriptId)
 }
 
 /**
@@ -112,11 +186,34 @@ export function getRunningScripts(): string[] {
   return [...running]
 }
 
+/** 给钩子队列溢出等不在一次 run 里的提示用 */
+export function appendScriptLog(scriptId: string, level: 'info' | 'error', message: string): void {
+  recordAndBroadcast({
+    scriptId,
+    runId: 'system',
+    seq: ++logSeq,
+    level,
+    message,
+    time: Date.now()
+  })
+}
+
+type ExecuteKind = { kind: 'manual' } | { kind: 'hook'; event: ScriptHookEvent }
+
 /**
  * 执行脚本：加载模块 → 注入 api → 带超时运行 → 回传结果。
  * 运行期间的 api.log 输出通过 'scripts:log' 实时推给渲染层。
  */
 export async function runScript(id: string): Promise<ScriptRunResult> {
+  return executeScript(id, { kind: 'manual' })
+}
+
+/** 由钩子调度器调用。同一脚本正在跑时不要调这个，先排队 */
+export async function runScriptHook(id: string, event: ScriptHookEvent): Promise<ScriptRunResult> {
+  return executeScript(id, { kind: 'hook', event })
+}
+
+async function executeScript(id: string, options: ExecuteKind): Promise<ScriptRunResult> {
   if (running.has(id)) {
     throw new Error('该脚本正在运行中')
   }
@@ -141,11 +238,28 @@ export async function runScript(id: string): Promise<ScriptRunResult> {
       if (controller.signal.aborted) throw new ScriptCancelledError()
     }) as ScriptApi
 
-    emit('info', `▶ 开始运行「${script.meta.name}」`)
+    let event: ScriptHookEvent | undefined = options.kind === 'hook' ? options.event : undefined
+    let replayed = false
+    if (options.kind === 'manual' && script.meta.hook) {
+      const last = loadLastHookEvent(id)
+      if (last && last.hook === script.meta.hook) {
+        event = last
+        replayed = true
+      }
+    }
 
-    // 默认不限时长——长任务可以跑几十小时，需要保险的脚本自己在 meta 里设 timeout。
-    // 超时同样走 abort，让脚本真正停下而不只是不再等待它。
-    const timeoutMs = script.meta.timeout ?? 0
+    const startLine =
+      options.kind === 'hook'
+        ? `⚡ 钩子「${SCRIPT_HOOK_LABELS[options.event.hook]}」触发「${script.meta.name}」`
+        : replayed && event
+          ? `▶ 再次执行「${script.meta.name}」（上次的${SCRIPT_HOOK_LABELS[event.hook]}入参）`
+          : `▶ 开始运行「${script.meta.name}」`
+    emit('info', startLine)
+
+    // 钩子（含页面上用上次入参再跑）默认 10 分钟；纯手动仍默认不限。
+    const timeoutMs = event
+      ? (script.meta.timeout ?? HOOK_DEFAULT_TIMEOUT_MS)
+      : (script.meta.timeout ?? 0)
     const timer =
       timeoutMs > 0
         ? setTimeout(() => {
@@ -155,7 +269,7 @@ export async function runScript(id: string): Promise<ScriptRunResult> {
         : undefined
 
     try {
-      const result = await script.run(api)
+      const result = await script.run(api, event)
       const durationMs = Date.now() - startedAt
       emit('info', `✔ 运行完成，耗时 ${formatDuration(durationMs)}`)
       return { runId, ok: true, result: toSerializable(result), durationMs }
