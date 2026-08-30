@@ -543,7 +543,10 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse)
       max: MAX_PAGE_SIZE
     })
     const filters = buildFeedFilters(url)
-    const result = getAllPosts(page, pageSize, filters)
+    const result = getAllPosts(page, pageSize, filters, {
+      field: 'downloaded_at',
+      order: 'DESC'
+    })
     respondJson(response, 200, {
       page,
       pageSize,
