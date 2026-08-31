@@ -17,7 +17,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -50,7 +50,7 @@ jobs:
           sandbox: read-only
 
       - name: 发表评论
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           COMMENT_BODY: ${{ steps.codex.outputs.final-message }}
         with:

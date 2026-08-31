@@ -38,10 +38,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           # 24 起自带 npm 11，与本地开发环境一致。停在 22（npm 10）时，
           # 任何人在本地用 npm 11 跑一次 npm i 重写 lock 都会让 npm ci 报不同步
@@ -49,7 +49,7 @@ jobs:
           cache: 'npm'
 
       - name: Cache Electron binaries
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ${{ github.workspace }}/.cache/electron
@@ -66,7 +66,7 @@ jobs:
         run: npm run build
 
       - name: Cache ffmpeg binaries
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: resources/ffmpeg
           key: ffmpeg-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('scripts/download-ffmpeg.mjs') }}
@@ -106,7 +106,7 @@ jobs:
       # 排除 builder-debug.yml：electron-builder 的调试转储，每个平台都会生成一份
       # 同名文件。它会泄露构建路径与配置，对用户也没用，此前一直被误发到 Release 里。
       - name: Upload artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: dym-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
@@ -129,13 +129,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           # 需要完整历史与 tag 对象才能读出 annotated tag 的说明正文
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
@@ -156,7 +156,7 @@ jobs:
       # 平铺时会互相覆盖，导致一半 Mac 用户自动更新拿到错架构的包。
       # 这里每个 artifact 落到各自子目录，再由脚本合并后汇总。
       - name: Download all artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           path: artifacts
 
@@ -168,7 +168,7 @@ jobs:
           node .github/scripts/merge-latest-mac.mjs artifacts release-files
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: release-files/*
           draft: false
