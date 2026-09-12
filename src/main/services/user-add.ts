@@ -59,41 +59,46 @@ export async function addUserByUrl(url: string): Promise<AddUserResult> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     userData = (profileRes as any)._data?.user
   } else if (parseResult.type === 'video') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let detail: any
     try {
-      const postDetail = await fetchVideoDetail(url)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const detail = postDetail as any
-
-      console.log('[User:add] PostDetail fields:', {
-        secUserId: detail.secUserId,
-        nickname: detail.nickname,
-        uid: detail.uid
-      })
-
-      const secUid = detail.secUserId
-      if (!secUid) {
-        throw new Error('作品信息中未找到作者数据')
-      }
-
-      if (typeof detail.toAwemeData === 'function') {
-        try {
-          awemeDataForDownload = detail.toAwemeData()
-        } catch (e) {
-          console.error('[User:add] toAwemeData failed:', e)
-        }
-      }
-
-      const profileRes = await fetchUserProfileBySecUid(secUid)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      userData = (profileRes as any)._data?.user
-
-      homepageUrl = `https://www.douyin.com/user/${secUid}`
+      detail = await fetchVideoDetail(url)
     } catch (error) {
       console.error('[User:add] Failed to fetch video detail:', error)
       throw new Error(
-        '获取作品详情失败，请尝试使用用户主页链接（点击作品中的作者头像，复制用户主页链接）'
+        `获取作品详情失败：${(error as Error).message}。请尝试使用用户主页链接（点击作品中的作者头像，复制用户主页链接）`
       )
     }
+
+    console.log('[User:add] PostDetail fields:', {
+      secUserId: detail.secUserId,
+      nickname: detail.nickname,
+      uid: detail.uid
+    })
+
+    const secUid = detail.secUserId
+    if (!secUid) {
+      throw new Error('作品详情中未找到作者数据（作品可能已删除或为私密），请尝试使用用户主页链接')
+    }
+
+    if (typeof detail.toAwemeData === 'function') {
+      try {
+        awemeDataForDownload = detail.toAwemeData()
+      } catch (e) {
+        console.error('[User:add] toAwemeData failed:', e)
+      }
+    }
+
+    try {
+      const profileRes = await fetchUserProfileBySecUid(secUid)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      userData = (profileRes as any)._data?.user
+    } catch (error) {
+      console.error('[User:add] Failed to fetch user profile:', error)
+      throw new Error(`获取作者资料失败：${(error as Error).message}（sec_uid: ${secUid}）`)
+    }
+
+    homepageUrl = `https://www.douyin.com/user/${secUid}`
   } else {
     throw new Error('无法识别的链接类型，请输入用户主页或作品链接')
   }

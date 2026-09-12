@@ -1079,7 +1079,7 @@ input { border: none; outline: none; background: none; }
 .author-modal {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 80;
   display: flex;
   align-items: center;
   justify-content: center;

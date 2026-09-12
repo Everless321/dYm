@@ -14,7 +14,16 @@ const state = {
   imageAutoTimer: null,
   imageManualOverride: new Set(),
   author: null,
+  authorPage: false,
   authorSyncTimer: null,
+  browseStack: [],
+  feedEpoch: 0,
+  loadSeq: 0,
+  historyFlags: {
+    player: false,
+    author: false,
+    settings: false
+  },
   filters: {
     secUid: '',
     keyword: '',
@@ -117,6 +126,81 @@ async function postJson(path, body) {
   return res.json()
 }
 
+function isPlayerOpen() {
+  return el.playerView.style.display === 'flex' && !el.playerView.hidden
+}
+
+function invalidateFeed() {
+  state.feedEpoch += 1
+  return state.feedEpoch
+}
+
+function captureBrowseSnapshot() {
+  return {
+    posts: state.posts.slice(),
+    page: state.page,
+    total: state.total,
+    hasMore: state.hasMore,
+    authors: state.authors.slice(),
+    filters: { ...state.filters },
+    searchValue: el.searchInput.value,
+    scrollTop: el.grid.scrollTop,
+    author: state.author,
+    authorPage: state.authorPage
+  }
+}
+
+function restoreBrowseSnapshot(snap) {
+  state.loadSeq += 1
+  invalidateFeed()
+  state.loading = false
+  el.gridLoading.style.display = 'none'
+  state.posts = snap.posts
+  state.page = snap.page
+  state.total = snap.total
+  state.hasMore = snap.hasMore
+  state.authors = snap.authors
+  state.filters = { ...snap.filters }
+  el.searchInput.value = snap.searchValue
+  syncSearchClearVisibility()
+  el.analyzedToggle.setAttribute('aria-pressed', String(Boolean(state.filters.analyzedOnly)))
+  state.author = snap.author
+  state.authorPage = snap.authorPage
+  renderAuthors()
+  if (state.authorPage && state.author) renderAuthorPanel()
+  else {
+    el.authorPanel.hidden = true
+    el.authorPanel.innerHTML = ''
+  }
+  if (state.posts.length === 0) {
+    el.grid.innerHTML = `
+        <div class="grid-empty">
+          <h2>暂无内容</h2>
+          <p>在桌面端下载视频后即可在此浏览</p>
+        </div>`
+  } else {
+    el.grid.innerHTML = state.posts.map(gridItemHtml).join('')
+    bindGridItems()
+  }
+  el.grid.scrollTop = snap.scrollTop
+}
+
+function pushViewHistory(view, extra = {}) {
+  history.pushState({ view, ...extra }, '')
+  if (view === 'player') state.historyFlags.player = true
+  if (view === 'author') state.historyFlags.author = true
+  if (view === 'author-settings') state.historyFlags.settings = true
+}
+
+let skipPops = 0
+
+function consumeHistory(steps = 1) {
+  if (steps <= 0) return
+  skipPops += 1
+  if (steps === 1) history.back()
+  else history.go(-steps)
+}
+
 // ── Author Bar ──
 
 function renderAuthors() {
@@ -132,7 +216,7 @@ function renderAuthors() {
     btn.addEventListener('click', () => {
       const uid = btn.dataset.uid || ''
       if (uid) enterAuthor(uid)
-      else exitAuthor()
+      else resetToAll()
     })
   })
 }
@@ -148,7 +232,14 @@ function clearAuthorSyncTimer() {
 
 async function enterAuthor(secUid) {
   if (!secUid) return
-  if (el.playerView.style.display === 'flex' && !el.playerView.hidden) closePlayer()
+  if (state.authorPage && state.filters.secUid === secUid) return
+  if (isPlayerOpen()) hidePlayer()
+  if (!state.loading || state.posts.length > 0) {
+    state.browseStack.push(captureBrowseSnapshot())
+    if (state.browseStack.length > 8) state.browseStack.shift()
+  }
+  invalidateFeed()
+  state.authorPage = true
   state.filters.secUid = secUid
   state.filters.keyword = ''
   el.searchInput.value = ''
@@ -161,17 +252,69 @@ async function enterAuthor(secUid) {
   }
   renderAuthorPanel()
   loadGrid(true)
+  pushViewHistory('author', { secUid })
+}
+
+function applyExitAuthor() {
+  hideAuthorModal()
+  clearAuthorSyncTimer()
+  const snap = state.browseStack.pop()
+  state.author = null
+  state.authorPage = false
+  state.historyFlags.author = false
+  el.authorPanel.hidden = true
+  el.authorPanel.innerHTML = ''
+  if (snap) restoreBrowseSnapshot(snap)
+  else {
+    state.filters.secUid = ''
+    el.grid.scrollTop = 0
+    loadGrid(true)
+  }
 }
 
 function exitAuthor() {
+  const steps = (state.historyFlags.author ? 1 : 0) + (state.historyFlags.settings ? 1 : 0)
+  applyExitAuthor()
+  consumeHistory(steps)
+}
+
+function applyResetToAll() {
+  hideAuthorModal()
   clearAuthorSyncTimer()
-  closeAuthorModal()
+  invalidateFeed()
+  state.browseStack = []
   state.author = null
+  state.authorPage = false
+  state.historyFlags.author = false
   state.filters.secUid = ''
   el.authorPanel.hidden = true
   el.authorPanel.innerHTML = ''
   el.grid.scrollTop = 0
   loadGrid(true)
+}
+
+function resetToAll() {
+  if (!state.authorPage && !state.filters.secUid) return
+  const steps = state.browseStack.length + (state.historyFlags.settings ? 1 : 0)
+  applyResetToAll()
+  consumeHistory(steps)
+}
+
+let authorSettingsLoading = false
+
+async function openAuthorSettings(secUid) {
+  if (!secUid || authorSettingsLoading) return
+  if (!el.authorModal.hidden && state.author?.secUid === secUid) return
+  authorSettingsLoading = true
+  try {
+    state.author = await fetchJson(`/api/author?secUid=${encodeURIComponent(secUid)}`)
+  } catch {
+    state.author = { secUid, nickname: '', settings: {} }
+  } finally {
+    authorSettingsLoading = false
+  }
+  openAuthorModal()
+  if (isAuthorSyncing(state.author)) startAuthorSyncPolling()
 }
 
 const SYNC_PRESETS = [
@@ -196,8 +339,10 @@ function detectSyncPreset(settings) {
 
 function renderAuthorPanel() {
   const a = state.author
-  if (!a) {
-    el.authorPanel.hidden = true
+  if (!state.authorPage || !a) {
+    if (!state.authorPage) {
+      el.authorPanel.hidden = true
+    }
     return
   }
   const syncing = isAuthorSyncing(a)
@@ -218,7 +363,7 @@ function renderAuthorPanel() {
       </div>
       <div class="author-hero-actions">
         <button class="author-icon-btn" type="button" data-author-action="settings" aria-label="设置">${icons.gear}</button>
-        <button class="author-icon-btn" type="button" data-author-action="exit" aria-label="返回全部">${icons.close}</button>
+        <button class="author-icon-btn" type="button" data-author-action="exit" aria-label="返回">${icons.close}</button>
       </div>
     </div>
   `
@@ -280,11 +425,28 @@ function openAuthorModal() {
   `
   el.authorModal.hidden = false
   bindAuthorModal()
+  if (!state.historyFlags.settings) {
+    const from = isPlayerOpen() ? 'player' : state.authorPage ? 'author' : 'browse'
+    pushViewHistory('author-settings', { from })
+  }
+}
+
+function hideAuthorModal() {
+  if (el.authorModal.hidden) {
+    state.historyFlags.settings = false
+    return
+  }
+  el.authorModal.hidden = true
+  el.authorModal.innerHTML = ''
+  state.historyFlags.settings = false
+  if (!state.authorPage) clearAuthorSyncTimer()
 }
 
 function closeAuthorModal() {
-  el.authorModal.hidden = true
-  el.authorModal.innerHTML = ''
+  if (el.authorModal.hidden) return
+  const pushed = state.historyFlags.settings
+  hideAuthorModal()
+  if (pushed) consumeHistory(1)
 }
 
 function bindAuthorModal() {
@@ -362,7 +524,7 @@ async function saveAuthorSettings() {
   }
   try {
     state.author = await postJson('/api/author/settings', payload)
-    renderAuthorPanel()
+    if (state.authorPage) renderAuthorPanel()
     closeAuthorModal()
     showToast('已保存设置')
   } catch (err) {
@@ -377,7 +539,8 @@ async function triggerAuthorSync() {
     if (res.started) showToast('已开始同步下载')
     else if (res.syncing) showToast('该作者正在同步中')
     state.author = { ...state.author, syncing: true, syncStatus: 'syncing' }
-    renderAuthorPanel()
+    if (state.authorPage) renderAuthorPanel()
+    else if (!el.authorModal.hidden) refreshModalSyncState()
   } catch (err) {
     showToast(err.message || '同步失败')
   }
@@ -395,10 +558,11 @@ function startAuthorSyncPolling() {
       const wasSyncing = isAuthorSyncing(state.author)
       state.author = next
       const nowSyncing = isAuthorSyncing(next)
-      renderAuthorPanel()
+      if (state.authorPage) renderAuthorPanel()
+      else if (!el.authorModal.hidden) refreshModalSyncState()
       if (wasSyncing && !nowSyncing) {
         showToast('同步完成')
-        loadGrid(true)
+        if (state.authorPage) loadGrid(true)
       }
     } catch {
       // 网络抖动忽略，下次轮询再试
@@ -447,15 +611,17 @@ function bindGridItems() {
 }
 
 async function loadGrid(reset = false) {
-  if (state.loading) return
+  if (state.loading && !reset) return
+  if (!reset && !state.hasMore) return
+
+  const seq = ++state.loadSeq
+  const epoch = reset ? invalidateFeed() : state.feedEpoch
 
   if (reset) {
     state.page = 1
     state.posts = []
     state.hasMore = true
     el.grid.innerHTML = ''
-  } else if (!state.hasMore) {
-    return
   }
 
   state.loading = true
@@ -471,6 +637,7 @@ async function loadGrid(reset = false) {
 
   try {
     const payload = await fetchJson(`/api/feed?${query}`)
+    if (seq !== state.loadSeq || epoch !== state.feedEpoch) return
     state.authors = payload.authors || []
     state.total = payload.total || 0
     state.hasMore = Boolean(payload.hasMore)
@@ -508,13 +675,14 @@ async function loadGrid(reset = false) {
       fragment.innerHTML = addedPosts.map(gridItemHtml).join('')
       while (fragment.firstElementChild) el.grid.appendChild(fragment.firstElementChild)
       bindGridItems()
-      if (!reset && addedPosts.length > 0 && el.playerView.style.display !== 'none') {
+      if (!reset && addedPosts.length > 0 && isPlayerOpen()) {
         extendPlayer(addedPosts)
       }
     }
 
     if (incoming.length > 0) state.page += 1
   } catch (err) {
+    if (seq !== state.loadSeq) return
     if (reset) {
       el.grid.innerHTML = `
         <div class="grid-empty">
@@ -524,8 +692,10 @@ async function loadGrid(reset = false) {
     }
     showToast(err.message || '加载失败')
   } finally {
-    state.loading = false
-    el.gridLoading.style.display = 'none'
+    if (seq === state.loadSeq) {
+      state.loading = false
+      el.gridLoading.style.display = 'none'
+    }
   }
 }
 
@@ -853,7 +1023,7 @@ function bindStories() {
     if (authorEl && authorEl.dataset.authorUid) {
       authorEl.addEventListener('click', (event) => {
         event.stopPropagation()
-        enterAuthor(authorEl.dataset.authorUid)
+        openAuthorSettings(authorEl.dataset.authorUid)
       })
     }
   })
@@ -1065,6 +1235,7 @@ function openPlayer(startIndex) {
   el.playerView.hidden = false
   el.playerView.style.display = 'flex'
   el.browseView.style.display = 'none'
+  if (!state.historyFlags.player) pushViewHistory('player')
 
   // Scroll to the selected story
   requestAnimationFrame(() => {
@@ -1098,7 +1269,12 @@ function maybeLoadMoreForPlayer(activeId) {
   if (idx >= state.posts.length - 3) loadGrid(false)
 }
 
-function closePlayer() {
+function hidePlayer() {
+  if (!isPlayerOpen()) {
+    state.historyFlags.player = false
+    return
+  }
+  hideAuthorModal()
   pauseAll()
   const lastId = state.activePostId
   state.activePostId = null
@@ -1106,6 +1282,7 @@ function closePlayer() {
   el.playerView.style.display = 'none'
   el.playerView.hidden = true
   el.browseView.style.display = 'flex'
+  state.historyFlags.player = false
   if (lastId != null) {
     requestAnimationFrame(() => {
       const target = el.grid.querySelector(`.grid-item[data-post-id="${lastId}"]`)
@@ -1115,6 +1292,13 @@ function closePlayer() {
       setTimeout(() => target.classList.remove('is-just-viewed'), 1200)
     })
   }
+}
+
+function closePlayer() {
+  if (!isPlayerOpen()) return
+  const steps = (state.historyFlags.player ? 1 : 0) + (state.historyFlags.settings ? 1 : 0)
+  hidePlayer()
+  consumeHistory(steps)
 }
 
 el.playerBack.addEventListener('click', closePlayer)
@@ -1189,13 +1373,31 @@ document.addEventListener('keyup', (event) => {
 // 长按期间切走标签页收不到 keyup，不兜底会一直卡在倍速上
 window.addEventListener('blur', () => releaseKeyHold(false))
 
+window.addEventListener('popstate', () => {
+  if (skipPops > 0) {
+    skipPops -= 1
+    return
+  }
+  if (!el.authorModal.hidden) {
+    hideAuthorModal()
+    return
+  }
+  if (isPlayerOpen()) {
+    hidePlayer()
+    return
+  }
+  if (state.authorPage) {
+    applyExitAuthor()
+  }
+})
+
 document.addEventListener('keydown', (event) => {
   if (!el.authorModal.hidden && event.key === 'Escape') {
     event.preventDefault()
     closeAuthorModal()
     return
   }
-  if (el.playerView.style.display !== 'flex') return
+  if (!isPlayerOpen()) return
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)
     return
 
