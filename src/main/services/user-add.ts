@@ -7,7 +7,12 @@ import {
   getPostByAwemeId,
   type DbUser
 } from '../database'
-import { fetchUserProfileBySecUid, fetchVideoDetail, parseDouyinUrl } from './douyin'
+import {
+  diagnosePostDetail,
+  fetchUserProfileBySecUid,
+  fetchVideoDetail,
+  parseDouyinUrl
+} from './douyin'
 import { downloadSinglePost } from './downloader'
 import { downloadAvatar } from './avatar'
 import { emitUserAdded } from './scripts/emit'
@@ -78,7 +83,10 @@ export async function addUserByUrl(url: string): Promise<AddUserResult> {
 
     const secUid = detail.secUserId
     if (!secUid) {
-      throw new Error('作品详情中未找到作者数据（作品可能已删除或为私密），请尝试使用用户主页链接')
+      // polydl 主接口失败时会静默回退到不含作者信息的分享页，
+      // 再调一次主接口把真实原因拿出来。
+      const reason = await diagnosePostDetail(parseResult.id)
+      throw new Error(`作品详情中未找到作者数据：${reason}`)
     }
 
     if (typeof detail.toAwemeData === 'function') {

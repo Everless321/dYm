@@ -1,4 +1,4 @@
-import { DouyinHandler, getSecUserId, getAwemeId, setConfig } from 'polydl'
+import { DouyinCrawler, DouyinHandler, getSecUserId, getAwemeId, setConfig } from 'polydl'
 import { getSetting } from '../database'
 
 let handler: DouyinHandler | null = null
@@ -147,6 +147,47 @@ export async function fetchVideoDetail(urlOrAwemeId: string) {
     console.error('[Douyin] fetchVideoDetail error:', error)
     throw error
   }
+}
+
+/**
+ * 诊断作品详情接口。
+ *
+ * polydl 的 `fetchOneVideo` 在主接口报错时会静默吐掉异常（`catch {}`），
+ * 回退到移动端分享页，而分享页返回的数据不含作者信息，
+ * 表现成“拿到了详情但没有 sec_uid”。这里直接调主接口，
+ * 把被吐掉的真实失败原因取出来，仅在失败路径上调用。
+ *
+ * 返回一句可直接拼进错误消息的中文描述。
+ */
+export async function diagnosePostDetail(awemeId: string): Promise<string> {
+  const cookie = getSetting('douyin_cookie')
+  if (!cookie) {
+    return '未配置 cookie'
+  }
+
+  let res: { status: number; data: unknown }
+  try {
+    const crawler = new DouyinCrawler({ cookie })
+    res = await crawler.fetchPostDetail(awemeId)
+  } catch (error) {
+    return `详情接口请求失败：${(error as Error).message}`
+  }
+
+  const data = res.data as { status_code?: number; status_msg?: string; aweme_detail?: unknown }
+  console.log('[Douyin] diagnosePostDetail:', {
+    http: res.status,
+    status_code: data?.status_code,
+    status_msg: data?.status_msg,
+    aweme_detail: data?.aweme_detail === null ? 'null' : typeof data?.aweme_detail
+  })
+
+  if (data?.aweme_detail == null) {
+    return `详情接口返回空作品（HTTP ${res.status}，status_code ${data?.status_code}${
+      data?.status_msg ? `，${data.status_msg}` : ''
+    }），通常是 cookie 失效或触发风控`
+  }
+
+  return `详情接口正常返回但缺少作者字段（HTTP ${res.status}，status_code ${data?.status_code}）`
 }
 
 export { getSecUserId, getAwemeId }
