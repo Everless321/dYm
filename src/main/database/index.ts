@@ -44,8 +44,25 @@ export function getDatabase(): Database.Database {
     console.log('[Database] Path:', dbPath)
     db = new Database(dbPath)
     db.pragma('journal_mode = WAL')
+    // SQLite 默认不检查外键，建表里声明的 ON DELETE CASCADE 必须显式开启才生效
+    db.pragma('foreign_keys = ON')
   }
   return db
+}
+
+/**
+ * 给已存在的表补列。用 table_info 判断列是否存在，而不是 try/catch 吞掉 ALTER 的所有错误，
+ * 这样磁盘满、库被锁等真实故障不会被当成「列已存在」静默跳过。
+ */
+function ensureColumn(
+  database: Database.Database,
+  table: string,
+  column: string,
+  definition: string
+): void {
+  const columns = database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+  if (columns.some((c) => c.name === column)) return
+  database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
 }
 
 export function initDatabase(): void {
@@ -96,101 +113,25 @@ export function initDatabase(): void {
     )
   `)
 
-  // 迁移：为已存在的表添加 concurrency 列
-  try {
-    database.exec(`ALTER TABLE download_tasks ADD COLUMN concurrency INTEGER DEFAULT 3`)
-  } catch {
-    // 列已存在，忽略错误
-  }
+  // 迁移：老库补列。列定义与建表语句保持一致
+  ensureColumn(database, 'download_tasks', 'concurrency', 'INTEGER DEFAULT 3')
+  ensureColumn(database, 'download_tasks', 'auto_sync', 'INTEGER DEFAULT 0')
+  ensureColumn(database, 'download_tasks', 'sync_cron', "TEXT DEFAULT ''")
+  ensureColumn(database, 'download_tasks', 'last_sync_at', 'INTEGER')
 
-  // 迁移：为 users 表添加 show_in_home 列
-  try {
-    database.exec(`ALTER TABLE users ADD COLUMN show_in_home INTEGER DEFAULT 1`)
-  } catch {
-    // 列已存在，忽略错误
-  }
-
-  // 迁移：为 users 表添加 max_download_count 列（用户级别下载限制，0表示使用全局设置）
-  try {
-    database.exec(`ALTER TABLE users ADD COLUMN max_download_count INTEGER DEFAULT 0`)
-  } catch {
-    // 列已存在，忽略错误
-  }
-
-  // 迁移：为 users 表添加 remark 列（用户备注）
-  try {
-    database.exec(`ALTER TABLE users ADD COLUMN remark TEXT DEFAULT ''`)
-  } catch {
-    // 列已存在，忽略错误
-  }
-
-  // 迁移：为 users 表添加 avatar_path 列（本地保存的头像文件路径）
-  try {
-    database.exec(`ALTER TABLE users ADD COLUMN avatar_path TEXT DEFAULT ''`)
-  } catch {
-    // 列已存在，忽略错误
-  }
-
-  // 迁移：为 users 表添加同步相关字段
-  try {
-    database.exec(`ALTER TABLE users ADD COLUMN auto_sync INTEGER DEFAULT 0`)
-  } catch {
-    // 列已存在
-  }
-  try {
-    database.exec(`ALTER TABLE users ADD COLUMN sync_cron TEXT DEFAULT ''`)
-  } catch {
-    // 列已存在
-  }
-  try {
-    database.exec(`ALTER TABLE users ADD COLUMN last_sync_at INTEGER`)
-  } catch {
-    // 列已存在
-  }
-  try {
-    database.exec(`ALTER TABLE users ADD COLUMN sync_status TEXT DEFAULT 'idle'`)
-  } catch {
-    // 列已存在
-  }
-
-  // 迁移：为 users 表添加直播录制相关字段
-  try {
-    database.exec(`ALTER TABLE users ADD COLUMN live_record INTEGER DEFAULT 0`)
-  } catch {
-    // 列已存在
-  }
-  try {
-    database.exec(`ALTER TABLE users ADD COLUMN live_check_cron TEXT DEFAULT ''`)
-  } catch {
-    // 列已存在
-  }
-  try {
-    database.exec(`ALTER TABLE users ADD COLUMN live_status TEXT DEFAULT 'idle'`)
-  } catch {
-    // 列已存在
-  }
-  try {
-    database.exec(`ALTER TABLE users ADD COLUMN last_live_at INTEGER`)
-  } catch {
-    // 列已存在
-  }
-
-  // 迁移：为 download_tasks 表添加定时同步相关字段
-  try {
-    database.exec(`ALTER TABLE download_tasks ADD COLUMN auto_sync INTEGER DEFAULT 0`)
-  } catch {
-    // 列已存在
-  }
-  try {
-    database.exec(`ALTER TABLE download_tasks ADD COLUMN sync_cron TEXT DEFAULT ''`)
-  } catch {
-    // 列已存在
-  }
-  try {
-    database.exec(`ALTER TABLE download_tasks ADD COLUMN last_sync_at INTEGER`)
-  } catch {
-    // 列已存在
-  }
+  ensureColumn(database, 'users', 'show_in_home', 'INTEGER DEFAULT 1')
+  // 用户级别下载限制，0 表示使用全局设置
+  ensureColumn(database, 'users', 'max_download_count', 'INTEGER DEFAULT 0')
+  ensureColumn(database, 'users', 'remark', "TEXT DEFAULT ''")
+  ensureColumn(database, 'users', 'avatar_path', "TEXT DEFAULT ''")
+  ensureColumn(database, 'users', 'auto_sync', 'INTEGER DEFAULT 0')
+  ensureColumn(database, 'users', 'sync_cron', "TEXT DEFAULT ''")
+  ensureColumn(database, 'users', 'last_sync_at', 'INTEGER')
+  ensureColumn(database, 'users', 'sync_status', "TEXT DEFAULT 'idle'")
+  ensureColumn(database, 'users', 'live_record', 'INTEGER DEFAULT 0')
+  ensureColumn(database, 'users', 'live_check_cron', "TEXT DEFAULT ''")
+  ensureColumn(database, 'users', 'live_status', "TEXT DEFAULT 'idle'")
+  ensureColumn(database, 'users', 'last_live_at', 'INTEGER')
 
   // 任务-用户关联表
   database.exec(`
@@ -226,26 +167,14 @@ export function initDatabase(): void {
   `)
 
   // 迁移：为 posts 表添加分析结果字段
-  const analysisColumns = [
-    { name: 'analysis_tags', sql: 'ALTER TABLE posts ADD COLUMN analysis_tags TEXT' },
-    { name: 'analysis_category', sql: 'ALTER TABLE posts ADD COLUMN analysis_category TEXT' },
-    { name: 'analysis_summary', sql: 'ALTER TABLE posts ADD COLUMN analysis_summary TEXT' },
-    { name: 'analysis_scene', sql: 'ALTER TABLE posts ADD COLUMN analysis_scene TEXT' },
-    {
-      name: 'analysis_content_level',
-      sql: 'ALTER TABLE posts ADD COLUMN analysis_content_level INTEGER'
-    },
-    { name: 'analyzed_at', sql: 'ALTER TABLE posts ADD COLUMN analyzed_at INTEGER' },
-    // 手动标签：与 analysis_tags 同为 JSON 字符串数组格式，默认 NULL
-    { name: 'manual_tags', sql: 'ALTER TABLE posts ADD COLUMN manual_tags TEXT' }
-  ]
-  for (const col of analysisColumns) {
-    try {
-      database.exec(col.sql)
-    } catch {
-      // 列已存在
-    }
-  }
+  ensureColumn(database, 'posts', 'analysis_tags', 'TEXT')
+  ensureColumn(database, 'posts', 'analysis_category', 'TEXT')
+  ensureColumn(database, 'posts', 'analysis_summary', 'TEXT')
+  ensureColumn(database, 'posts', 'analysis_scene', 'TEXT')
+  ensureColumn(database, 'posts', 'analysis_content_level', 'INTEGER')
+  ensureColumn(database, 'posts', 'analyzed_at', 'INTEGER')
+  // 手动标签：与 analysis_tags 同为 JSON 字符串数组格式，默认 NULL
+  ensureColumn(database, 'posts', 'manual_tags', 'TEXT')
 
   // posts 表索引
   database.exec(`CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id)`)
@@ -253,6 +182,13 @@ export function initDatabase(): void {
   database.exec(`CREATE INDEX IF NOT EXISTS idx_posts_create_time ON posts(create_time DESC)`)
   database.exec(`CREATE INDEX IF NOT EXISTS idx_posts_analyzed_at ON posts(analyzed_at)`)
   database.exec(`CREATE INDEX IF NOT EXISTS idx_posts_downloaded_at ON posts(downloaded_at)`)
+  // 标签工作台按分类 / 场景分面筛选
+  database.exec(
+    `CREATE INDEX IF NOT EXISTS idx_posts_analysis_category ON posts(analysis_category)`
+  )
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_posts_analysis_scene ON posts(analysis_scene)`)
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_task_users_task_id ON task_users(task_id)`)
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_task_users_user_id ON task_users(user_id)`)
 
   // 直播录制记录表
   database.exec(`
@@ -274,12 +210,8 @@ export function initDatabase(): void {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `)
-  // 迁移：为 live_records 表添加 cover_path 列（本地保存的直播封面图路径）
-  try {
-    database.exec(`ALTER TABLE live_records ADD COLUMN cover_path TEXT`)
-  } catch {
-    // 列已存在，忽略错误
-  }
+  // 本地保存的直播封面图路径
+  ensureColumn(database, 'live_records', 'cover_path', 'TEXT')
 
   database.exec(`CREATE INDEX IF NOT EXISTS idx_live_records_user_id ON live_records(user_id)`)
   database.exec(
@@ -343,10 +275,6 @@ export function initDatabase(): void {
   for (const setting of defaultSettings) {
     insertStmt.run(setting.key, setting.value)
   }
-
-  // 清理旧的下载任务数据（已迁移到用户同步系统）
-  database.exec('DELETE FROM task_users')
-  database.exec('DELETE FROM download_tasks')
 }
 
 export function getSetting(key: string): string | null {
@@ -359,12 +287,8 @@ export function getSetting(key: string): string | null {
 
 export function setSetting(key: string, value: string): void {
   const database = getDatabase()
-  console.log(
-    '[Database] setSetting:',
-    key,
-    '=',
-    value.substring(0, 50) + (value.length > 50 ? '...' : '')
-  )
+  // 只记 key 与长度，settings 里有 Cookie / API Key，值不进日志
+  console.log('[Database] setSetting:', key, `(${value.length} chars)`)
   database
     .prepare(
       `
@@ -490,12 +414,30 @@ export function getAllUsers(): DbUser[] {
     .all() as DbUser[]
 }
 
+/** updateUser 允许写入的列。列名会拼进 SQL，必须走白名单而不是信任入参的 key */
+const USER_UPDATABLE_COLUMNS: ReadonlySet<keyof CreateUserInput> = new Set([
+  'sec_uid',
+  'uid',
+  'nickname',
+  'signature',
+  'avatar',
+  'avatar_path',
+  'short_id',
+  'unique_id',
+  'following_count',
+  'follower_count',
+  'total_favorited',
+  'aweme_count',
+  'homepage_url'
+])
+
 export function updateUser(id: number, input: Partial<CreateUserInput>): DbUser | undefined {
   const database = getDatabase()
   const fields: string[] = []
   const values: unknown[] = []
 
-  for (const [key, value] of Object.entries(input)) {
+  for (const key of USER_UPDATABLE_COLUMNS) {
+    const value = input[key]
     if (value !== undefined) {
       fields.push(`${key} = ?`)
       values.push(value)
@@ -515,9 +457,12 @@ export function deleteUser(id: number): { sec_uid: string } | undefined {
   const database = getDatabase()
   const user = getUserById(id)
   if (!user) return undefined
-  database.prepare('DELETE FROM posts WHERE user_id = ?').run(id)
-  database.prepare('DELETE FROM task_users WHERE user_id = ?').run(id)
-  database.prepare('DELETE FROM users WHERE id = ?').run(id)
+  // 三张表一起删，中途失败整体回滚，避免留下没有归属的作品/任务关联
+  database.transaction(() => {
+    database.prepare('DELETE FROM posts WHERE user_id = ?').run(id)
+    database.prepare('DELETE FROM task_users WHERE user_id = ?').run(id)
+    database.prepare('DELETE FROM users WHERE id = ?').run(id)
+  })()
   return { sec_uid: user.sec_uid }
 }
 
@@ -841,25 +786,59 @@ export interface CreateTaskInput {
 
 export function createTask(input: CreateTaskInput): DbTaskWithUsers {
   const database = getDatabase()
-  const stmt = database.prepare(`
-    INSERT INTO download_tasks (name, concurrency, auto_sync, sync_cron) VALUES (?, ?, ?, ?)
-  `)
-  const result = stmt.run(
-    input.name,
-    input.concurrency ?? 3,
-    input.auto_sync ? 1 : 0,
-    input.sync_cron ?? ''
+  const insertTask = database.prepare(
+    'INSERT INTO download_tasks (name, concurrency, auto_sync, sync_cron) VALUES (?, ?, ?, ?)'
   )
-  const taskId = result.lastInsertRowid as number
+  const insertUser = database.prepare('INSERT INTO task_users (task_id, user_id) VALUES (?, ?)')
 
-  const insertUserStmt = database.prepare(`
-    INSERT INTO task_users (task_id, user_id) VALUES (?, ?)
-  `)
-  for (const userId of input.user_ids) {
-    insertUserStmt.run(taskId, userId)
-  }
+  // 任务行与关联行必须同时落库，否则中途失败会留下一个没有用户的任务
+  const taskId = database.transaction((): number => {
+    const result = insertTask.run(
+      input.name,
+      input.concurrency ?? 3,
+      input.auto_sync ? 1 : 0,
+      input.sync_cron ?? ''
+    )
+    const id = result.lastInsertRowid as number
+    for (const userId of input.user_ids) {
+      insertUser.run(id, userId)
+    }
+    return id
+  })()
 
   return getTaskById(taskId)!
+}
+
+/**
+ * 一次查出多条任务的关联用户（附动态统计的 downloaded_count），按 task_id 分组。
+ * 代替「每个任务再查一次用户」的 N+1 写法。
+ */
+function loadTaskUsers(taskIds: number[]): Map<number, DbUser[]> {
+  const grouped = new Map<number, DbUser[]>()
+  if (taskIds.length === 0) return grouped
+  const database = getDatabase()
+  const placeholders = taskIds.map(() => '?').join(',')
+  const rows = database
+    .prepare(
+      `SELECT tu.task_id, u.*, COALESCE(p.cnt, 0) as downloaded_count
+       FROM task_users tu
+       INNER JOIN users u ON u.id = tu.user_id
+       LEFT JOIN (SELECT user_id, COUNT(*) as cnt FROM posts GROUP BY user_id) p ON u.id = p.user_id
+       WHERE tu.task_id IN (${placeholders})
+       ORDER BY tu.id`
+    )
+    .all(...taskIds) as (DbUser & { task_id: number })[]
+  for (const { task_id, ...user } of rows) {
+    const list = grouped.get(task_id) ?? []
+    list.push(user as DbUser)
+    grouped.set(task_id, list)
+  }
+  return grouped
+}
+
+function attachTaskUsers(tasks: DbTask[]): DbTaskWithUsers[] {
+  const usersByTask = loadTaskUsers(tasks.map((t) => t.id))
+  return tasks.map((task) => ({ ...task, users: usersByTask.get(task.id) ?? [] }))
 }
 
 export function getTaskById(id: number): DbTaskWithUsers | undefined {
@@ -868,21 +847,7 @@ export function getTaskById(id: number): DbTaskWithUsers | undefined {
     | DbTask
     | undefined
   if (!task) return undefined
-
-  // 动态统计 downloaded_count
-  const users = database
-    .prepare(
-      `
-    SELECT u.*, COALESCE(p.cnt, 0) as downloaded_count
-    FROM users u
-    INNER JOIN task_users tu ON u.id = tu.user_id
-    LEFT JOIN (SELECT user_id, COUNT(*) as cnt FROM posts GROUP BY user_id) p ON u.id = p.user_id
-    WHERE tu.task_id = ?
-  `
-    )
-    .all(id) as DbUser[]
-
-  return { ...task, users }
+  return attachTaskUsers([task])[0]
 }
 
 export function getAllTasks(): DbTaskWithUsers[] {
@@ -890,33 +855,30 @@ export function getAllTasks(): DbTaskWithUsers[] {
   const tasks = database
     .prepare('SELECT * FROM download_tasks ORDER BY created_at DESC')
     .all() as DbTask[]
-
-  return tasks.map((task) => {
-    // 动态统计 downloaded_count
-    const users = database
-      .prepare(
-        `
-      SELECT u.*, COALESCE(p.cnt, 0) as downloaded_count
-      FROM users u
-      INNER JOIN task_users tu ON u.id = tu.user_id
-      LEFT JOIN (SELECT user_id, COUNT(*) as cnt FROM posts GROUP BY user_id) p ON u.id = p.user_id
-      WHERE tu.task_id = ?
-    `
-      )
-      .all(task.id) as DbUser[]
-    return { ...task, users }
-  })
+  return attachTaskUsers(tasks)
 }
 
-export function updateTask(
-  id: number,
-  input: Partial<Omit<DbTask, 'id' | 'created_at'>>
-): DbTaskWithUsers | undefined {
+export type UpdateTaskInput = Partial<Omit<DbTask, 'id' | 'created_at' | 'updated_at'>>
+
+/** updateTask 允许写入的列。列名会拼进 SQL，必须走白名单而不是信任入参的 key */
+const TASK_UPDATABLE_COLUMNS: ReadonlySet<keyof UpdateTaskInput> = new Set([
+  'name',
+  'status',
+  'concurrency',
+  'total_videos',
+  'downloaded_videos',
+  'auto_sync',
+  'sync_cron',
+  'last_sync_at'
+])
+
+export function updateTask(id: number, input: UpdateTaskInput): DbTaskWithUsers | undefined {
   const database = getDatabase()
   const fields: string[] = []
   const values: unknown[] = []
 
-  for (const [key, value] of Object.entries(input)) {
+  for (const key of TASK_UPDATABLE_COLUMNS) {
+    const value = input[key]
     if (value !== undefined) {
       fields.push(`${key} = ?`)
       values.push(value)
@@ -934,28 +896,37 @@ export function updateTask(
 
 export function updateTaskUsers(taskId: number, userIds: number[]): DbTaskWithUsers | undefined {
   const database = getDatabase()
-  database.prepare('DELETE FROM task_users WHERE task_id = ?').run(taskId)
+  const clear = database.prepare('DELETE FROM task_users WHERE task_id = ?')
+  const insert = database.prepare('INSERT INTO task_users (task_id, user_id) VALUES (?, ?)')
+  const touch = database.prepare(
+    "UPDATE download_tasks SET updated_at = strftime('%s', 'now') WHERE id = ?"
+  )
 
-  const insertStmt = database.prepare('INSERT INTO task_users (task_id, user_id) VALUES (?, ?)')
-  for (const userId of userIds) {
-    insertStmt.run(taskId, userId)
-  }
-
-  database
-    .prepare("UPDATE download_tasks SET updated_at = strftime('%s', 'now') WHERE id = ?")
-    .run(taskId)
+  // 先清后插要原子，否则插入中途失败会把任务的用户列表清空
+  database.transaction(() => {
+    clear.run(taskId)
+    for (const userId of userIds) {
+      insert.run(taskId, userId)
+    }
+    touch.run(taskId)
+  })()
   return getTaskById(taskId)
 }
 
 export function deleteTask(id: number): void {
   const database = getDatabase()
-  database.prepare('DELETE FROM download_tasks WHERE id = ?').run(id)
+  database.transaction(() => {
+    database.prepare('DELETE FROM task_users WHERE task_id = ?').run(id)
+    database.prepare('DELETE FROM download_tasks WHERE id = ?').run(id)
+  })()
 }
 
 export function clearAllTasks(): void {
   const database = getDatabase()
-  database.exec('DELETE FROM task_users')
-  database.exec('DELETE FROM download_tasks')
+  database.transaction(() => {
+    database.exec('DELETE FROM task_users')
+    database.exec('DELETE FROM download_tasks')
+  })()
 }
 
 export function getAutoSyncTasks(): DbTaskWithUsers[] {
@@ -963,19 +934,7 @@ export function getAutoSyncTasks(): DbTaskWithUsers[] {
   const tasks = database
     .prepare("SELECT * FROM download_tasks WHERE auto_sync = 1 AND sync_cron != ''")
     .all() as DbTask[]
-
-  return tasks.map((task) => {
-    const users = database
-      .prepare(
-        `
-      SELECT u.* FROM users u
-      INNER JOIN task_users tu ON u.id = tu.user_id
-      WHERE tu.task_id = ?
-    `
-      )
-      .all(task.id) as DbUser[]
-    return { ...task, users }
-  })
+  return attachTaskUsers(tasks)
 }
 
 export function updateTaskLastSyncAt(id: number): void {
@@ -1118,24 +1077,27 @@ export function fixAllPostTitles(): { fixed: number; skipped: number; failed: nu
 
   const updateStmt = database.prepare('UPDATE posts SET desc = ? WHERE id = ?')
 
-  for (const post of posts) {
-    const original = readDescFromFile(post.video_path, post.aweme_id)
-    if (original === null) {
-      failed++
-      continue
+  // 全量回填放在一个事务里：几千条 UPDATE 从逐条 fsync 变成一次提交，快一到两个数量级
+  database.transaction(() => {
+    for (const post of posts) {
+      const original = readDescFromFile(post.video_path, post.aweme_id)
+      if (original === null) {
+        failed++
+        continue
+      }
+      if (post.desc === original) {
+        skipped++
+        continue
+      }
+      try {
+        updateStmt.run(original, post.id)
+        fixed++
+      } catch (error) {
+        failed++
+        console.error(`[DB] Failed to update post ${post.id}:`, error)
+      }
     }
-    if (post.desc === original) {
-      skipped++
-      continue
-    }
-    try {
-      updateStmt.run(original, post.id)
-      fixed++
-    } catch (error) {
-      failed++
-      console.error(`[DB] Failed to update post ${post.id}:`, error)
-    }
-  }
+  })()
 
   console.log(`[DB] fixAllPostTitles: fixed=${fixed}, skipped=${skipped}, failed=${failed}`)
   return { fixed, skipped, failed }
@@ -1307,22 +1269,14 @@ function mergedTagsOf(post: {
 export function getAllTags(): string[] {
   const database = getDatabase()
 
-  // 获取可见用户的帖子中的所有标签
-  const visibleUsers = database
-    .prepare('SELECT sec_uid FROM users WHERE show_in_home = 1')
-    .all() as { sec_uid: string }[]
-  const visibleSecUids = visibleUsers.map((u) => u.sec_uid)
-
-  if (visibleSecUids.length === 0) {
-    return []
-  }
-
-  const placeholders = visibleSecUids.map(() => '?').join(',')
+  // 可见用户的帖子中的所有标签。子查询代替展开 IN (?,?,…)，可见用户上千时会顶变量上限
   const rows = database
     .prepare(
-      `SELECT analysis_tags, manual_tags FROM posts WHERE sec_uid IN (${placeholders}) AND (analysis_tags IS NOT NULL OR manual_tags IS NOT NULL)`
+      `SELECT analysis_tags, manual_tags FROM posts
+       WHERE sec_uid IN (SELECT sec_uid FROM users WHERE show_in_home = 1)
+         AND (analysis_tags IS NOT NULL OR manual_tags IS NOT NULL)`
     )
-    .all(...visibleSecUids) as { analysis_tags: string | null; manual_tags: string | null }[]
+    .all() as { analysis_tags: string | null; manual_tags: string | null }[]
 
   const tagSet = new Set<string>()
   for (const row of rows) {
@@ -1399,39 +1353,19 @@ export interface UserAnalysisStats {
 export function getUserAnalysisStats(): UserAnalysisStats[] {
   const database = getDatabase()
 
-  // 获取所有用户（分析页面不受 show_in_home 限制）
-  const allUsers = database
-    .prepare('SELECT sec_uid, nickname FROM users ORDER BY nickname')
-    .all() as { sec_uid: string; nickname: string }[]
-
-  if (allUsers.length === 0) return []
-
-  const result: UserAnalysisStats[] = []
-
-  for (const user of allUsers) {
-    const stats = database
-      .prepare(
-        `
-        SELECT
-          COUNT(*) as total,
-          SUM(CASE WHEN analyzed_at IS NOT NULL THEN 1 ELSE 0 END) as analyzed,
-          SUM(CASE WHEN analyzed_at IS NULL THEN 1 ELSE 0 END) as unanalyzed
-        FROM posts
-        WHERE sec_uid = ?
-      `
-      )
-      .get(user.sec_uid) as { total: number; analyzed: number; unanalyzed: number } | undefined
-
-    result.push({
-      sec_uid: user.sec_uid,
-      nickname: user.nickname,
-      total: stats?.total || 0,
-      analyzed: stats?.analyzed || 0,
-      unanalyzed: stats?.unanalyzed || 0
-    })
-  }
-
-  return result
+  // 所有用户一条聚合查询（分析页面不受 show_in_home 限制），避免每用户一次查询
+  return database
+    .prepare(
+      `SELECT u.sec_uid, u.nickname,
+         COUNT(p.id) as total,
+         COALESCE(SUM(CASE WHEN p.analyzed_at IS NOT NULL THEN 1 ELSE 0 END), 0) as analyzed,
+         COALESCE(SUM(CASE WHEN p.id IS NOT NULL AND p.analyzed_at IS NULL THEN 1 ELSE 0 END), 0) as unanalyzed
+       FROM users u
+       LEFT JOIN posts p ON p.sec_uid = u.sec_uid
+       GROUP BY u.id
+       ORDER BY u.nickname`
+    )
+    .all() as UserAnalysisStats[]
 }
 
 export function getTotalAnalysisStats(): { total: number; analyzed: number; unanalyzed: number } {
