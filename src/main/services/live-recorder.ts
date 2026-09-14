@@ -458,10 +458,16 @@ export function stopLiveRecording(userId: number): boolean {
   return true
 }
 
+/** 退出时最多等 ffmpeg 收尾这么久；超时就不等了，交给下次启动的 resetStaleLiveStatus */
+const QUIT_FLUSH_TIMEOUT_MS = 5_000
+
 /**
  * 停止全部录制（应用退出时调用）。
+ * 返回的 Promise 在所有 ffmpeg 退出（或超时）后 resolve：SIGINT 之后 ffmpeg 还要写完 FLV 尾部，
+ * 进程立刻退出的话文件可能损坏、记录状态也停在 recording。
  */
-export function stopAllLiveRecordings(): void {
+export function stopAllLiveRecordings(): Promise<void> {
+  const exits: Promise<void>[] = []
   for (const [, rec] of runningRecordings) {
     rec.stopReason = 'manual'
     // 应用马上退出，看门狗与强杀定时器不该再触发
@@ -470,6 +476,18 @@ export function stopAllLiveRecordings(): void {
     rec.watchdog = undefined
     rec.killTimer = undefined
     rec.danmaku?.stop()
-    rec.proc.kill('SIGINT')
+    if (rec.proc.exitCode === null && rec.proc.signalCode === null) {
+      exits.push(new Promise<void>((resolve) => rec.proc.once('close', () => resolve())))
+      rec.proc.kill('SIGINT')
+    }
   }
+  if (exits.length === 0) return Promise.resolve()
+  return Promise.race([
+    Promise.all(exits).then(() => undefined),
+    new Promise<void>((resolve) => setTimeout(resolve, QUIT_FLUSH_TIMEOUT_MS))
+  ])
+}
+
+export function hasRunningLiveRecordings(): boolean {
+  return runningRecordings.size > 0
 }

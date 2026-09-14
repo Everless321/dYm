@@ -147,7 +147,21 @@ function probeVideoCodec(src: string): Promise<string> {
  */
 async function remux(src: string, dest: string): Promise<void> {
   const codec = await probeVideoCodec(src)
-  const args = ['-y', '-i', src, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k']
+  // 只留错误输出：几小时的录像转封装会打出海量进度行，全攒在 stderr 字符串里白占内存
+  const args = [
+    '-y',
+    '-nostats',
+    '-loglevel',
+    'error',
+    '-i',
+    src,
+    '-c:v',
+    'copy',
+    '-c:a',
+    'aac',
+    '-b:a',
+    '128k'
+  ]
   if (codec === 'hevc' || codec === 'h265') {
     args.push('-tag:v', 'hvc1')
   }

@@ -32,7 +32,7 @@ import { initUpdater, registerUpdaterHandlers } from './services/updater'
 import { initTelemetry, track } from './services/telemetry'
 import { initScheduler, stopScheduler } from './services/scheduler'
 import { closePage } from './services/douyin-page'
-import { stopAllLiveRecordings } from './services/live-recorder'
+import { hasRunningLiveRecordings, stopAllLiveRecordings } from './services/live-recorder'
 import { sweepUnconverted } from './services/live-convert'
 import { fromUrlPath } from './services/media'
 import { startScriptHooks } from './services/scripts/hooks'
@@ -395,17 +395,44 @@ app.whenReady().then(async () => {
   })
 })
 
-// 应用退出前清理资源
-app.on('before-quit', () => {
+// 应用退出前清理资源。
+// 有录制在跑时先拦一次退出：SIGINT 之后 ffmpeg 要写完文件、finishRecording 要落库，
+// 都等完（或超时）再真正退出，否则 FLV 尾部损坏、记录停在 recording。
+let quitCleanupDone = false
+app.on('before-quit', (event) => {
   isQuitting = true
+  if (quitCleanupDone) return
+
+  if (hasRunningLiveRecordings()) {
+    event.preventDefault()
+    stopScheduler()
+    closePage()
+    void stopAllLiveRecordings()
+      .catch((error) => console.error('[Live] 退出时停止录制失败:', error))
+      .finally(() => {
+        quitCleanupDone = true
+        finishQuitCleanup()
+        app.quit()
+      })
+    return
+  }
+
+  quitCleanupDone = true
   stopScheduler()
   closePage()
-  stopAllLiveRecordings()
+  finishQuitCleanup()
+})
+
+function finishQuitCleanup(): void {
   void stopWebBrowserServer().catch((error) => {
     console.error('[Web] Failed to stop video browser server:', error)
   })
-  closeDatabase()
-})
+  try {
+    closeDatabase()
+  } catch (error) {
+    console.error('[Database] 关闭数据库失败:', error)
+  }
+}
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
