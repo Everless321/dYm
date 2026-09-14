@@ -232,8 +232,10 @@ export function getAllPosts(
     .all() as PostAuthor[]
   const nameBySec = new Map(authors.map((a) => [a.sec_uid, a.nickname]))
 
-  // 构建查询（子查询代替把全部 sec_uid 展开成 IN (?,?,…)，可见用户上千时会顶变量上限）
-  const conditions: string[] = [`sec_uid IN (SELECT sec_uid FROM users WHERE show_in_home = 1)`]
+  // 构建查询（子查询代替把全部 sec_uid 展开成 IN (?,?,…)，可见用户上千时会顶变量上限）。
+  // 一元 + 让规划器不要用 idx_posts_sec_uid 再全表临时排序，而是沿排序列索引扫到 LIMIT 即停：
+  // 3 万条时首页从 ~11ms 降到 <1ms
+  const conditions: string[] = [`+sec_uid IN (SELECT sec_uid FROM users WHERE show_in_home = 1)`]
   const params: unknown[] = []
 
   if (filters?.secUid) {

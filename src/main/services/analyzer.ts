@@ -150,13 +150,25 @@ async function extractVideoFrames(videoPath: string, sliceCount: number): Promis
       args.push('-threads', '2', '-ss', (interval * i).toFixed(2), '-i', videoPath)
     }
     framePaths.forEach((framePath, i) => {
-      args.push('-map', `${i}:v:0`, '-frames:v', '1', '-q:v', '2', framePath)
+      // 缩到最宽 1280：4K 帧 q2 JPEG 2-3MB、base64 后每条作品十几 MB 塞进请求体，模型侧本来也会下采样
+      args.push(
+        '-map',
+        `${i}:v:0`,
+        '-frames:v',
+        '1',
+        '-vf',
+        "scale='min(1280,iw)':-2",
+        '-q:v',
+        '3',
+        framePath
+      )
     })
 
     // 槽位只包住这一次短生命周期进程，不再占着槽位串行干活
     await acquireFfmpegSlot()
     try {
-      await execFileAsync(ffmpegPath, args)
+      // 卡死的 ffmpeg 会一直占着并发槽位；一条短视频抽几帧远用不到 60s
+      await execFileAsync(ffmpegPath, args, { timeout: 60_000, maxBuffer: 1 << 20 })
     } catch (err) {
       // 个别时间点可能提取失败，只要有帧产出就继续
       console.warn(`[Analyzer] ffmpeg frame extraction reported error:`, err)

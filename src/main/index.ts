@@ -357,9 +357,6 @@ async function bootstrap(): Promise<void> {
   resetStaleSyncStatus()
   resetStaleTaskStatus()
 
-  // 补扫未转换的历史录制（异常退出/转换失败遗留的 FLV），后台串行转换
-  sweepUnconverted()
-
   // 初始化抖音客户端
   initDouyinHandler()
 
@@ -375,6 +372,12 @@ async function bootstrap(): Promise<void> {
   // 注册全部业务 IPC handler（按领域拆分在 ipc/ 目录）
   registerIpcHandlers()
 
+  // 创建托盘图标
+  createTray()
+
+  // 创建主窗口：窗口不依赖 web 服务与历史录像扫描，先把界面亮出来
+  mainWindow = createWindow()
+
   try {
     const webInfo = await startWebBrowserServer()
     console.log('[Web] Server ready on port:', webInfo.port)
@@ -382,11 +385,15 @@ async function bootstrap(): Promise<void> {
     console.error('[Web] Failed to start video browser server:', error)
   }
 
-  // 创建托盘图标
-  createTray()
-
-  // 创建主窗口
-  mainWindow = createWindow()
+  // 补扫未转换的历史录制（异常退出/转换失败遗留的 FLV），后台串行转换。
+  // 延后几秒：转封装是磁盘密集操作，别和首屏加载抢 IO
+  setTimeout(() => {
+    try {
+      sweepUnconverted()
+    } catch (error) {
+      console.error('[LiveConvert] 补扫历史录制失败:', error)
+    }
+  }, 5000)
 
   // 初始化自动更新（仅在生产环境）
   if (!is.dev) {

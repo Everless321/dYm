@@ -97,7 +97,7 @@ function sendProgress(progress: LiveProgress): void {
   }
 }
 
-function getLiveOutputPath(): string {
+export function getLiveOutputPath(): string {
   const custom = getSetting('live_output_path')
   if (custom && custom.trim()) {
     return custom

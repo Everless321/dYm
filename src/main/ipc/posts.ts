@@ -1,7 +1,7 @@
 import { ipcMain, shell } from 'electron'
 import { join } from 'path'
-import { existsSync, readdirSync, statSync, cpSync, rmSync } from 'fs'
-import { mkdir, readdir, stat } from 'fs/promises'
+import { existsSync, readdirSync, statSync, rmSync } from 'fs'
+import { cp, mkdir, readdir, rm, stat } from 'fs/promises'
 import {
   getAllUsers,
   getAllPosts,
@@ -22,6 +22,14 @@ import {
 import { findCoverFile, findMediaFiles, getDownloadPath } from '../services/media'
 import { assertFolderName, assertSecUid } from '../utils/path-segment'
 import { checkPostFileIntegrity, cleanupFailedDownload } from '../services/download-validator'
+
+// 文件页挂载时会对每个用户遍历全部作品目录做 stat（几万作品 = 十几万次 stat）；
+// 短时间内反复进出文件页直接复用上次结果，删除作品时按作者失效
+const FILE_SIZE_CACHE_MS = 60_000
+const fileSizeCache = new Map<
+  string,
+  { at: number; value: { totalSize: number; folderCount: number } }
+>()
 
 export function registerPostIpc(): void {
   // Post IPC handlers
@@ -72,8 +80,10 @@ export function registerPostIpc(): void {
   })
 
   ipcMain.handle('files:getFileSizes', async (_event, secUid: string) => {
-    const basePath = join(getDownloadPath(), secUid)
+    const basePath = join(getDownloadPath(), assertSecUid(secUid))
     if (!existsSync(basePath)) return { totalSize: 0, folderCount: 0 }
+    const cached = fileSizeCache.get(basePath)
+    if (cached && Date.now() - cached.at < FILE_SIZE_CACHE_MS) return cached.value
     let totalSize = 0
     let folderCount = 0
     try {
@@ -100,7 +110,9 @@ export function registerPostIpc(): void {
     } catch {
       /* skip */
     }
-    return { totalSize, folderCount }
+    const value = { totalSize, folderCount }
+    fileSizeCache.set(basePath, { at: Date.now(), value })
+    return value
   })
 
   ipcMain.handle('files:getPostSize', (_event, secUid: string, folderName: string) => {
@@ -122,27 +134,28 @@ export function registerPostIpc(): void {
     return total
   })
 
-  ipcMain.handle('files:deletePost', (_event, postId: number) => {
+  ipcMain.handle('files:deletePost', async (_event, postId: number) => {
     const post = getPostById(postId)
     if (!post) return false
+    fileSizeCache.delete(join(getDownloadPath(), post.sec_uid))
     // 先删文件再删记录：文件被占用（Windows EBUSY）时保留记录，用户还能再试；反过来会留下无主文件
     if (post.folder_name) {
       const folderPath = join(getDownloadPath(), post.sec_uid, post.folder_name)
-      if (existsSync(folderPath)) {
-        rmSync(folderPath, { recursive: true, force: true })
-      }
+      await rm(folderPath, { recursive: true, force: true })
     }
     deletePost(postId)
     return true
   })
 
-  ipcMain.handle('files:deleteUserFiles', (_event, userId: number, secUid: string) => {
+  ipcMain.handle('files:deleteUserFiles', async (_event, userId: number, secUid: string) => {
     const userDir = join(getDownloadPath(), assertSecUid(secUid))
+    fileSizeCache.delete(userDir)
     if (existsSync(userDir)) {
-      // 只删作品子目录；头像等用户级文件留下，用户记录本身还在
-      for (const entry of readdirSync(userDir, { withFileTypes: true })) {
+      // 只删作品子目录；头像等用户级文件留下，用户记录本身还在。
+      // 几千个作品目录用 rmSync 会把主线程冻住几十秒，改异步逐个删
+      for (const entry of await readdir(userDir, { withFileTypes: true })) {
         if (entry.isDirectory()) {
-          rmSync(join(userDir, entry.name), { recursive: true, force: true })
+          await rm(join(userDir, entry.name), { recursive: true, force: true })
         }
       }
     }
@@ -267,20 +280,21 @@ export function registerPostIpc(): void {
               try {
                 await fsRename(src, dst)
               } catch {
-                cpSync(src, dst, { recursive: true })
-                rmSync(src, { recursive: true, force: true })
+                // 跨盘 rename 失败退回复制；几十 GB 用 cpSync 会把界面冻住几分钟
+                await cp(src, dst, { recursive: true })
+                await rm(src, { recursive: true, force: true })
               }
             }
             // Clean up empty source dir
-            const remaining = readdirSync(sourceDir)
-            if (remaining.length === 0) rmSync(sourceDir, { force: true })
+            const remaining = await readdir(sourceDir)
+            if (remaining.length === 0) await rm(sourceDir, { force: true })
           } else {
             // Move entire author directory
             try {
               await fsRename(sourceDir, targetDir)
             } catch {
-              cpSync(sourceDir, targetDir, { recursive: true })
-              rmSync(sourceDir, { recursive: true, force: true })
+              await cp(sourceDir, targetDir, { recursive: true })
+              await rm(sourceDir, { recursive: true, force: true })
             }
           }
 

@@ -149,6 +149,8 @@ function probeVideoCodec(src: string): Promise<string> {
  *   （200s 素材约 1.5s），换来任何解码器都能吃的干净音轨。视频仍 copy，不牺牲画质与速度。
  * - 仅当真为 HEVC 时打 hvc1 tag；对 H.264 打 hvc1 会导致 ffmpeg 失败/文件损坏。
  */
+const REMUX_TIMEOUT_MS = 30 * 60_000
+
 async function remux(src: string, dest: string): Promise<void> {
   const codec = await probeVideoCodec(src)
   // 只留错误输出：几小时的录像转封装会打出海量进度行，全攒在 stderr 字符串里白占内存
@@ -172,13 +174,24 @@ async function remux(src: string, dest: string): Promise<void> {
   args.push('-movflags', '+faststart', dest)
 
   return new Promise((resolve, reject) => {
-    const proc = spawn(ffmpegPath, args)
+    const proc = spawn(ffmpegPath, args, { stdio: ['ignore', 'ignore', 'pipe'] })
     let stderr = ''
     proc.stderr?.on('data', (d) => {
-      stderr += d.toString()
+      // 只留尾部：文件损坏时 error 级别也可能每帧刷一行
+      stderr = (stderr + d.toString()).slice(-2000)
     })
-    proc.on('error', reject)
+    // 转封装是纯拷贝，正常速度几百倍于实时；卡住 30 分钟说明输入或磁盘出了问题，
+    // 别让它一直占着转换队列
+    const killTimer = setTimeout(() => {
+      stderr += '\n[timeout] ffmpeg 转封装超过 30 分钟未结束，已终止'
+      proc.kill('SIGKILL')
+    }, REMUX_TIMEOUT_MS)
+    proc.on('error', (err) => {
+      clearTimeout(killTimer)
+      reject(err)
+    })
     proc.on('close', (code) => {
+      clearTimeout(killTimer)
       if (code === 0) resolve()
       else reject(new Error(`转封装失败 (ffmpeg 退出码 ${code})：${stderr.slice(-300)}`))
     })

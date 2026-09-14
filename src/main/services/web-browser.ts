@@ -14,13 +14,7 @@ import {
   type PostFilters,
   type UpdateUserSettingsInput
 } from '../database'
-import {
-  findCoverFile,
-  findMediaFiles,
-  fromUrlPath,
-  getDownloadPath,
-  isPathInDownloadRoot
-} from './media'
+import { findMediaFiles, fromUrlPath, getDownloadPath, isPathInDownloadRoot } from './media'
 import { isUserSyncing, startUserSync } from './syncer'
 
 const DEFAULT_WEB_SERVER_PORT = 38595
@@ -167,8 +161,8 @@ function buildWebPost(post: DbPost) {
   const media = post.folder_name
     ? findMediaFiles(post.sec_uid, post.folder_name, post.aweme_type)
     : null
-  const coverPath =
-    media?.cover ?? (post.folder_name ? findCoverFile(post.sec_uid, post.folder_name) : null)
+  // findMediaFiles 已经读过同一个目录，再调 findCoverFile 只是把同样的扫描重跑一遍
+  const coverPath = media?.cover ?? null
 
   return {
     id: post.id,

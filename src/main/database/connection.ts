@@ -15,6 +15,8 @@ export function getDatabase(): Database.Database {
     console.log('[Database] Path:', dbPath)
     db = new Database(dbPath)
     db.pragma('journal_mode = WAL')
+    // WAL 下 FULL 每个事务都 fsync；NORMAL 断电最多丢最后一次未 checkpoint 的事务，不会损坏库
+    db.pragma('synchronous = NORMAL')
     // 另一个连接（如退出中的迟到写入、外部工具）持有写锁时等一会儿，而不是立刻抛 SQLITE_BUSY
     db.pragma('busy_timeout = 5000')
     // SQLite 默认不检查外键，建表里声明的 ON DELETE CASCADE 必须显式开启才生效

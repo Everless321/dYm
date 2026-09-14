@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import { join } from 'path'
-import { existsSync, rmSync } from 'fs'
+import { existsSync } from 'fs'
+import { rm } from 'fs/promises'
 import {
   getAllUsers,
   deleteUser,
@@ -14,7 +15,7 @@ import { addUserByUrl } from '../services/user-add'
 import { refreshUserProfile, getBatchRefreshDelay, sleep } from '../services/user-refresh'
 import { getDownloadPath } from '../services/media'
 import { stopUserSync, isUserSyncing } from '../services/syncer'
-import { stopLiveRecording } from '../services/live-recorder'
+import { getLiveOutputPath, stopLiveRecording } from '../services/live-recorder'
 
 export function registerUserIpc(): void {
   // Douyin IPC handlers
@@ -25,17 +26,25 @@ export function registerUserIpc(): void {
   // User IPC handlers
   ipcMain.handle('user:getAll', () => getAllUsers())
   ipcMain.handle('user:add', (_event, url: string) => addUserByUrl(url))
-  ipcMain.handle('user:delete', (_event, id: number, deleteFiles?: boolean) => {
+  ipcMain.handle('user:delete', async (_event, id: number, deleteFiles?: boolean) => {
     // 先停掉进行中的同步 / 录制，再删库；否则同步线程会继续往已不存在的用户下写作品
     if (isUserSyncing(id)) stopUserSync(id)
     stopLiveRecording(id)
     const result = deleteUser(id)
     if (deleteFiles && result) {
-      const downloadPath = getDownloadPath()
-      const userDir = join(downloadPath, result.sec_uid)
-      if (existsSync(userDir)) {
-        rmSync(userDir, { recursive: true, force: true })
-        console.log(`[User:delete] Removed files: ${userDir}`)
+      // 作品目录与直播录像目录都删；异步 rm 避免几千个目录把主线程冻住
+      const dirs = [
+        join(getDownloadPath(), result.sec_uid),
+        join(getLiveOutputPath(), result.sec_uid)
+      ]
+      for (const dir of dirs) {
+        if (!existsSync(dir)) continue
+        try {
+          await rm(dir, { recursive: true, force: true })
+          console.log(`[User:delete] Removed files: ${dir}`)
+        } catch (error) {
+          console.error(`[User:delete] 删除目录失败 ${dir}:`, error)
+        }
       }
     }
     return result
