@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react'
 import { Play, Tag, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getMergedTags, parseTags } from '@/lib/utils'
@@ -9,13 +10,13 @@ interface VideoCardProps {
   selected: boolean
   /** 高亮显示的标签（当前按标签筛选时） */
   highlightTags?: string[]
-  onClick: () => void
-  onToggleSelect: () => void
+  onClick: (postId: number) => void
+  onToggleSelect: (postId: number) => void
 }
 
 const MAX_VISIBLE_TAGS = 3
 
-export function VideoCard({
+export const VideoCard = memo(function VideoCard({
   post,
   cover,
   selectMode,
@@ -24,11 +25,14 @@ export function VideoCard({
   onClick,
   onToggleSelect
 }: VideoCardProps): React.JSX.Element {
-  const tags = getMergedTags(post)
-  const manualSet = new Set(parseTags(post.manual_tags))
-  const hl = new Set(highlightTags || [])
-  // 命中筛选的标签排到前面，保证在只显示 3 个时不被截掉
-  const ordered = hl.size ? [...tags].sort((a, b) => Number(hl.has(b)) - Number(hl.has(a))) : tags
+  const { ordered, manualSet, hl } = useMemo(() => {
+    const tags = getMergedTags(post)
+    const manualSet = new Set(parseTags(post.manual_tags))
+    const hl = new Set(highlightTags || [])
+    // 命中筛选的标签排到前面，保证在只显示 3 个时不被截掉
+    const ordered = hl.size ? [...tags].sort((a, b) => Number(hl.has(b)) - Number(hl.has(a))) : tags
+    return { ordered, manualSet, hl }
+  }, [post, highlightTags])
 
   return (
     <div
@@ -37,9 +41,18 @@ export function VideoCard({
         selected ? 'border-[#0A84FF] ring-2 ring-[#0A84FF]/30' : 'border-[#E5E5E7]'
       )}
     >
-      <div className="relative aspect-[3/4] bg-[#1D1D1F] cursor-pointer" onClick={onClick}>
+      <div
+        className="relative aspect-[3/4] bg-[#1D1D1F] cursor-pointer"
+        onClick={() => onClick(post.id)}
+      >
         {cover ? (
-          <img src={`local://file${cover}`} className="w-full h-full object-cover" alt="" />
+          <img
+            src={`local://file${cover}`}
+            loading="lazy"
+            decoding="async"
+            className="w-full h-full object-cover"
+            alt=""
+          />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <Play className="h-8 w-8 text-white/40" />
@@ -60,7 +73,7 @@ export function VideoCard({
             <button
               onClick={(e) => {
                 e.stopPropagation()
-                onToggleSelect()
+                onToggleSelect(post.id)
               }}
               className={cn(
                 'absolute top-2.5 left-2.5 z-10 h-6 w-6 rounded-full flex items-center justify-center border transition-all',
@@ -106,4 +119,4 @@ export function VideoCard({
       </div>
     </div>
   )
-}
+})

@@ -9,6 +9,11 @@ type Stage = 'loading' | 'ready' | 'error'
 // 面板最多渲染的弹幕条数（只保留贴近当前时间的一段，避免长直播卡顿）
 const MAX_VISIBLE = 200
 const OFFSET_KEY = 'live_danmaku_offset'
+/** 离底部不超过这个距离视为「停在底部」，新弹幕到达时才自动跟随 */
+const STICK_THRESHOLD = 40
+
+/** 加载后给每条弹幕补一个全局序号做 key，窗口滑动时 key 不变 */
+type IndexedDanmaku = DanmakuLine & { id: number }
 
 /** 找到第一个 t > target 的下标（升序数组上界二分） */
 function upperBound(arr: DanmakuLine[], target: number): number {
@@ -29,7 +34,10 @@ export default function LivePlayerWindow({ recordId }: Props) {
   const [errMsg, setErrMsg] = useState('')
   const [info, setInfo] = useState<LivePlaybackInfo | null>(null)
   const [playError, setPlayError] = useState<string | null>(null)
-  const [danmaku, setDanmaku] = useState<DanmakuLine[]>([])
+  const [danmaku, setDanmaku] = useState<IndexedDanmaku[]>([])
+  // 用户是否停在弹幕列表底部；往上翻看历史时新弹幕不再强制贴底
+  const nearBottomRef = useRef(true)
+  const lastVisibleRef = useRef<IndexedDanmaku | null>(null)
   const [currentMs, setCurrentMs] = useState(0)
   // 延迟补偿（秒）：直播画面经 CDN 比弹幕慢几秒，调大可把弹幕整体往后推
   const [offsetSec, setOffsetSec] = useState<number>(() => {
@@ -65,7 +73,7 @@ export default function LivePlayerWindow({ recordId }: Props) {
     window.api.live
       .getDanmaku(recordId)
       .then((list) => {
-        if (!cancelled) setDanmaku(list)
+        if (!cancelled) setDanmaku(list.map((d, id) => ({ ...d, id })))
       })
       .catch(() => {})
     return () => {
@@ -81,11 +89,19 @@ export default function LivePlayerWindow({ recordId }: Props) {
     return danmaku.slice(Math.max(0, end - MAX_VISIBLE), end)
   }, [danmaku, currentMs, offsetSec])
 
-  // 新弹幕进来后贴底
+  // 只在末尾多了新弹幕、且用户本来就停在底部附近时贴底
   useLayoutEffect(() => {
     const el = listRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    const last = visible[visible.length - 1] ?? null
+    if (last === lastVisibleRef.current) return
+    lastVisibleRef.current = last
+    if (el && nearBottomRef.current) el.scrollTop = el.scrollHeight
   }, [visible])
+
+  const handleListScroll = (e: React.UIEvent<HTMLDivElement>): void => {
+    const el = e.currentTarget
+    nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_THRESHOLD
+  }
 
   return (
     <div className="fixed inset-0 flex flex-col bg-black text-white">
@@ -190,9 +206,13 @@ export default function LivePlayerWindow({ recordId }: Props) {
               </p>
             </div>
           ) : (
-            <div ref={listRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5">
-              {visible.map((d, i) => (
-                <div key={`${d.t}-${i}`} className="text-xs leading-relaxed break-words">
+            <div
+              ref={listRef}
+              onScroll={handleListScroll}
+              className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5"
+            >
+              {visible.map((d) => (
+                <div key={d.id} className="text-xs leading-relaxed break-words">
                   {d.type === 'chat' && (
                     <>
                       <span className="text-[#7EB6FF]">{d.name}</span>

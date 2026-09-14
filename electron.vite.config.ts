@@ -14,6 +14,7 @@ export default defineConfig({
     },
     plugins: [react()],
     build: {
+      minify: 'esbuild',
       rollupOptions: {
         input: {
           index: resolve('src/renderer/index.html'),

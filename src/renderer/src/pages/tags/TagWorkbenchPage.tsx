@@ -356,13 +356,21 @@ export default function TagWorkbenchPage(): React.JSX.Element {
     }
   }, [keyword])
 
-  const toggleSelect = (id: number): void =>
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  const toggleSelect = useCallback(
+    (id: number): void =>
+      setSelected((prev) => {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      }),
+    []
+  )
+
+  const handleCardClick = useCallback(
+    (id: number): void => (selectMode ? toggleSelect(id) : openVideo(id)),
+    [selectMode, toggleSelect, openVideo]
+  )
 
   const selectedIds = Array.from(selected)
   const hasMore = posts.length < total
@@ -813,9 +821,9 @@ export default function TagWorkbenchPage(): React.JSX.Element {
                     cover={covers.get(p.id)}
                     selectMode={selectMode}
                     selected={selected.has(p.id)}
-                    highlightTags={tags}
-                    onClick={() => (selectMode ? toggleSelect(p.id) : openVideo(p.id))}
-                    onToggleSelect={() => toggleSelect(p.id)}
+                    highlightTags={filters.tags}
+                    onClick={handleCardClick}
+                    onToggleSelect={toggleSelect}
                   />
                 ))}
               </div>

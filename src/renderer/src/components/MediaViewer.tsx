@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
@@ -11,7 +11,9 @@ import {
   Download
 } from 'lucide-react'
 import { getMergedTags } from '@/lib/utils'
-import { VideoPlayer } from './VideoPlayer'
+
+// xgplayer 体积大，只在真正播放视频时才加载
+const VideoPlayer = lazy(() => import('./VideoPlayer').then((m) => ({ default: m.VideoPlayer })))
 
 interface MediaViewerProps {
   post: DbPost | null
@@ -68,7 +70,7 @@ export function MediaViewer({
 
   // 相关推荐算法：多样化推荐（同标签优先，但保证作者多样性）
   const recommendations = useMemo(() => {
-    if (!post || allPosts.length === 0) return []
+    if (!open || !post || allPosts.length === 0) return []
 
     const currentTags = getMergedTags(post)
     const currentSecUid = post.sec_uid
@@ -121,7 +123,7 @@ export function MediaViewer({
     }
 
     return result
-  }, [post, allPosts])
+  }, [open, post, allPosts])
 
   // 加载推荐视频的封面
   useEffect(() => {
@@ -140,10 +142,10 @@ export function MediaViewer({
       }
       setRecommendCovers(covers)
     }
-    if (recommendations.length > 0) {
+    if (open && recommendations.length > 0) {
       loadCovers()
     }
-  }, [recommendations])
+  }, [open, recommendations])
 
   const loadMedia = async () => {
     if (!post) return
@@ -335,7 +337,13 @@ export function MediaViewer({
                 )}
               </>
             ) : media.video ? (
-              <VideoPlayer url={`local://file${media.video}`} className="w-full h-full" />
+              <Suspense
+                fallback={
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
+                }
+              >
+                <VideoPlayer url={`local://file${media.video}`} className="w-full h-full" />
+              </Suspense>
             ) : (
               <div className="text-white text-center">
                 <p>视频文件未找到</p>

@@ -143,9 +143,9 @@ export default function LogsPage() {
                 </div>
               ) : (
                 <div className="divide-y divide-[#E5E5E7]">
-                  {visibleLogs.map((log, index) => (
+                  {visibleLogs.map((log) => (
                     <div
-                      key={`${log.timestamp}-${index}`}
+                      key={`${log.timestamp}-${log.type}-${log.targetName ?? ''}-${log.message}`}
                       className="flex items-start gap-4 px-5 py-3 hover:bg-[#F2F2F4]/50 transition-colors"
                     >
                       <div className="flex-shrink-0 mt-0.5">{getLevelIcon(log.level)}</div>

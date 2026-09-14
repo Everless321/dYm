@@ -50,10 +50,12 @@ export default function TaskDetailPage() {
         if (p.status === 'running' && p.currentUser) {
           const currentUser = p.currentUser
           setActiveUsers((prev) => {
+            const limit = Math.max(1, taskRef.current?.concurrency || 1)
+            // 同一用户连续上报进度时集合不变，返回原引用避免整页重渲染
+            if ([...prev].pop() === currentUser && prev.size <= limit) return prev
             const next = new Set(prev)
             next.delete(currentUser)
             next.add(currentUser)
-            const limit = Math.max(1, taskRef.current?.concurrency || 1)
             while (next.size > limit) {
               const oldest = next.values().next().value
               if (oldest === undefined) break

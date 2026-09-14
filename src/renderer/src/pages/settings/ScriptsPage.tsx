@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   Code2,
@@ -177,7 +177,7 @@ export default function ScriptsPage(): React.JSX.Element {
           mergeLogs(
             history,
             prev.filter((e) => e.scriptId === selectedId)
-          )
+          ).slice(-MAX_VISIBLE_LOGS)
         )
       })
       .catch(() => {
@@ -192,7 +192,12 @@ export default function ScriptsPage(): React.JSX.Element {
   useEffect(() => {
     return window.api.scripts.onLog((entry) => {
       if (entry.scriptId !== selectedId) return
-      setLogs((prev) => mergeLogs(prev, [entry]))
+      setLogs((prev) => {
+        // 绝大多数实时日志都是顺序到达的，直接追加；只有乱序/重叠才走去重合并
+        const last = prev[prev.length - 1]
+        const next = !last || entry.seq > last.seq ? [...prev, entry] : mergeLogs(prev, [entry])
+        return next.length > MAX_VISIBLE_LOGS ? next.slice(-MAX_VISIBLE_LOGS) : next
+      })
       if (entry.message.startsWith('⚡ 钩子')) {
         setScripts((prev) =>
           prev.map((item) =>
@@ -210,7 +215,7 @@ export default function ScriptsPage(): React.JSX.Element {
 
   const selected = scripts.find((s) => s.id === selectedId) ?? null
   const isRunning = selected ? runningIds.includes(selected.id) : false
-  const runs = groupLogsIntoRuns(logs, isRunning)
+  const runs = useMemo(() => groupLogsIntoRuns(logs, isRunning), [logs, isRunning])
   const latestRunId = runs[0]?.runId ?? null
   const selectedRun = runs.find((run) => run.runId === selectedRunId) ?? runs[0] ?? null
 

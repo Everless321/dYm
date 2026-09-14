@@ -1,6 +1,6 @@
+import { lazy } from 'react'
 import { createHashRouter, Navigate, useParams } from 'react-router-dom'
 import { AppLayout } from '@/components/AppLayout'
-import DashboardPage from '@/pages/DashboardPage'
 import HomePage from '@/pages/HomePage'
 import UsersPage from '@/pages/settings/UsersPage'
 import DownloadPage from '@/pages/settings/DownloadPage'
@@ -8,12 +8,15 @@ import TaskDetailPage from '@/pages/settings/TaskDetailPage'
 import AnalysisPage from '@/pages/settings/AnalysisPage'
 import SystemPage from '@/pages/settings/SystemPage'
 import LogsPage from '@/pages/settings/LogsPage'
-import ScriptsPage from '@/pages/settings/ScriptsPage'
 import LiveRecordPage from '@/pages/settings/LiveRecordPage'
 import FilesPage from '@/pages/settings/FilesPage'
-import TagWorkbenchPage from '@/pages/tags/TagWorkbenchPage'
-import VideoTagEditPage from '@/pages/tags/VideoTagEditPage'
-import TagLibraryPage from '@/pages/tags/TagLibraryPage'
+
+// 重依赖页面按路由拆包：recharts / codemirror / 标签工作台只在进入时才加载
+const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
+const ScriptsPage = lazy(() => import('@/pages/settings/ScriptsPage'))
+const TagWorkbenchPage = lazy(() => import('@/pages/tags/TagWorkbenchPage'))
+const VideoTagEditPage = lazy(() => import('@/pages/tags/VideoTagEditPage'))
+const TagLibraryPage = lazy(() => import('@/pages/tags/TagLibraryPage'))
 
 /** 旧的按用户查看页已并入工作台，保留路由做重定向（外部链接/历史记录仍可用） */
 function TagUserRedirect() {
