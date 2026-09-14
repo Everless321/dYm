@@ -212,7 +212,9 @@ export function createScriptApi(
         const response = await fetch(url, {
           method: init?.method ?? 'GET',
           headers: init?.headers,
-          body: init?.body
+          body: init?.body,
+          // 停止脚本时把在途请求一起掐掉，否则脚本会卡在这个 await 上直到对方响应
+          signal
         })
         const headers: Record<string, string> = {}
         response.headers.forEach((value, key) => {

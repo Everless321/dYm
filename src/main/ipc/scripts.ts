@@ -86,8 +86,9 @@ export function registerScriptsIpc(): void {
     rescheduleScript(descriptor.id)
     dropScriptHookIndex(`external:${from}`)
     renameScriptHookSetting(`external:${from}`, descriptor.id)
-    renameScriptLogSetting(`external:${from}`, descriptor.id)
+    // 先搬日志再搬留存设置：搬日志时要按旧 id 读留存条数，设置先搬走会退回默认值把历史裁掉
     renameScriptLogs(`external:${from}`, descriptor.id)
+    renameScriptLogSetting(`external:${from}`, descriptor.id)
     syncScriptHookIndex(descriptor)
     return descriptor
   })

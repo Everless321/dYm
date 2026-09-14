@@ -17,6 +17,9 @@ export const ALLOW_SHELL_KEY = 'scripts_allow_shell'
 /** stdout / stderr 各自的缓冲上限，防止跑飞的进程把内存吃干 */
 const MAX_OUTPUT_BYTES = 5 * 1024 * 1024
 
+/** SIGTERM 之后等这么久还没退出就 SIGKILL，否则忽略 SIGTERM 的进程会让脚本永远停不下来 */
+const KILL_GRACE_MS = 3000
+
 /**
  * 从 Finder / 开始菜单启动的应用拿到的 PATH 很短，homebrew、pyenv 装的东西都不在里面。
  * 补上这些常见位置，省得脚本里必须写绝对路径。
@@ -75,10 +78,16 @@ function execute(
     let stderr = ''
     let truncated = false
     let settled = false
+    let killTimer: NodeJS.Timeout | undefined
 
-    // 「停止」要连子进程一起杀掉，否则脚本停了 python 还在跑
+    // 「停止」要连子进程一起杀掉，否则脚本停了 python 还在跑；先礼后兵，到点强杀
     const onAbort = (): void => {
       child.kill('SIGTERM')
+      killTimer = setTimeout(() => {
+        if (!settled && child.exitCode === null && child.signalCode === null) {
+          child.kill('SIGKILL')
+        }
+      }, KILL_GRACE_MS)
     }
     signal.addEventListener('abort', onAbort, { once: true })
 
@@ -86,6 +95,7 @@ function execute(
       if (settled) return
       settled = true
       signal.removeEventListener('abort', onAbort)
+      if (killTimer) clearTimeout(killTimer)
       fn()
     }
 
@@ -113,6 +123,9 @@ function execute(
     child.stderr?.on('data', (chunk: string) => collect('stderr', chunk))
 
     if (options.input !== undefined) {
+      // 子进程没读完 stdin 就退出（head -c 1 / grep -q）会在 stdin 上冒 EPIPE，
+      // 不挂监听会变成主进程的未捕获异常；结果由 close 事件决定，这里只吞掉即可
+      child.stdin?.on('error', () => undefined)
       child.stdin?.end(options.input)
     }
 

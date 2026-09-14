@@ -20,7 +20,7 @@ import { addUserByUrl } from './user-add'
 import { isCollectSyncEnabled, getCollectCron, pullCollectedItems } from './collect-sync'
 import { checkAndRecordUser, isRecordingLive, stopLiveRecording } from './live-recorder'
 import { runScript, isScriptRunning } from './scripts/runner'
-import { listScripts } from './scripts/loader'
+import { getScriptName } from './scripts/loader'
 
 export interface SchedulerLog {
   timestamp: number
@@ -462,7 +462,11 @@ const scheduledScriptTasks: Map<string, CronScheduledTask> = new Map()
 
 /** 取脚本的展示名，脚本已被删除或加载失败时退回 id */
 function scriptDisplayName(scriptId: string): string {
-  return listScripts().find((item) => item.id === scriptId)?.name ?? scriptId
+  try {
+    return getScriptName(scriptId)
+  } catch {
+    return scriptId
+  }
 }
 
 async function executeScriptRun(scriptId: string): Promise<void> {
@@ -482,7 +486,8 @@ async function executeScriptRun(scriptId: string): Promise<void> {
   sendSchedulerLog({ level: 'info', message: '开始定时执行脚本', type: 'system', targetName: name })
   try {
     // runScript 自己把失败收敛进返回值，只有加载不出脚本这类问题才会抛
-    const result = await runScript(scriptId)
+    // 定时执行不能重放上次钩子入参，否则 cron 每次都会把同一个作品再处理一遍
+    const result = await runScript(scriptId, { replayLastHook: false })
     if (result.ok) {
       sendSchedulerLog({
         level: 'info',
