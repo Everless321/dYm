@@ -332,10 +332,19 @@ export interface ScriptApi {
     addUser: (url: string) => Promise<unknown>
     /** 添加单个作品：入库作者并按设置下载该作品。入参可以是作品链接或裸 aweme_id */
     addVideo: (urlOrAwemeId: string) => Promise<unknown>
-    /** 同步指定用户的作品列表 */
-    syncUser: (userId: number) => Promise<void>
-    /** 执行下载任务 */
-    runTask: (taskId: number) => Promise<void>
+    /** 同步指定用户的作品列表。失败不抛出，看返回值的 status / error */
+    syncUser: (userId: number) => Promise<{
+      status: 'completed' | 'cancelled' | 'failed'
+      downloaded: number
+      skipped: number
+      error?: string
+    }>
+    /** 执行下载任务。失败不抛出，看返回值的 status / error */
+    runTask: (taskId: number) => Promise<{
+      status: 'completed' | 'cancelled' | 'failed'
+      downloaded: number
+      error?: string
+    }>
     /** 发起分析，secUid 为空则分析全部未分析作品 */
     analyze: (secUid?: string) => Promise<void>
     /** 重新分析指定的多个作品 */

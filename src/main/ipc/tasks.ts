@@ -1,6 +1,5 @@
 import { ipcMain } from 'electron'
 import {
-  getUserById,
   createTask,
   getTaskById,
   getAllTasks,
@@ -19,10 +18,8 @@ import {
   getAllSyncingUserIds
 } from '../services/syncer'
 import {
-  scheduleUser,
-  unscheduleUser,
-  scheduleTask,
-  unscheduleTask,
+  syncUserSchedules,
+  syncTaskSchedule,
   validateCronExpression,
   getSchedulerLogs,
   clearSchedulerLogs,
@@ -60,7 +57,10 @@ export function registerTaskIpc(): void {
   ipcMain.handle('task:updateUsers', (_event, taskId: number, userIds: number[]) =>
     updateTaskUsers(taskId, userIds)
   )
-  ipcMain.handle('task:delete', (_event, id: number) => deleteTask(id))
+  ipcMain.handle('task:delete', (_event, id: number) => {
+    if (isTaskRunning(id)) stopDownloadTask(id)
+    deleteTask(id)
+  })
 
   // Download IPC handlers
   ipcMain.handle('download:start', (_event, taskId: number) => {
@@ -80,28 +80,9 @@ export function registerTaskIpc(): void {
   ipcMain.handle('sync:validateCron', (_event, expression: string) =>
     validateCronExpression(expression)
   )
-  ipcMain.handle('sync:updateUserSchedule', (_event, userId: number) => {
-    const user = getUserById(userId)
-    if (user) {
-      if (user.auto_sync && user.sync_cron) {
-        scheduleUser(user)
-      } else {
-        unscheduleUser(userId)
-      }
-    }
-  })
-
-  // Task schedule update
-  ipcMain.handle('task:updateSchedule', (_event, taskId: number) => {
-    const task = getTaskById(taskId)
-    if (task) {
-      if (task.auto_sync && task.sync_cron) {
-        scheduleTask(task)
-      } else {
-        unscheduleTask(taskId)
-      }
-    }
-  })
+  // 调度重建已由数据库变更事件自动完成；保留这两个通道给旧调用方，按库里最新配置幂等重建
+  ipcMain.handle('sync:updateUserSchedule', (_event, userId: number) => syncUserSchedules(userId))
+  ipcMain.handle('task:updateSchedule', (_event, taskId: number) => syncTaskSchedule(taskId))
 
   // Scheduler logs IPC handlers
   ipcMain.handle('scheduler:getLogs', () => getSchedulerLogs())

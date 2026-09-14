@@ -26,6 +26,13 @@ import { runWithConcurrency } from '../utils/concurrency'
 /** 下载任务触发来源：手动点开始 / 定时调度 */
 export type DownloadSource = 'manual' | 'schedule'
 
+/** 一次任务下载的最终结果。失败不抛出而是收敛在这里，调用方据此记录日志 / 更新时间 */
+export interface DownloadTaskResult {
+  status: 'completed' | 'cancelled' | 'failed'
+  downloaded: number
+  error?: string
+}
+
 // 全局串行队列：避免多个分享链接同时下载打爆抖音 CDN 导致 mp3 被限流丢失。
 // 单作品下载逐个排队执行，互不抢占连接。
 let singlePostQueue: Promise<unknown> = Promise.resolve()
@@ -63,7 +70,7 @@ function formatFolderName(awemeId: string): string {
 export async function startDownloadTask(
   taskId: number,
   options: { source?: DownloadSource } = {}
-): Promise<void> {
+): Promise<DownloadTaskResult> {
   const source: DownloadSource = options.source ?? 'manual'
   const task = getTaskById(taskId)
   if (!task) {
@@ -95,6 +102,7 @@ export async function startDownloadTask(
   let totalDownloaded = 0
   // completed | cancelled | failed — 任务真正跑过之后上报一次
   let finishStatus: 'completed' | 'cancelled' | 'failed' = 'failed'
+  let failureMessage: string | undefined
 
   try {
     sendProgress({
@@ -174,6 +182,7 @@ export async function startDownloadTask(
     }
   } catch (error) {
     finishStatus = 'failed'
+    failureMessage = (error as Error).message
     console.error('[Downloader] Task failed:', error)
     updateTask(taskId, { status: 'failed', downloaded_videos: totalDownloaded })
     sendProgress({
@@ -197,6 +206,7 @@ export async function startDownloadTask(
       status: finishStatus
     })
   }
+  return { status: finishStatus, downloaded: totalDownloaded, error: failureMessage }
 }
 
 async function downloadUserVideos(

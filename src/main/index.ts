@@ -14,7 +14,13 @@ import { existsSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import trayIcon from '../../resources/trayTemplate.png?asset'
-import { closeDatabase, initDatabase, resetStaleLiveStatus } from './database'
+import {
+  closeDatabase,
+  initDatabase,
+  resetStaleLiveStatus,
+  resetStaleSyncStatus,
+  resetStaleTaskStatus
+} from './database'
 import { initDouyinHandler } from './services/douyin'
 import {
   blockCustomProtocols,
@@ -336,6 +342,8 @@ app.whenReady().then(async () => {
 
   // 清理上次异常退出遗留的「录制中」脏状态
   resetStaleLiveStatus()
+  resetStaleSyncStatus()
+  resetStaleTaskStatus()
 
   // 补扫未转换的历史录制（异常退出/转换失败遗留的 FLV），后台串行转换
   sweepUnconverted()

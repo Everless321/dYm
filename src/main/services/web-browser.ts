@@ -22,7 +22,6 @@ import {
   isPathInDownloadRoot
 } from './media'
 import { isUserSyncing, startUserSync } from './syncer'
-import { scheduleUser, unscheduleUser } from './scheduler'
 
 const DEFAULT_WEB_SERVER_PORT = 38595
 const DEFAULT_PAGE_SIZE = 12
@@ -446,12 +445,7 @@ async function handleAuthorSettings(
     return
   }
 
-  // 重新注册定时同步，使配置立即生效（与桌面端 sync:updateUserSchedule 一致）
-  if (updated.auto_sync && updated.sync_cron) {
-    scheduleUser(updated)
-  } else {
-    unscheduleUser(updated.id)
-  }
+  // 定时同步的重建由 updateUserSettings 发出的变更事件驱动，这里不必再手动注册
 
   respondJson(response, 200, buildAuthorPayload(updated))
 }

@@ -6,16 +6,19 @@ import {
   getLiveRecordUsers,
   getScriptSchedules,
   getScriptSchedule,
+  getUserById,
+  getTaskById,
   updateTaskLastSyncAt,
   type DbUser,
   type DbTaskWithUsers,
   type DbScriptSchedule
 } from '../database'
-import { startUserSync, isUserSyncing } from './syncer'
-import { startDownloadTask, isTaskRunning } from './downloader'
+import { appEvents } from './app-events'
+import { startUserSync, isUserSyncing, stopUserSync } from './syncer'
+import { startDownloadTask, isTaskRunning, stopDownloadTask } from './downloader'
 import { addUserByUrl } from './user-add'
 import { isCollectSyncEnabled, getCollectCron, pullCollectedItems } from './collect-sync'
-import { checkAndRecordUser, isRecordingLive } from './live-recorder'
+import { checkAndRecordUser, isRecordingLive, stopLiveRecording } from './live-recorder'
 import { runScript, isScriptRunning } from './scripts/runner'
 import { listScripts } from './scripts/loader'
 
@@ -101,13 +104,30 @@ async function executeUserSync(user: DbUser): Promise<void> {
     targetName: user.nickname
   })
   try {
-    await startUserSync(user.id, { source: 'schedule' })
-    sendSchedulerLog({
-      level: 'info',
-      message: '定时同步完成',
-      type: 'user',
-      targetName: user.nickname
-    })
+    // startUserSync 把运行期错误收敛进返回值，只有用户不存在 / 未配 Cookie 这类前置问题才会抛
+    const result = await startUserSync(user.id, { source: 'schedule' })
+    if (result.status === 'completed') {
+      sendSchedulerLog({
+        level: 'info',
+        message: `定时同步完成，新下载 ${result.downloaded} 个`,
+        type: 'user',
+        targetName: user.nickname
+      })
+    } else if (result.status === 'cancelled') {
+      sendSchedulerLog({
+        level: 'warn',
+        message: '定时同步被取消',
+        type: 'user',
+        targetName: user.nickname
+      })
+    } else {
+      sendSchedulerLog({
+        level: 'error',
+        message: `同步失败: ${result.error ?? '未知错误'}`,
+        type: 'user',
+        targetName: user.nickname
+      })
+    }
   } catch (error) {
     sendSchedulerLog({
       level: 'error',
@@ -240,14 +260,31 @@ async function executeTaskDownload(task: DbTaskWithUsers): Promise<void> {
 
   sendSchedulerLog({ level: 'info', message: '开始定时下载', type: 'task', targetName: task.name })
   try {
-    await startDownloadTask(task.id, { source: 'schedule' })
-    updateTaskLastSyncAt(task.id)
-    sendSchedulerLog({
-      level: 'info',
-      message: '定时下载完成',
-      type: 'task',
-      targetName: task.name
-    })
+    const result = await startDownloadTask(task.id, { source: 'schedule' })
+    if (result.status === 'completed') {
+      // 只有真正跑完才算一次成功同步，失败 / 取消不更新 last_sync_at
+      updateTaskLastSyncAt(task.id)
+      sendSchedulerLog({
+        level: 'info',
+        message: `定时下载完成，新下载 ${result.downloaded} 个`,
+        type: 'task',
+        targetName: task.name
+      })
+    } else if (result.status === 'cancelled') {
+      sendSchedulerLog({
+        level: 'warn',
+        message: '定时下载被取消',
+        type: 'task',
+        targetName: task.name
+      })
+    } else {
+      sendSchedulerLog({
+        level: 'error',
+        message: `执行失败: ${result.error ?? '未知错误'}`,
+        type: 'task',
+        targetName: task.name
+      })
+    }
   } catch (error) {
     sendSchedulerLog({
       level: 'error',
@@ -297,6 +334,37 @@ export function unscheduleTask(taskId: number): void {
     scheduledDownloadTasks.delete(taskId)
     sendSchedulerLog({ level: 'info', message: `已取消定时下载 (任务ID: ${taskId})`, type: 'task' })
   }
+}
+
+/**
+ * 按数据库里的最新配置重建某用户的两类定时任务（作品同步 + 直播检测）。
+ * 用户设置被改动（IPC、Web 端、脚本 API）后都应调用，让调度器与库保持一致，
+ * 而不是依赖渲染端记得再发一次「更新调度」IPC。
+ */
+export function syncUserSchedules(userId: number): void {
+  const user = getUserById(userId)
+  if (!user) {
+    clearUserSchedules(userId)
+    return
+  }
+  scheduleUser(user)
+  scheduleUserLive(user)
+}
+
+/** 用户被删除时调用：撤掉它的全部定时任务，否则 cron 会一直对着不存在的用户报错 */
+export function clearUserSchedules(userId: number): void {
+  unscheduleUser(userId)
+  unscheduleUserLive(userId)
+}
+
+/** 按数据库里的最新配置重建某下载任务的定时执行 */
+export function syncTaskSchedule(taskId: number): void {
+  const task = getTaskById(taskId)
+  if (!task) {
+    unscheduleTask(taskId)
+    return
+  }
+  scheduleTask(task)
 }
 
 // 收藏同步：定时从暂存服务拉取 aweme_id，逐个走「添加用户」
@@ -499,7 +567,31 @@ export function getScriptNextRun(scriptId: string): number | null {
   return next ? next.getTime() : null
 }
 
+let dataChangeListenersBound = false
+
+/**
+ * 订阅数据库层的配置变更事件：无论改动来自桌面端 IPC、Web 端还是脚本 API，
+ * cron 都跟着库里的最新配置走；用户 / 任务被删时顺带停掉正在跑的工作。
+ */
+function bindDataChangeListeners(): void {
+  if (dataChangeListenersBound) return
+  dataChangeListenersBound = true
+  appEvents.onDataChange('user:settings-changed', (userId) => syncUserSchedules(userId))
+  appEvents.onDataChange('user:deleted', (userId) => {
+    clearUserSchedules(userId)
+    stopUserSync(userId)
+    stopLiveRecording(userId)
+  })
+  appEvents.onDataChange('task:changed', (taskId) => syncTaskSchedule(taskId))
+  appEvents.onDataChange('task:deleted', (taskId) => {
+    unscheduleTask(taskId)
+    stopDownloadTask(taskId)
+  })
+}
+
 export function initScheduler(): void {
+  bindDataChangeListeners()
+
   // Initialize user-level scheduling
   const users = getAutoSyncUsers()
   sendSchedulerLog({

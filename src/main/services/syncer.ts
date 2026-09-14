@@ -32,6 +32,14 @@ interface SyncState {
   abort: boolean
 }
 
+/** 一次同步的最终结果。失败不抛出而是收敛在这里，调用方（调度器 / IPC）据此记录日志 */
+export interface SyncResult {
+  status: 'completed' | 'cancelled' | 'failed'
+  downloaded: number
+  skipped: number
+  error?: string
+}
+
 const runningSyncs: Map<number, SyncState> = new Map()
 
 function sendProgress(progress: SyncProgress): void {
@@ -44,7 +52,7 @@ function sendProgress(progress: SyncProgress): void {
 export async function startUserSync(
   userId: number,
   options: { source?: SyncSource } = {}
-): Promise<void> {
+): Promise<SyncResult> {
   const source: SyncSource = options.source ?? 'manual'
   console.log(`[Syncer] Starting sync for user ID: ${userId}`)
 
@@ -82,6 +90,7 @@ export async function startUserSync(
   let downloadedCount = 0
   let skippedCount = 0
   let finishStatus: 'completed' | 'cancelled' | 'failed' = 'failed'
+  let failureMessage: string | undefined
 
   try {
     console.log(`[Syncer] Sending initial progress for ${user.nickname}`)
@@ -182,7 +191,7 @@ export async function startUserSync(
         skippedCount,
         message: '同步已取消'
       })
-      return
+      return { status: finishStatus, downloaded: downloadedCount, skipped: skippedCount }
     }
 
     console.log(
@@ -204,7 +213,7 @@ export async function startUserSync(
         skippedCount,
         message: `${user.nickname} 无新作品，跳过 ${skippedCount} 个已下载`
       })
-      return
+      return { status: finishStatus, downloaded: downloadedCount, skipped: skippedCount }
     }
 
     const totalToDownload = videosToDownload.length
@@ -356,6 +365,7 @@ export async function startUserSync(
     }
   } catch (error) {
     finishStatus = 'failed'
+    failureMessage = (error as Error).message
     console.error(`[Syncer] Error syncing user ${user.nickname}:`, error)
     updateUserSyncStatus(userId, 'error')
     sendProgress({
@@ -377,6 +387,12 @@ export async function startUserSync(
       videos: downloadedCount,
       status: finishStatus
     })
+  }
+  return {
+    status: finishStatus,
+    downloaded: downloadedCount,
+    skipped: skippedCount,
+    error: failureMessage
   }
 }
 

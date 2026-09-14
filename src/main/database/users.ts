@@ -1,4 +1,5 @@
 import { getDatabase } from './connection'
+import { appEvents } from '../services/app-events'
 
 // User CRUD
 export interface DbUser {
@@ -148,6 +149,7 @@ export function deleteUser(id: number): { sec_uid: string } | undefined {
     database.prepare('DELETE FROM task_users WHERE user_id = ?').run(id)
     database.prepare('DELETE FROM users WHERE id = ?').run(id)
   })()
+  appEvents.emitDataChange('user:deleted', id)
   return { sec_uid: user.sec_uid }
 }
 
@@ -208,6 +210,7 @@ export function updateUserSettings(id: number, input: UpdateUserSettingsInput): 
   values.push(id)
 
   database.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...values)
+  appEvents.emitDataChange('user:settings-changed', id)
   return getUserById(id)
 }
 
@@ -228,6 +231,14 @@ export function updateUserSyncStatus(
       .prepare("UPDATE users SET sync_status = ?, updated_at = strftime('%s', 'now') WHERE id = ?")
       .run(status, id)
   }
+}
+
+/**
+ * 应用启动时清理上次进程被杀留下的 'syncing'。同步状态只存在于内存里的 runningSyncs，
+ * 进程没了它就不可能还在同步，库里却会一直显示「同步中」。
+ */
+export function resetStaleSyncStatus(): void {
+  getDatabase().exec("UPDATE users SET sync_status = 'idle' WHERE sync_status = 'syncing'")
 }
 
 export function getAutoSyncUsers(): DbUser[] {
@@ -286,6 +297,9 @@ export function batchUpdateUserSettings(
   database
     .prepare(`UPDATE users SET ${fields.join(', ')} WHERE id IN (${placeholders})`)
     .run(...values, ...ids)
+  for (const id of ids) {
+    appEvents.emitDataChange('user:settings-changed', id)
+  }
 }
 
 // ==================== 直播录制 ====================

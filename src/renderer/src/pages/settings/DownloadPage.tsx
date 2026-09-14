@@ -161,17 +161,15 @@ export default function DownloadPage() {
           sync_cron: syncCron.trim()
         })
         await window.api.task.updateUsers(editingTask.id, selectedUserIds)
-        await window.api.task.updateSchedule(editingTask.id)
         toast.success('任务已更新')
       } else {
-        const newTask = await window.api.task.create({
+        await window.api.task.create({
           name: taskName.trim(),
           user_ids: selectedUserIds,
           concurrency: concurrencyNum,
           auto_sync: autoSync,
           sync_cron: syncCron.trim()
         })
-        await window.api.task.updateSchedule(newTask.id)
         toast.success('任务已创建')
       }
       setOpen(false)

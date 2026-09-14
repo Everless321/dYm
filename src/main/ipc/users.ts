@@ -13,6 +13,8 @@ import { fetchUserProfile, parseDouyinUrl, getSecUserId } from '../services/douy
 import { addUserByUrl } from '../services/user-add'
 import { refreshUserProfile, getBatchRefreshDelay, sleep } from '../services/user-refresh'
 import { getDownloadPath } from '../services/media'
+import { stopUserSync, isUserSyncing } from '../services/syncer'
+import { stopLiveRecording } from '../services/live-recorder'
 
 export function registerUserIpc(): void {
   // Douyin IPC handlers
@@ -24,6 +26,9 @@ export function registerUserIpc(): void {
   ipcMain.handle('user:getAll', () => getAllUsers())
   ipcMain.handle('user:add', (_event, url: string) => addUserByUrl(url))
   ipcMain.handle('user:delete', (_event, id: number, deleteFiles?: boolean) => {
+    // 先停掉进行中的同步 / 录制，再删库；否则同步线程会继续往已不存在的用户下写作品
+    if (isUserSyncing(id)) stopUserSync(id)
+    stopLiveRecording(id)
     const result = deleteUser(id)
     if (deleteFiles && result) {
       const downloadPath = getDownloadPath()

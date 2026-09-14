@@ -425,8 +425,6 @@ export default function UsersPage() {
         live_record: editForm.live_record,
         live_check_cron: editForm.live_check_cron
       })
-      await window.api.sync.updateUserSchedule(editingUser.id)
-      await window.api.live.updateUserSchedule(editingUser.id)
       toast.success('保存成功')
       setEditingUser(null)
       loadUsers()
@@ -506,11 +504,6 @@ export default function UsersPage() {
       if (batchEnabled.auto_sync) input.auto_sync = batchForm.auto_sync
       if (batchEnabled.sync_cron) input.sync_cron = batchForm.sync_cron
       await window.api.user.batchUpdateSettings(Array.from(selectedIds), input)
-      if (batchEnabled.auto_sync || batchEnabled.sync_cron) {
-        for (const id of selectedIds) {
-          await window.api.sync.updateUserSchedule(id)
-        }
-      }
       toast.success(`已更新 ${selectedIds.size} 个用户`)
       setBatchEditOpen(false)
       setSelectedIds(new Set())

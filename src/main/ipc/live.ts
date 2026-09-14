@@ -1,5 +1,5 @@
 import { ipcMain, shell } from 'electron'
-import { getUserById, getLiveRecords, deleteLiveRecord } from '../database'
+import { getLiveRecords, deleteLiveRecord } from '../database'
 import {
   checkAndRecordUser,
   stopLiveRecording,
@@ -8,7 +8,7 @@ import {
 } from '../services/live-recorder'
 import { preparePlayback, getDanmaku } from '../services/live-playback'
 import { getConvertingIds } from '../services/live-convert'
-import { scheduleUserLive, unscheduleUserLive } from '../services/scheduler'
+import { syncUserSchedules } from '../services/scheduler'
 import { createLivePlayerWindow } from '../windows/live-player'
 
 export function registerLiveIpc(): void {
@@ -30,14 +30,6 @@ export function registerLiveIpc(): void {
   ipcMain.handle('live:revealFile', (_event, filePath: string) => {
     if (filePath) shell.showItemInFolder(filePath)
   })
-  ipcMain.handle('live:updateUserSchedule', (_event, userId: number) => {
-    const user = getUserById(userId)
-    if (user) {
-      if (user.live_record && user.live_check_cron) {
-        scheduleUserLive(user)
-      } else {
-        unscheduleUserLive(userId)
-      }
-    }
-  })
+  // 调度重建已由数据库变更事件自动完成；保留通道给旧调用方，按库里最新配置幂等重建
+  ipcMain.handle('live:updateUserSchedule', (_event, userId: number) => syncUserSchedules(userId))
 }

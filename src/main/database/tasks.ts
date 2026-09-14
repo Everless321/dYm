@@ -1,4 +1,5 @@
 import { getDatabase } from './connection'
+import { appEvents } from '../services/app-events'
 import type { DbUser } from './users'
 
 // Download Task CRUD
@@ -50,6 +51,7 @@ export function createTask(input: CreateTaskInput): DbTaskWithUsers {
     return id
   })()
 
+  appEvents.emitDataChange('task:changed', taskId)
   return getTaskById(taskId)!
 }
 
@@ -135,6 +137,10 @@ export function updateTask(id: number, input: UpdateTaskInput): DbTaskWithUsers 
   values.push(id)
 
   database.prepare(`UPDATE download_tasks SET ${fields.join(', ')} WHERE id = ?`).run(...values)
+  // 下载器跑动期间只改 status / downloaded_videos，这类进度写入不动 cron 配置，不必重建调度
+  if (input.auto_sync !== undefined || input.sync_cron !== undefined) {
+    appEvents.emitDataChange('task:changed', id)
+  }
   return getTaskById(id)
 }
 
@@ -154,6 +160,7 @@ export function updateTaskUsers(taskId: number, userIds: number[]): DbTaskWithUs
     }
     touch.run(taskId)
   })()
+  appEvents.emitDataChange('task:changed', taskId)
   return getTaskById(taskId)
 }
 
@@ -163,14 +170,21 @@ export function deleteTask(id: number): void {
     database.prepare('DELETE FROM task_users WHERE task_id = ?').run(id)
     database.prepare('DELETE FROM download_tasks WHERE id = ?').run(id)
   })()
+  appEvents.emitDataChange('task:deleted', id)
 }
 
 export function clearAllTasks(): void {
   const database = getDatabase()
+  const ids = (database.prepare('SELECT id FROM download_tasks').all() as { id: number }[]).map(
+    (r) => r.id
+  )
   database.transaction(() => {
     database.exec('DELETE FROM task_users')
     database.exec('DELETE FROM download_tasks')
   })()
+  for (const id of ids) {
+    appEvents.emitDataChange('task:deleted', id)
+  }
 }
 
 export function getAutoSyncTasks(): DbTaskWithUsers[] {
@@ -179,6 +193,13 @@ export function getAutoSyncTasks(): DbTaskWithUsers[] {
     .prepare("SELECT * FROM download_tasks WHERE auto_sync = 1 AND sync_cron != ''")
     .all() as DbTask[]
   return attachTaskUsers(tasks)
+}
+
+/** 应用启动时把上次进程被杀时遗留的 running 任务标为 failed，否则界面会永远显示「运行中」 */
+export function resetStaleTaskStatus(): void {
+  getDatabase().exec(
+    "UPDATE download_tasks SET status = 'failed', updated_at = strftime('%s', 'now') WHERE status = 'running'"
+  )
 }
 
 export function updateTaskLastSyncAt(id: number): void {
