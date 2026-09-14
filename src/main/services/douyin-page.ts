@@ -1,6 +1,7 @@
 import { BrowserWindow, session, type Session } from 'electron'
 import { getSetting } from '../database'
 import { blockCustomProtocols } from '../utils/block-protocols'
+import { CHROME_UA } from '../utils/user-agent'
 
 /**
  * 在真实抖音页面里发接口请求。
@@ -14,11 +15,6 @@ import { blockCustomProtocols } from '../utils/block-protocols'
 
 /** 登录窗口用的分区，与 cookie.ts 共用，这样用户登录过就直接是登录态 */
 const PARTITION = 'persist:douyin-login'
-
-/** 抹掉 UA 里的 Electron 标识。页面会把 UA 解析成 browser_name/browser_version 发给抖音，
- *  不改的话每个请求都在自报「我是 Electron/39.3.0」。 */
-const CHROME_UA =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
 
 /** 页面停靠地址：个人页收藏 tab，加载后页面自己会发一次带完整参数的接口请求 */
 const HOME_URL = 'https://www.douyin.com/user/self?showTab=favorite_collection'

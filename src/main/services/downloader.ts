@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { BrowserWindow } from 'electron'
 import { join } from 'path'
 import { existsSync, readdirSync, unlinkSync } from 'fs'
 import { execFile } from 'child_process'
@@ -20,33 +20,11 @@ import {
 import { validateDownloadFolder, cleanupFailedDownload, expectsMusic } from './download-validator'
 import { emitPostDownloaded } from './scripts/emit'
 import { track } from './telemetry'
+import { getDownloadPath } from './media'
+import { runWithConcurrency } from '../utils/concurrency'
 
 /** 下载任务触发来源：手动点开始 / 定时调度 */
 export type DownloadSource = 'manual' | 'schedule'
-
-// 并发控制函数
-async function runWithConcurrency<T>(
-  tasks: (() => Promise<T>)[],
-  concurrency: number
-): Promise<T[]> {
-  const results: T[] = []
-  const executing: Set<Promise<void>> = new Set()
-
-  for (const task of tasks) {
-    const p: Promise<void> = task().then((result) => {
-      results.push(result)
-      executing.delete(p)
-    })
-    executing.add(p)
-
-    if (executing.size >= concurrency) {
-      await Promise.race(executing)
-    }
-  }
-
-  await Promise.all(executing)
-  return results
-}
 
 // 全局串行队列：避免多个分享链接同时下载打爆抖音 CDN 导致 mp3 被限流丢失。
 // 单作品下载逐个排队执行，互不抢占连接。
@@ -69,21 +47,13 @@ export interface DownloadProgress {
   downloadedPosts: number
 }
 
-let runningTasks: Map<number, { abort: boolean }> = new Map()
+const runningTasks: Map<number, { abort: boolean }> = new Map()
 
 function sendProgress(progress: DownloadProgress): void {
   const windows = BrowserWindow.getAllWindows()
   for (const win of windows) {
     win.webContents.send('download:progress', progress)
   }
-}
-
-function getDownloadPath(): string {
-  const customPath = getSetting('download_path')
-  if (customPath && customPath.trim()) {
-    return customPath
-  }
-  return join(app.getPath('userData'), 'Download', 'post')
 }
 
 function formatFolderName(awemeId: string): string {
@@ -159,7 +129,17 @@ export async function startDownloadTask(
     })
 
     const results = await runWithConcurrency(userTasks, concurrency)
-    totalDownloaded = results.reduce((sum, count) => sum + count, 0)
+    // 单个用户失败不中断其他用户；这里只累计成功的数量，失败的记日志
+    for (const [index, result] of results.entries()) {
+      if (result instanceof Error) {
+        console.error(
+          `[Downloader] 用户 ${task.users[index]?.nickname ?? index} 下载失败:`,
+          result.message
+        )
+        continue
+      }
+      totalDownloaded += result
+    }
 
     // 检查是否被中止
     const taskState = runningTasks.get(taskId)

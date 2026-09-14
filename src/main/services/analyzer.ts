@@ -17,6 +17,8 @@ import {
   type AnalysisResult
 } from '../database'
 import { emitPostAnalyzed } from './scripts/emit'
+import { getDownloadPath } from './media'
+import { runWithConcurrency } from '../utils/concurrency'
 
 ffmpeg.setFfmpegPath(ffmpegPath)
 ffmpeg.setFfprobePath(ffprobePath)
@@ -68,14 +70,6 @@ function sendProgress(progress: AnalysisProgress): void {
   for (const win of windows) {
     win.webContents.send('analysis:progress', progress)
   }
-}
-
-function getDownloadPath(): string {
-  const customPath = getSetting('download_path')
-  if (customPath && customPath.trim()) {
-    return customPath
-  }
-  return join(app.getPath('userData'), 'Download', 'post')
 }
 
 function findMediaFolder(secUid: string, folderName: string): string | null {
@@ -381,37 +375,6 @@ async function analyzePost(
   }
 }
 
-async function runWithConcurrency<T>(
-  tasks: (() => Promise<T>)[],
-  concurrency: number,
-  onComplete?: (index: number, result: T | Error) => void
-): Promise<(T | Error)[]> {
-  const results: (T | Error)[] = new Array(tasks.length)
-  let currentIndex = 0
-
-  const runNext = async (): Promise<void> => {
-    while (currentIndex < tasks.length) {
-      if (shouldStop) break
-      const index = currentIndex++
-      try {
-        const result = await tasks[index]()
-        results[index] = result
-        onComplete?.(index, result)
-      } catch (error) {
-        results[index] = error as Error
-        onComplete?.(index, error as Error)
-      }
-    }
-  }
-
-  const workers = Array(Math.min(concurrency, tasks.length))
-    .fill(null)
-    .map(() => runNext())
-
-  await Promise.all(workers)
-  return results
-}
-
 interface AnalysisConfig {
   apiKey: string
   apiUrl: string
@@ -500,29 +463,32 @@ async function runAnalysisForPosts(posts: DbPost[]): Promise<void> {
       return result
     })
 
-    await runWithConcurrency(tasks, config.concurrency, (index, result) => {
-      const post = posts[index]
-      const ok = !(result instanceof Error)
-      if (ok) {
-        analyzedCount++
-      } else {
-        failedCount++
-        console.error(
-          `[Analyzer] Failed to analyze post ${post.aweme_id}:`,
-          (result as Error).message
-        )
-      }
+    await runWithConcurrency(tasks, config.concurrency, {
+      shouldStop: () => shouldStop,
+      onComplete: (index, result) => {
+        const post = posts[index]
+        const ok = !(result instanceof Error)
+        if (ok) {
+          analyzedCount++
+        } else {
+          failedCount++
+          console.error(
+            `[Analyzer] Failed to analyze post ${post.aweme_id}:`,
+            (result as Error).message
+          )
+        }
 
-      sendProgress({
-        status: 'running',
-        currentPost: postTitleOf(post),
-        currentIndex: index + 1,
-        totalPosts: totalCount,
-        analyzedCount,
-        failedCount,
-        message: `已分析 ${analyzedCount} 个，失败 ${failedCount} 个`,
-        lastResult: { postId: post.id, ok, title: postTitleOf(post) }
-      })
+        sendProgress({
+          status: 'running',
+          currentPost: postTitleOf(post),
+          currentIndex: index + 1,
+          totalPosts: totalCount,
+          analyzedCount,
+          failedCount,
+          message: `已分析 ${analyzedCount} 个，失败 ${failedCount} 个`,
+          lastResult: { postId: post.id, ok, title: postTitleOf(post) }
+        })
+      }
     })
 
     sendProgress({

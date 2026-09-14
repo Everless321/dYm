@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { BrowserWindow } from 'electron'
 import { join } from 'path'
 import { DouyinHandler, DouyinDownloader } from 'polydl'
 import {
@@ -12,6 +12,7 @@ import { convertFolderImagesToJpg } from './downloader'
 import { validateDownloadFolder, cleanupFailedDownload, expectsMusic } from './download-validator'
 import { emitPostDownloaded } from './scripts/emit'
 import { track } from './telemetry'
+import { getDownloadPath } from './media'
 
 /** 同步触发来源：手动 / 定时调度 */
 export type SyncSource = 'manual' | 'schedule'
@@ -38,14 +39,6 @@ function sendProgress(progress: SyncProgress): void {
   for (const win of windows) {
     win.webContents.send('sync:progress', progress)
   }
-}
-
-function getDownloadPath(): string {
-  const customPath = getSetting('download_path')
-  if (customPath && customPath.trim()) {
-    return customPath
-  }
-  return join(app.getPath('userData'), 'Download', 'post')
 }
 
 export async function startUserSync(

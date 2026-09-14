@@ -2,18 +2,12 @@ import { BrowserWindow, session } from 'electron'
 import { setSetting } from '../database'
 import { refreshDouyinHandler } from './douyin'
 import { blockCustomProtocols } from '../utils/block-protocols'
+import { CHROME_UA } from '../utils/user-agent'
 
 // Cookie 刷新状态
 let isRefreshing = false
 let lastRefreshTime = 0
 const MIN_REFRESH_INTERVAL = 30000 // 最小刷新间隔 30 秒
-
-/**
- * 抹掉 UA 里的 Electron 标识。抖音页面会把 UA 解析成 browser_name / browser_version
- * 写进每个接口请求的参数里，不改的话就是在自报 browser_name=Electron。
- */
-const CHROME_UA =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
 
 /**
  * 打开浏览器窗口让用户登录获取 Cookie（手动模式）
