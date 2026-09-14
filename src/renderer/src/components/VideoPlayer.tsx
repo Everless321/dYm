@@ -117,7 +117,7 @@ export function VideoPlayer({ url, poster, className }: VideoPlayerProps): React
 
       if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault()
-        if (player.paused) player.play()
+        if (player.paused) void player.play()?.catch(() => undefined)
         else player.pause()
         return
       }

@@ -193,6 +193,8 @@ export function createScript(fileName: string, source: string): ScriptDescriptor
   const filePath = getScriptPath(name)
   if (existsSync(filePath)) throw new Error(`已存在同名脚本：${name}`)
   writeFileSync(filePath, source, 'utf-8')
+  // 缓存键是 mtime+size，等长改动在 mtime 粒度粗的文件系统上会命中旧 meta
+  forgetScriptMeta(`external:${name}`)
   return describeExternal(name)
 }
 

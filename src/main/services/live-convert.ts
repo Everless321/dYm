@@ -70,7 +70,11 @@ export function enqueueConvert(recordId: number): void {
       progressOf(recordId, 'converted', '转换完成，可以观看了')
     } catch (err) {
       console.error(`[LiveConvert] 记录 ${recordId} 转换失败:`, err)
-      progressOf(recordId, 'convert-failed', `转换失败：${(err as Error).message}`)
+      try {
+        progressOf(recordId, 'convert-failed', `转换失败：${(err as Error).message}`)
+      } catch {
+        // 退出过程中库已关闭，广播失败无所谓
+      }
     } finally {
       convertingIds.delete(recordId)
     }

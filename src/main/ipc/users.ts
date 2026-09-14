@@ -15,7 +15,7 @@ import { addUserByUrl } from '../services/user-add'
 import { refreshUserProfile, getBatchRefreshDelay, sleep } from '../services/user-refresh'
 import { getDownloadPath } from '../services/media'
 import { stopUserSync, isUserSyncing } from '../services/syncer'
-import { getLiveOutputPath, stopLiveRecording } from '../services/live-recorder'
+import { getLiveOutputPath, stopLiveRecordingAndWait } from '../services/live-recorder'
 
 export function registerUserIpc(): void {
   // Douyin IPC handlers
@@ -29,7 +29,7 @@ export function registerUserIpc(): void {
   ipcMain.handle('user:delete', async (_event, id: number, deleteFiles?: boolean) => {
     // 先停掉进行中的同步 / 录制，再删库；否则同步线程会继续往已不存在的用户下写作品
     if (isUserSyncing(id)) stopUserSync(id)
-    stopLiveRecording(id)
+    await stopLiveRecordingAndWait(id)
     const result = deleteUser(id)
     if (deleteFiles && result) {
       // 作品目录与直播录像目录都删；异步 rm 避免几千个目录把主线程冻住

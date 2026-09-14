@@ -154,8 +154,9 @@ function finishRecording(userId: number, status: DbLiveRecord['status'], error?:
     message: messageMap[status] || status
   })
 
-  // 录制产物立刻转成可播放的 MP4（FLV 只在录制期间用，抗中断）
-  if (status !== 'recording') {
+  // 录制产物立刻转成可播放的 MP4（FLV 只在录制期间用，抗中断）。
+  // 退出中不再起转封装 ffmpeg：主进程马上消亡，它会成为孤儿并留下 .part；下次启动 sweepUnconverted 会补
+  if (status !== 'recording' && !quitting) {
     enqueueConvert(rec.recordId)
   }
 }
@@ -467,6 +468,28 @@ export function stopLiveRecording(userId: number): boolean {
 
 /** 退出时最多等 ffmpeg 收尾这么久；超时就不等了，交给下次启动的 resetStaleLiveStatus */
 const QUIT_FLUSH_TIMEOUT_MS = 5_000
+let quitting = false
+
+/**
+ * 停止某用户的录制并等 ffmpeg 真正退出（带超时）。
+ * 删用户目录前必须用这个：只发 SIGINT 就 rm，Windows 上文件仍被占用会 EBUSY 留半截目录。
+ */
+export function stopLiveRecordingAndWait(
+  userId: number,
+  timeoutMs = QUIT_FLUSH_TIMEOUT_MS
+): Promise<boolean> {
+  const rec = runningRecordings.get(userId)
+  if (!rec) return Promise.resolve(false)
+  const exited = new Promise<void>((resolve) => {
+    if (rec.proc.exitCode !== null || rec.proc.signalCode !== null) return resolve()
+    rec.proc.once('close', () => resolve())
+  })
+  stopLiveRecording(userId)
+  return Promise.race([
+    exited.then(() => true),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(true), timeoutMs))
+  ])
+}
 
 /**
  * 停止全部录制（应用退出时调用）。
@@ -474,6 +497,7 @@ const QUIT_FLUSH_TIMEOUT_MS = 5_000
  * 进程立刻退出的话文件可能损坏、记录状态也停在 recording。
  */
 export function stopAllLiveRecordings(): Promise<void> {
+  quitting = true
   const exits: Promise<void>[] = []
   for (const [, rec] of runningRecordings) {
     rec.stopReason = 'manual'

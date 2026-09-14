@@ -25,7 +25,7 @@ export default function SystemPage() {
 
   // 下载
   const [downloadPath, setDownloadPath] = useState('')
-  const [maxDownloadCount, setMaxDownloadCount] = useState('50')
+  const [maxDownloadCount, setMaxDownloadCount] = useState('0')
   const [videoDownloadConcurrency, setVideoDownloadConcurrency] = useState('3')
   const [convertToJpg, setConvertToJpg] = useState(false)
   const [downloadPostOnAddUser, setDownloadPostOnAddUser] = useState(true)
@@ -107,7 +107,7 @@ export default function SystemPage() {
       const savedPath = settings.download_path || ''
       setDownloadPath(savedPath)
       originalDownloadPath.current = savedPath
-      setMaxDownloadCount(settings.max_download_count || '50')
+      setMaxDownloadCount(settings.max_download_count || '0')
       setVideoDownloadConcurrency(settings.video_download_concurrency || '3')
       setConvertToJpg(settings.convert_images_to_jpg === 'true')
       setDownloadPostOnAddUser(settings.download_post_on_add_user !== 'false')
