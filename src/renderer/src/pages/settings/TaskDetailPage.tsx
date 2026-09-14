@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { getAvatarUrl } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { formatCompactNumber, formatUnixTime } from '@/lib/format'
 
 const statusConfig = {
   pending: { label: '待执行', icon: Clock, color: '#6E6E73', bg: '#F2F2F4' },
@@ -123,23 +124,6 @@ export default function TaskDetailPage() {
     }
   }
 
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp * 1000).toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
-
-  const formatNumber = (num: number) => {
-    if (num >= 10000) {
-      return (num / 10000).toFixed(1) + 'w'
-    }
-    return num.toString()
-  }
-
   const handleStartDownload = async () => {
     if (!task) return
     try {
@@ -236,7 +220,9 @@ export default function TaskDetailPage() {
                   <Video className="h-6 w-6 text-[#6E6E73]" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-[#1D1D1F]">{formatNumber(totalVideos)}</p>
+                  <p className="text-2xl font-bold text-[#1D1D1F]">
+                    {formatCompactNumber(totalVideos)}
+                  </p>
                   <p className="text-sm text-[#6E6E73]">视频总数</p>
                 </div>
               </div>
@@ -261,7 +247,7 @@ export default function TaskDetailPage() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-[#1D1D1F]">
-                    {formatDate(task.created_at)}
+                    {formatUnixTime(task.created_at, { year: true })}
                   </p>
                   <p className="text-sm text-[#6E6E73]">创建时间</p>
                 </div>
@@ -386,7 +372,7 @@ export default function TaskDetailPage() {
                         variant="outline"
                         className="font-medium border-[#E5E5E7] text-[#6E6E73]"
                       >
-                        {formatNumber(user.follower_count)}
+                        {formatCompactNumber(user.follower_count)}
                       </Badge>
                     </div>
                     <div className="w-24 text-center">

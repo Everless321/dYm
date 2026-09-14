@@ -36,16 +36,10 @@ import {
   ContextMenuTrigger
 } from '@/components/ui/context-menu'
 import { MediaViewer } from '@/components/MediaViewer'
+import { formatBytes, formatPostDate } from '@/lib/format'
 
 const IMAGE_AWEME_TYPE = 68
 const PAGE_SIZE = 50
-
-function formatSize(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  return (bytes / Math.pow(1024, i)).toFixed(i > 1 ? 1 : 0) + ' ' + units[i]
-}
 
 interface UserWithSize extends DbUser {
   fileSize: number
@@ -83,6 +77,8 @@ export default function FilesPage() {
   const dropdownRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
+  // 作品列表请求序号，用于丢弃切换用户/排序后才返回的旧请求
+  const postsRequestSeq = useRef(0)
 
   const totalSize = users.reduce((sum, u) => sum + u.fileSize, 0)
   const totalFiles = users.reduce((sum, u) => sum + u.folderCount, 0)
@@ -153,10 +149,13 @@ export default function FilesPage() {
   }
 
   const loadPosts = async (user: UserWithSize, pageNum: number, reset = false) => {
+    const seq = ++postsRequestSeq.current
     if (reset) setPostsLoading(true)
     else setLoadingMore(true)
     try {
       const result = await window.api.files.getUserPosts(user.id, pageNum, PAGE_SIZE, sort)
+      // 期间切换了用户 / 排序，这份结果属于旧列表
+      if (seq !== postsRequestSeq.current) return
       const newPosts = result?.posts ?? []
       if (reset) {
         setPosts(newPosts)
@@ -165,12 +164,15 @@ export default function FilesPage() {
       }
       setPostTotal(result?.total ?? 0)
       setHasMore(newPosts.length === PAGE_SIZE)
-      loadCoverPaths(result.posts)
+      loadCoverPaths(newPosts)
     } catch {
+      if (seq !== postsRequestSeq.current) return
       toast.error('加载作品失败')
     } finally {
-      setPostsLoading(false)
-      setLoadingMore(false)
+      if (seq === postsRequestSeq.current) {
+        setPostsLoading(false)
+        setLoadingMore(false)
+      }
     }
   }
 
@@ -182,14 +184,25 @@ export default function FilesPage() {
   }, [page, selectedUser, sort])
 
   const loadCoverPaths = async (postList: DbPost[]) => {
-    const paths: Record<string, string> = {}
-    for (const post of postList) {
-      if (post.folder_name) {
-        const coverPath = await window.api.post.getCoverPath(post.sec_uid, post.folder_name)
-        if (coverPath) paths[post.aweme_id] = coverPath
+    const entries = await Promise.all(
+      postList
+        .filter((p) => p.folder_name)
+        .map(async (post) => {
+          try {
+            const path = await window.api.post.getCoverPath(post.sec_uid, post.folder_name)
+            return [post.aweme_id, path] as const
+          } catch {
+            return [post.aweme_id, null] as const
+          }
+        })
+    )
+    setCoverPaths((prev) => {
+      const next = { ...prev }
+      for (const [awemeId, path] of entries) {
+        if (path) next[awemeId] = path
       }
-    }
-    setCoverPaths((prev) => ({ ...prev, ...paths }))
+      return next
+    })
   }
 
   const reloadCurrentUser = async () => {
@@ -340,15 +353,6 @@ export default function FilesPage() {
 
   const isImagePost = (post: DbPost) => post.aweme_type === IMAGE_AWEME_TYPE
 
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return ''
-    const cleaned = dateStr.replace(/[-:T]/g, '').substring(0, 8)
-    if (cleaned.length === 8) {
-      return `${cleaned.substring(0, 4)}-${cleaned.substring(4, 6)}-${cleaned.substring(6, 8)}`
-    }
-    return dateStr
-  }
-
   const filteredUsers = (() => {
     if (!userSearch.trim()) return users
     const s = userSearch.toLowerCase()
@@ -362,7 +366,7 @@ export default function FilesPage() {
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold text-[#1D1D1F]">文件管理</h1>
           <span className="text-sm text-[#A1A1A6]">
-            {totalFiles} 个文件 / {formatSize(totalSize)}
+            {totalFiles} 个文件 / {formatBytes(totalSize)}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -421,7 +425,7 @@ export default function FilesPage() {
               <span>{selectedUser?.nickname || '选择用户'}</span>
               {selectedUser && (
                 <span className="text-xs text-[#A1A1A6]">
-                  ({formatSize(selectedUser.fileSize)})
+                  ({formatBytes(selectedUser.fileSize)})
                 </span>
               )}
               <ChevronDown
@@ -470,7 +474,7 @@ export default function FilesPage() {
                     >
                       <span className="truncate">{u.nickname}</span>
                       <span className="text-xs text-[#A1A1A6] flex-shrink-0 ml-2">
-                        {u.folderCount} 个 / {formatSize(u.fileSize)}
+                        {u.folderCount} 个 / {formatBytes(u.fileSize)}
                       </span>
                     </button>
                   ))}
@@ -597,7 +601,7 @@ export default function FilesPage() {
                           </div>
                           {post.create_time && (
                             <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
-                              {formatDate(post.create_time)}
+                              {formatPostDate(post.create_time)}
                             </div>
                           )}
                         </div>

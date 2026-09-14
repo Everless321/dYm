@@ -38,6 +38,7 @@ import { groupLogsIntoRuns, type ScriptRun } from '@/lib/script-runs'
 import { HookParamHelp } from './HookParamHelp'
 import { ScriptNameDialog } from './ScriptNameDialog'
 import { ScriptScheduleDialog } from './ScriptScheduleDialog'
+import { formatClock } from '@/lib/format'
 
 /** 界面上最多渲染的日志条数。磁盘留存由每个脚本自己的 logLimit 决定 */
 const MAX_VISIBLE_LOGS = 500
@@ -48,12 +49,6 @@ const LOG_LIMIT_PRESETS = [200, 500, 1000, 5000, 10000]
 interface SourceEntry {
   saved: string
   draft: string
-}
-
-function formatTime(time: number): string {
-  const d = new Date(time)
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 /** 按 seq 去重合并两批日志——历史拉取与实时推送可能重叠 */
@@ -841,7 +836,7 @@ export default function ScriptsPage(): React.JSX.Element {
                                       active ? 'text-[#0A84FF]' : 'text-[#A1A1A6]'
                                     )}
                                   >
-                                    {formatTime(run.startedAt)}
+                                    {formatClock(run.startedAt)}
                                   </span>
                                   <RunStatusIcon status={run.status} />
                                 </div>
@@ -877,7 +872,7 @@ export default function ScriptsPage(): React.JSX.Element {
                                   )}
                                 >
                                   <span className="text-[#C7C7CC] select-none flex-shrink-0 tabular-nums">
-                                    {formatTime(log.time)}
+                                    {formatClock(log.time)}
                                   </span>
                                   <span className="min-w-0">{log.message}</span>
                                 </div>

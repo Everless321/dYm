@@ -26,6 +26,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
+import { formatUnixTime } from '@/lib/format'
 
 const PAGE_SIZE = 10
 
@@ -192,15 +193,6 @@ export default function DownloadPage() {
     }
   }
 
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp * 1000).toLocaleString('zh-CN', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
-
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
@@ -298,7 +290,7 @@ export default function DownloadPage() {
                       )}
                     </div>
                     <div className="w-32 text-center text-sm text-[#6E6E73]">
-                      {formatDate(task.created_at)}
+                      {formatUnixTime(task.created_at)}
                     </div>
                     <div className="w-32 flex justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
                       <Button

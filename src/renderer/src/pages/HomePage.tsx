@@ -34,6 +34,7 @@ import { SortSelect } from '@/components/SortSelect'
 import { getInitialSort } from '@/lib/post-sort'
 import { getMergedTags } from '@/lib/utils'
 import { AddTagsDialog } from '@/pages/tags/AddTagsDialog'
+import { formatPostDate } from '@/lib/format'
 
 const IMAGE_AWEME_TYPE = 68
 const PAGE_SIZE = 50
@@ -62,6 +63,8 @@ export default function HomePage() {
   const [tagSearch, setTagSearch] = useState('')
   const [downloadDialogOpen, setDownloadDialogOpen] = useState(false)
   const [searchKeyword, setSearchKeyword] = useState('')
+  // 搜索词防抖后的副本：filters 只跟它走，避免每敲一个字就打一次全库 LIKE 查询
+  const [debouncedKeyword, setDebouncedKeyword] = useState('')
   const [showAuthorDropdown, setShowAuthorDropdown] = useState(false)
   const [authorSearch, setAuthorSearch] = useState('')
   const [sort, setSort] = useState<PostSortConfig>(() => getInitialSort('home_post_sort'))
@@ -69,6 +72,13 @@ export default function HomePage() {
   const gridScrollRef = useRef<HTMLDivElement>(null)
   const authorDropdownRef = useRef<HTMLDivElement>(null)
   const authorSearchInputRef = useRef<HTMLInputElement>(null)
+  // 列表请求序号。筛选切换很快时，慢的旧请求可能晚于新请求返回，用它丢弃过期结果
+  const postsRequestSeq = useRef(0)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedKeyword(searchKeyword.trim()), 300)
+    return () => clearTimeout(timer)
+  }, [searchKeyword])
 
   const filters = useMemo<PostFilters>(
     () => ({
@@ -77,9 +87,9 @@ export default function HomePage() {
       minContentLevel: sexyLevelRange[0] > 0 ? sexyLevelRange[0] : undefined,
       maxContentLevel: sexyLevelRange[1] < 10 ? sexyLevelRange[1] : undefined,
       analyzedOnly: analyzedOnly || undefined,
-      keyword: searchKeyword.trim() || undefined
+      keyword: debouncedKeyword || undefined
     }),
-    [selectedSecUid, selectedTags, sexyLevelRange, analyzedOnly, searchKeyword]
+    [selectedSecUid, selectedTags, sexyLevelRange, analyzedOnly, debouncedKeyword]
   )
 
   useEffect(() => {
@@ -117,20 +127,32 @@ export default function HomePage() {
     return () => observer.disconnect()
   }, [hasMore, loading, loadingMore, page])
 
+  // 只补缺失的封面路径并合并进现有 map；翻页时 posts 是累积数组，
+  // 原先每次都对全部作品重新逐个 await，一页页往下翻 IPC 次数会线性膨胀
   const loadCoverPaths = async (postList: DbPost[]) => {
-    const paths: Record<string, string> = {}
-    for (const post of postList) {
-      if (post.folder_name) {
-        const coverPath = await window.api.post.getCoverPath(post.sec_uid, post.folder_name)
-        if (coverPath) {
-          paths[post.aweme_id] = coverPath
+    const missing = postList.filter((p) => p.folder_name && !coverPaths[p.aweme_id])
+    if (missing.length === 0) return
+    const entries = await Promise.all(
+      missing.map(async (post) => {
+        try {
+          const path = await window.api.post.getCoverPath(post.sec_uid, post.folder_name)
+          return [post.aweme_id, path] as const
+        } catch {
+          return [post.aweme_id, null] as const
         }
+      })
+    )
+    setCoverPaths((prev) => {
+      const next = { ...prev }
+      for (const [awemeId, path] of entries) {
+        if (path) next[awemeId] = path
       }
-    }
-    setCoverPaths(paths)
+      return next
+    })
   }
 
   const loadPosts = async (pageNum: number, reset = false) => {
+    const seq = ++postsRequestSeq.current
     if (reset) {
       setLoading(true)
     } else {
@@ -138,6 +160,8 @@ export default function HomePage() {
     }
     try {
       const result = await window.api.post.getAll(pageNum, PAGE_SIZE, filters, sort)
+      // 期间又发出了新的请求（筛选/排序变了），这份结果已过期
+      if (seq !== postsRequestSeq.current) return
       if (reset) {
         setPosts(result.posts)
       } else {
@@ -147,10 +171,13 @@ export default function HomePage() {
       setAuthors(result.authors)
       setHasMore(result.posts.length === PAGE_SIZE)
     } catch (error) {
+      if (seq !== postsRequestSeq.current) return
       console.error('Failed to load posts:', error)
     } finally {
-      setLoading(false)
-      setLoadingMore(false)
+      if (seq === postsRequestSeq.current) {
+        setLoading(false)
+        setLoadingMore(false)
+      }
     }
   }
 
@@ -188,15 +215,6 @@ export default function HomePage() {
     sexyLevelRange[1] < 10 ||
     analyzedOnly ||
     searchKeyword.trim()
-
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return ''
-    const cleaned = dateStr.replace(/[-:T]/g, '').substring(0, 8)
-    if (cleaned.length === 8) {
-      return `${cleaned.substring(0, 4)}-${cleaned.substring(4, 6)}-${cleaned.substring(6, 8)}`
-    }
-    return dateStr
-  }
 
   const getCoverUrl = (post: DbPost) => {
     const path = coverPaths[post.aweme_id]
@@ -571,7 +589,7 @@ export default function HomePage() {
                           {/* Date badge */}
                           {post.create_time && (
                             <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
-                              {formatDate(post.create_time)}
+                              {formatPostDate(post.create_time)}
                             </div>
                           )}
                         </div>

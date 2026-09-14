@@ -36,6 +36,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { getAvatarUrl } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { formatCompactNumber } from '@/lib/format'
 
 // 同步计划常用预设，点一下直接填入，省得每次手写 cron
 const SYNC_CRON_PRESETS: { label: string; value: string }[] = [
@@ -367,13 +368,6 @@ export default function UsersPage() {
     } finally {
       setBatchRefreshing(false)
     }
-  }
-
-  const formatNumber = (num: number) => {
-    if (num >= 10000) {
-      return (num / 10000).toFixed(1) + 'w'
-    }
-    return num.toString()
   }
 
   const handleToggleShowInHome = async (user: DbUser) => {
@@ -767,7 +761,7 @@ export default function UsersPage() {
                       variant="outline"
                       className="font-medium border-[#E5E5E7] text-[#6E6E73]"
                     >
-                      {formatNumber(user.follower_count)}
+                      {formatCompactNumber(user.follower_count)}
                     </Badge>
                   </div>
                   <div className="w-32 flex flex-col items-center gap-1">

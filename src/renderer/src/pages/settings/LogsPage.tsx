@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { AlertCircle, Info, AlertTriangle, Trash2, Clock, User, ListTodo } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { formatMillisTime } from '@/lib/format'
 
 type LogFilter = 'all' | 'user' | 'task' | 'system'
 
@@ -29,17 +30,6 @@ export default function LogsPage() {
   const filteredLogs = filter === 'all' ? logs : logs.filter((log) => log.type === filter)
   const visibleLogs = filteredLogs.slice(0, visibleCount)
   const hasMore = filteredLogs.length > visibleCount
-
-  const formatTime = (timestamp: number) => {
-    const date = new Date(timestamp)
-    return date.toLocaleString('zh-CN', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    })
-  }
 
   const getLevelIcon = (level: SchedulerLog['level']) => {
     switch (level) {
@@ -160,7 +150,7 @@ export default function LogsPage() {
                         </div>
                         <div className="flex items-center gap-3 mt-1">
                           <span className="text-xs text-[#A1A1A6]">
-                            {formatTime(log.timestamp)}
+                            {formatMillisTime(log.timestamp, { seconds: true })}
                           </span>
                           {getTypeBadge(log.type)}
                         </div>

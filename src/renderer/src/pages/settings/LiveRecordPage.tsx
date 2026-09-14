@@ -10,40 +10,13 @@ import {
 } from '@/components/ui/context-menu'
 import { LiveCheckDialog } from '@/components/LiveCheckDialog'
 import { toast } from 'sonner'
+import { formatBytes, formatDuration, formatUnixTime } from '@/lib/format'
 
 const STATUS_CONFIG: Record<LiveRecord['status'], { label: string; bg: string; text: string }> = {
   recording: { label: '录制中', bg: 'bg-red-50', text: 'text-red-600' },
   completed: { label: '已完成', bg: 'bg-green-50', text: 'text-green-600' },
   stopped: { label: '已停止', bg: 'bg-gray-100', text: 'text-gray-600' },
   failed: { label: '失败', bg: 'bg-amber-50', text: 'text-amber-600' }
-}
-
-function formatBytes(bytes: number): string {
-  if (!bytes) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`
-}
-
-function formatTime(ts: number | null): string {
-  if (!ts) return '-'
-  return new Date(ts * 1000).toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
-
-function formatDuration(start: number, end: number | null): string {
-  if (!end) return '进行中'
-  const sec = Math.max(0, end - start)
-  const h = Math.floor(sec / 3600)
-  const m = Math.floor((sec % 3600) / 60)
-  const s = sec % 60
-  if (h > 0) return `${h}h${m}m`
-  if (m > 0) return `${m}m${s}s`
-  return `${s}s`
 }
 
 export default function LiveRecordPage() {
@@ -251,7 +224,7 @@ export default function LiveRecordPage() {
                             {rec.title || '（无标题）'}
                           </p>
                           <div className="flex items-center gap-2 mt-1.5 text-xs text-[#A1A1A6]">
-                            <span>{formatTime(rec.started_at)}</span>
+                            <span>{formatUnixTime(rec.started_at)}</span>
                             <span>{formatBytes(rec.file_size)}</span>
                           </div>
                           {rec.error && (
