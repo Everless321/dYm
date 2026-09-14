@@ -25,7 +25,7 @@ export default function SystemPage() {
 
   // 下载
   const [downloadPath, setDownloadPath] = useState('')
-  const [maxDownloadCount, setMaxDownloadCount] = useState('0')
+  const [maxDownloadCount, setMaxDownloadCount] = useState('50')
   const [videoDownloadConcurrency, setVideoDownloadConcurrency] = useState('3')
   const [convertToJpg, setConvertToJpg] = useState(false)
   const [downloadPostOnAddUser, setDownloadPostOnAddUser] = useState(true)
@@ -65,6 +65,9 @@ export default function SystemPage() {
   // 允许脚本执行本地命令（默认关闭）
   const [allowShell, setAllowShell] = useState(false)
 
+  // 设置加载完成前禁用保存，避免用默认值覆盖真实配置
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+
   // 更新
   const [currentVersion, setCurrentVersion] = useState('')
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
@@ -96,52 +99,69 @@ export default function SystemPage() {
   }
 
   const loadSettings = async () => {
-    const settings = await window.api.settings.getAll()
-    setCookie(settings.douyin_cookie || '')
-    setApiKey(settings.grok_api_key || '')
-    setApiUrl(settings.grok_api_url || 'https://api.x.ai/v1')
-    const savedPath = settings.download_path || ''
-    setDownloadPath(savedPath)
-    originalDownloadPath.current = savedPath
-    setMaxDownloadCount(settings.max_download_count || '0')
-    setVideoDownloadConcurrency(settings.video_download_concurrency || '3')
-    setConvertToJpg(settings.convert_images_to_jpg === 'true')
-    setDownloadPostOnAddUser(settings.download_post_on_add_user !== 'false')
-    setAnalysisConcurrency(settings.analysis_concurrency || '2')
-    setAnalysisRpm(settings.analysis_rpm || '10')
-    setAnalysisModel(settings.analysis_model || 'grok-4-fast')
-    setAnalysisSlices(settings.analysis_slices || '4')
-    setAnalysisPrompt(settings.analysis_prompt || '')
-    setCollectEnabled(settings.collect_sync_enabled === 'true')
-    setCollectBaseUrl(settings.collect_sync_base_url || 'https://dymserver.everless.app')
-    setCollectToken(settings.collect_sync_token || '')
-    setCollectCron(settings.collect_sync_cron || '*/30 * * * *')
-    setLiveOutputPath(settings.live_output_path || '')
-    setLiveMaxDuration(settings.live_max_duration || '0')
-    setTelemetryEnabled(settings.telemetry_enabled !== 'false')
-    setDeveloperMode(settings.developer_mode === 'true')
-    setAllowShell(settings.scripts_allow_shell === 'true')
+    try {
+      const settings = await window.api.settings.getAll()
+      setCookie(settings.douyin_cookie || '')
+      setApiKey(settings.grok_api_key || '')
+      setApiUrl(settings.grok_api_url || 'https://api.x.ai/v1')
+      const savedPath = settings.download_path || ''
+      setDownloadPath(savedPath)
+      originalDownloadPath.current = savedPath
+      setMaxDownloadCount(settings.max_download_count || '50')
+      setVideoDownloadConcurrency(settings.video_download_concurrency || '3')
+      setConvertToJpg(settings.convert_images_to_jpg === 'true')
+      setDownloadPostOnAddUser(settings.download_post_on_add_user !== 'false')
+      setAnalysisConcurrency(settings.analysis_concurrency || '2')
+      setAnalysisRpm(settings.analysis_rpm || '10')
+      setAnalysisModel(settings.analysis_model || 'grok-4-fast')
+      setAnalysisSlices(settings.analysis_slices || '4')
+      setAnalysisPrompt(settings.analysis_prompt || '')
+      setCollectEnabled(settings.collect_sync_enabled === 'true')
+      setCollectBaseUrl(settings.collect_sync_base_url || 'https://dymserver.everless.app')
+      setCollectToken(settings.collect_sync_token || '')
+      setCollectCron(settings.collect_sync_cron || '*/30 * * * *')
+      setLiveOutputPath(settings.live_output_path || '')
+      setLiveMaxDuration(settings.live_max_duration || '0')
+      setTelemetryEnabled(settings.telemetry_enabled !== 'false')
+      setDeveloperMode(settings.developer_mode === 'true')
+      setAllowShell(settings.scripts_allow_shell === 'true')
+      setSettingsLoaded(true)
+    } catch (error) {
+      toast.error(`加载设置失败: ${(error as Error).message}`)
+    }
   }
 
   const handleToggleTelemetry = async () => {
     const next = !telemetryEnabled
-    setTelemetryEnabled(next)
-    await window.api.settings.set('telemetry_enabled', next ? 'true' : 'false')
+    try {
+      await window.api.settings.set('telemetry_enabled', next ? 'true' : 'false')
+      setTelemetryEnabled(next)
+    } catch {
+      toast.error('保存失败')
+    }
   }
 
   const handleToggleDeveloperMode = async (): Promise<void> => {
     const next = !developerMode
-    setDeveloperMode(next)
-    await window.api.settings.set('developer_mode', next ? 'true' : 'false')
-    emitDeveloperModeChange(next)
-    toast.success(next ? '开发者模式已开启' : '开发者模式已关闭')
+    try {
+      await window.api.settings.set('developer_mode', next ? 'true' : 'false')
+      setDeveloperMode(next)
+      emitDeveloperModeChange(next)
+      toast.success(next ? '开发者模式已开启' : '开发者模式已关闭')
+    } catch {
+      toast.error('保存失败')
+    }
   }
 
   const handleToggleAllowShell = async (): Promise<void> => {
     const next = !allowShell
-    setAllowShell(next)
-    await window.api.settings.set('scripts_allow_shell', next ? 'true' : 'false')
-    toast.success(next ? '脚本已可执行本地命令' : '已禁止脚本执行本地命令')
+    try {
+      await window.api.settings.set('scripts_allow_shell', next ? 'true' : 'false')
+      setAllowShell(next)
+      toast.success(next ? '脚本已可执行本地命令' : '已禁止脚本执行本地命令')
+    } catch {
+      toast.error('保存失败')
+    }
   }
 
   // Cookie handlers
@@ -234,19 +254,26 @@ export default function SystemPage() {
 
   const handleMigrate = async () => {
     setMigrating(true)
+    let result: { success: number; failed: number }
     try {
-      const result = await window.api.migration.execute(pendingOldPath, pendingNewPath)
+      result = await window.api.migration.execute(pendingOldPath, pendingNewPath)
+    } catch (error) {
+      toast.error(`迁移失败: ${(error as Error).message}`)
+      setMigrating(false)
+      return
+    }
 
+    // 文件已经搬走，保存路径失败也要关闭对话框并保留 downloadPath，让用户重试保存
+    setShowMigrationDialog(false)
+    try {
       await saveDownloadSettings()
-      setShowMigrationDialog(false)
-
       if (result.failed > 0) {
         toast.warning(`迁移完成: 成功 ${result.success} 个，失败 ${result.failed} 个`)
       } else {
         toast.success(`迁移完成: 已迁移 ${result.success} 个文件夹`)
       }
-    } catch (error) {
-      toast.error(`迁移失败: ${(error as Error).message}`)
+    } catch {
+      toast.error('文件已迁移，但保存下载路径失败，请重试保存')
     } finally {
       setMigrating(false)
     }
@@ -254,7 +281,11 @@ export default function SystemPage() {
 
   const handleSkipMigration = async () => {
     setShowMigrationDialog(false)
-    await saveDownloadSettings()
+    try {
+      await saveDownloadSettings()
+    } catch {
+      toast.error('保存失败')
+    }
   }
 
   // Analysis handlers
@@ -305,12 +336,6 @@ export default function SystemPage() {
       toast.success('直播录制设置已保存')
     } catch {
       toast.error('保存失败')
-    }
-  }
-
-  const handleClearData = async () => {
-    if (window.confirm('确定要清除所有数据吗？此操作不可恢复。')) {
-      toast.success('数据已清除')
     }
   }
 
@@ -397,7 +422,8 @@ export default function SystemPage() {
                   <div className="flex justify-end">
                     <button
                       onClick={handleSaveCookie}
-                      className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors"
+                      disabled={!settingsLoaded}
+                      className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors disabled:opacity-50"
                     >
                       保存 Cookie
                     </button>
@@ -457,7 +483,8 @@ export default function SystemPage() {
                     </button>
                     <button
                       onClick={handleSaveApi}
-                      className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors"
+                      disabled={!settingsLoaded}
+                      className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors disabled:opacity-50"
                     >
                       保存
                     </button>
@@ -585,7 +612,8 @@ export default function SystemPage() {
                 <div className="flex justify-end pt-2">
                   <button
                     onClick={handleSaveDownload}
-                    className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors"
+                    disabled={!settingsLoaded}
+                    className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors disabled:opacity-50"
                   >
                     保存下载设置
                   </button>
@@ -676,7 +704,8 @@ export default function SystemPage() {
                 <div className="flex justify-end pt-2">
                   <button
                     onClick={handleSaveAnalysis}
-                    className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors"
+                    disabled={!settingsLoaded}
+                    className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors disabled:opacity-50"
                   >
                     保存分析设置
                   </button>
@@ -804,7 +833,8 @@ export default function SystemPage() {
                 </button>
                 <button
                   onClick={handleSaveCollect}
-                  className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors"
+                  disabled={!settingsLoaded}
+                  className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors disabled:opacity-50"
                 >
                   保存收藏同步设置
                 </button>
@@ -873,7 +903,8 @@ export default function SystemPage() {
               <div className="flex justify-end pt-2">
                 <button
                   onClick={handleSaveLive}
-                  className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors"
+                  disabled={!settingsLoaded}
+                  className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors disabled:opacity-50"
                 >
                   保存直播录制设置
                 </button>
@@ -1041,24 +1072,6 @@ export default function SystemPage() {
                       </button>
                     </div>
                   )}
-                </div>
-              </div>
-
-              {/* Danger Zone Card */}
-              <div className="bg-white rounded-2xl border border-[#FF3B30]/30 shadow-sm p-6">
-                <h2 className="text-base font-semibold text-[#FF3B30] mb-4">危险区域</h2>
-
-                <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <p className="text-sm text-[#1D1D1F]">清除所有数据</p>
-                    <p className="text-xs text-[#A1A1A6] mt-1">删除所有下载的视频和用户数据</p>
-                  </div>
-                  <button
-                    onClick={handleClearData}
-                    className="h-9 px-4 rounded-lg border border-[#0A84FF] text-sm font-medium text-[#0A84FF] hover:bg-[#E8F0FE] transition-colors"
-                  >
-                    清除数据
-                  </button>
                 </div>
               </div>
             </div>

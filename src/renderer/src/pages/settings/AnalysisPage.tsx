@@ -13,9 +13,9 @@ export default function AnalysisPage() {
 
   // Settings
   const [prompt, setPrompt] = useState('')
-  const [concurrency, setConcurrency] = useState('3')
+  const [concurrency, setConcurrency] = useState('2')
   const [slices, setSlices] = useState('4')
-  const [rpm, setRpm] = useState('20')
+  const [rpm, setRpm] = useState('10')
 
   // Analysis state
   const [isRunning, setIsRunning] = useState(false)
@@ -59,8 +59,12 @@ export default function AnalysisPage() {
     }
 
     const pollResource = async () => {
-      const resource = await window.api.system.getResourceUsage()
-      setSystemResource(resource)
+      try {
+        const resource = await window.api.system.getResourceUsage()
+        setSystemResource(resource)
+      } catch (error) {
+        console.error('[AnalysisPage] 获取系统资源失败:', error)
+      }
     }
 
     pollResource()
@@ -70,47 +74,74 @@ export default function AnalysisPage() {
   }, [isRunning])
 
   const loadData = async () => {
-    const [userStatsList, stats, postsData] = await Promise.all([
-      window.api.analysis.getUserStats(),
-      window.api.analysis.getTotalStats(),
-      window.api.post.getAll(1, 100, { analyzedOnly: true })
-    ])
-    setUserStats(userStatsList)
-    setTotalStats(stats)
-    setAllAnalyzedPosts(postsData.posts)
+    try {
+      const [userStatsList, stats, postsData] = await Promise.all([
+        window.api.analysis.getUserStats(),
+        window.api.analysis.getTotalStats(),
+        window.api.post.getAll(1, 100, { analyzedOnly: true })
+      ])
+      setUserStats(userStatsList)
+      setTotalStats(stats)
+      setAllAnalyzedPosts(postsData.posts)
 
-    // Load covers for display posts
-    const covers = new Map<number, string>()
-    for (const post of postsData.posts.slice(0, 10)) {
-      const cover = await window.api.post.getCoverPath(post.sec_uid, post.folder_name)
-      if (cover) covers.set(post.id, cover)
+      // Load covers for display posts
+      const covers = new Map<number, string>()
+      for (const post of postsData.posts.slice(0, 10)) {
+        const cover = await window.api.post.getCoverPath(post.sec_uid, post.folder_name)
+        if (cover) covers.set(post.id, cover)
+      }
+      setCoverCache(covers)
+    } catch (error) {
+      toast.error(`加载分析数据失败: ${(error as Error).message}`)
     }
-    setCoverCache(covers)
   }
 
   const loadSettings = async () => {
-    const settings = await window.api.settings.getAll()
-    setPrompt(settings.analysis_prompt || '')
-    setConcurrency(settings.analysis_concurrency || '3')
-    setSlices(settings.analysis_slices || '4')
-    setRpm(settings.analysis_rpm || '20')
+    try {
+      const settings = await window.api.settings.getAll()
+      setPrompt(settings.analysis_prompt || '')
+      setConcurrency(settings.analysis_concurrency || '2')
+      setSlices(settings.analysis_slices || '4')
+      setRpm(settings.analysis_rpm || '10')
+    } catch (error) {
+      toast.error(`加载设置失败: ${(error as Error).message}`)
+    }
   }
 
   const checkRunningStatus = async () => {
-    const running = await window.api.analysis.isRunning()
-    setIsRunning(running)
+    try {
+      const running = await window.api.analysis.isRunning()
+      setIsRunning(running)
+    } catch (error) {
+      toast.error(`获取分析状态失败: ${(error as Error).message}`)
+    }
   }
 
   const handleStart = async () => {
-    // Save settings first
-    await Promise.all([
-      window.api.settings.set('analysis_prompt', prompt),
-      window.api.settings.set('analysis_concurrency', concurrency),
-      window.api.settings.set('analysis_slices', slices),
-      window.api.settings.set('analysis_rpm', rpm)
-    ])
+    const concurrencyNum = parseInt(concurrency, 10)
+    const slicesNum = parseInt(slices, 10)
+    const rpmNum = parseInt(rpm, 10)
+    if (!Number.isFinite(concurrencyNum) || concurrencyNum < 1) {
+      toast.error('分析并发数必须是不小于 1 的整数')
+      return
+    }
+    if (!Number.isFinite(slicesNum) || slicesNum < 1) {
+      toast.error('截图数量必须是不小于 1 的整数')
+      return
+    }
+    if (!Number.isFinite(rpmNum) || rpmNum < 1) {
+      toast.error('每分钟请求数必须是不小于 1 的整数')
+      return
+    }
 
     try {
+      await Promise.all([
+        window.api.settings.set('analysis_prompt', prompt),
+        window.api.settings.set('analysis_concurrency', String(concurrencyNum)),
+        window.api.settings.set('analysis_slices', String(slicesNum)),
+        window.api.settings.set('analysis_rpm', String(rpmNum))
+      ])
+
       setIsRunning(true)
       setProgress(null)
       const secUid = selectedUserId === 'all' ? undefined : selectedUserId

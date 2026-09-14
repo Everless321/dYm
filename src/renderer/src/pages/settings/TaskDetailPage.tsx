@@ -37,6 +37,7 @@ export default function TaskDetailPage() {
   const [progress, setProgress] = useState<DownloadProgress | null>(null)
   const [activeUsers, setActiveUsers] = useState<Set<string>>(new Set())
   const lastRefreshRef = useRef<number>(0)
+  const taskRef = useRef<DbTaskWithUsers | null>(null)
 
   const handleProgress = useCallback(
     (p: DownloadProgress) => {
@@ -44,20 +45,20 @@ export default function TaskDetailPage() {
         setProgress(p)
         setIsRunning(p.status === 'running')
 
+        // 进度事件没有「某用户已完成」的结构化字段，只按 currentUser 记录活跃用户：
+        // 主进程同时最多处理 task.concurrency 个用户，超出时淘汰最久没有上报的那个
         if (p.status === 'running' && p.currentUser) {
+          const currentUser = p.currentUser
           setActiveUsers((prev) => {
-            if (prev.has(p.currentUser!)) return prev
             const next = new Set(prev)
-            next.add(p.currentUser!)
-            return next
-          })
-        }
-
-        if (p.message?.includes('完成') && p.currentUser) {
-          setActiveUsers((prev) => {
-            if (!prev.has(p.currentUser!)) return prev
-            const next = new Set(prev)
-            next.delete(p.currentUser!)
+            next.delete(currentUser)
+            next.add(currentUser)
+            const limit = Math.max(1, taskRef.current?.concurrency || 1)
+            while (next.size > limit) {
+              const oldest = next.values().next().value
+              if (oldest === undefined) break
+              next.delete(oldest)
+            }
             return next
           })
         }
@@ -84,8 +85,14 @@ export default function TaskDetailPage() {
 
   useEffect(() => {
     if (id) {
+      taskRef.current = null
       loadTask(parseInt(id))
-      window.api.download.isRunning(parseInt(id)).then(setIsRunning)
+      window.api.download
+        .isRunning(parseInt(id))
+        .then(setIsRunning)
+        .catch((error) => {
+          console.error('[TaskDetailPage] 获取任务运行状态失败:', error)
+        })
     }
   }, [id])
 
@@ -107,10 +114,12 @@ export default function TaskDetailPage() {
   }, [task?.users, isRunning, activeUsers])
 
   const loadTask = async (taskId: number) => {
-    setLoading(true)
+    // 进度刷新时不再整页切成 spinner，只在首次加载时显示
+    if (taskRef.current === null) setLoading(true)
     try {
       const data = await window.api.task.getById(taskId)
       if (data) {
+        taskRef.current = data
         setTask(data)
       } else {
         toast.error('任务不存在')
@@ -135,10 +144,14 @@ export default function TaskDetailPage() {
     }
   }
 
-  const handleStopDownload = () => {
+  const handleStopDownload = async () => {
     if (!task) return
-    window.api.download.stop(task.id)
-    toast.info('正在停止下载...')
+    try {
+      await window.api.download.stop(task.id)
+      toast.info('正在停止下载...')
+    } catch (error) {
+      toast.error(`停止下载失败: ${(error as Error).message}`)
+    }
   }
 
   if (loading) {

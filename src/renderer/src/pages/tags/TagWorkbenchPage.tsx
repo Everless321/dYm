@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
 import { Library, Search, CheckSquare, Trash2, RotateCw, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -89,6 +90,8 @@ export default function TagWorkbenchPage(): React.JSX.Element {
   // 结果区滚动容器；prevSearch 用于区分「换筛选条件」和「加载更多追加数据」
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevSearchRef = useRef('')
+  // 列表请求序号。筛选切换很快时，慢的旧请求可能晚于新请求返回，用它丢弃过期结果
+  const requestIdRef = useRef(0)
 
   // 筛选栏的顺序/折叠属于个人偏好，存本地；本页会因为进详情页而卸载，放组件 state 留不住
   const [panelPrefs, setPanelPrefs] = useState<PanelPrefs>(readPanelPrefs)
@@ -190,8 +193,8 @@ export default function TagWorkbenchPage(): React.JSX.Element {
 
   // ── 数据加载 ──
   const loadCovers = useCallback(async (items: DbPost[]) => {
-    // 并发取封面：逐个 await 时 60 条要串 60 次 IPC
-    const entries = await Promise.all(
+    // 并发取封面：逐个 await 时 60 条要串 60 次 IPC；单张失败不影响其他
+    const entries = await Promise.allSettled(
       items.map(async (p) => {
         const c = await window.api.post.getCoverPath(p.sec_uid, p.folder_name)
         return c ? ([p.id, c] as const) : null
@@ -199,21 +202,30 @@ export default function TagWorkbenchPage(): React.JSX.Element {
     )
     setCovers((prev) => {
       const next = new Map(prev)
-      for (const e of entries) if (e) next.set(e[0], e[1])
+      for (const e of entries) {
+        if (e.status === 'fulfilled' && e.value) next.set(e.value[0], e.value[1])
+      }
       return next
     })
   }, [])
 
+  // 成功后才推进 page，失败时列表和页码都保持原样
   const loadPage = useCallback(
     async (pageNum: number) => {
+      const seq = ++requestIdRef.current
       setLoading(true)
       try {
         const res = await window.api.tag.queryPosts(filters, pageNum, PAGE_SIZE)
+        if (seq !== requestIdRef.current) return
         setTotal(res.total)
         setPosts((prev) => (pageNum === 1 ? res.posts : [...prev, ...res.posts]))
+        setPage(pageNum)
         loadCovers(res.posts)
+      } catch (error) {
+        if (seq !== requestIdRef.current) return
+        toast.error(`加载视频失败: ${(error as Error).message}`)
       } finally {
-        setLoading(false)
+        if (seq === requestIdRef.current) setLoading(false)
       }
     },
     [filters, loadCovers]
@@ -222,14 +234,20 @@ export default function TagWorkbenchPage(): React.JSX.Element {
   // 一次取回前 N 页，用于从详情页返回时重建列表（否则只剩第一页，滚动位置无处可去）
   const loadFirstPages = useCallback(
     async (pages: number) => {
+      const seq = ++requestIdRef.current
       setLoading(true)
       try {
         const res = await window.api.tag.queryPosts(filters, 1, pages * PAGE_SIZE)
+        if (seq !== requestIdRef.current) return
         setTotal(res.total)
         setPosts(res.posts)
+        setPage(pages)
         loadCovers(res.posts)
+      } catch (error) {
+        if (seq !== requestIdRef.current) return
+        toast.error(`加载视频失败: ${(error as Error).message}`)
       } finally {
-        setLoading(false)
+        if (seq === requestIdRef.current) setLoading(false)
       }
     },
     [filters, loadCovers]
@@ -237,17 +255,25 @@ export default function TagWorkbenchPage(): React.JSX.Element {
 
   // 全库统计 + 用户标注进度（画像条要用），不随筛选变化
   const loadStats = useCallback(async () => {
-    const [s, u] = await Promise.all([
-      window.api.tag.getOverviewStats(),
-      window.api.tag.getUserStats()
-    ])
-    setStats(s)
-    setUsers(u)
+    try {
+      const [s, u] = await Promise.all([
+        window.api.tag.getOverviewStats(),
+        window.api.tag.getUserStats()
+      ])
+      setStats(s)
+      setUsers(u)
+    } catch (error) {
+      toast.error(`加载统计失败: ${(error as Error).message}`)
+    }
   }, [])
 
   // 分面计数随筛选变化重算
   const loadFacets = useCallback(async () => {
-    setFacets(await window.api.tag.getFilterFacets(filters))
+    try {
+      setFacets(await window.api.tag.getFilterFacets(filters))
+    } catch (error) {
+      toast.error(`加载筛选项失败: ${(error as Error).message}`)
+    }
   }, [filters])
 
   useEffect(() => {
@@ -264,7 +290,6 @@ export default function TagWorkbenchPage(): React.JSX.Element {
   useEffect(() => {
     const pages = listStateCache.get(search)?.pages ?? 1
     setSelected(new Set())
-    setPage(pages)
     if (pages > 1) loadFirstPages(pages)
     else loadPage(1)
     // search 已经决定了 loadPage / loadFirstPages 的身份，无需重复列入依赖
@@ -306,7 +331,6 @@ export default function TagWorkbenchPage(): React.JSX.Element {
   const refresh = useCallback(() => {
     setSelectMode(false)
     setSelected(new Set())
-    setPage(1)
     loadPage(1)
     loadFacets()
     loadStats()
@@ -811,15 +835,7 @@ export default function TagWorkbenchPage(): React.JSX.Element {
 
               {hasMore && (
                 <div className="flex justify-center pt-5">
-                  <Button
-                    variant="outline"
-                    disabled={loading}
-                    onClick={() => {
-                      const next = page + 1
-                      setPage(next)
-                      loadPage(next)
-                    }}
-                  >
+                  <Button variant="outline" disabled={loading} onClick={() => loadPage(page + 1)}>
                     {loading ? '加载中…' : `加载更多（${posts.length}/${total}）`}
                   </Button>
                 </div>

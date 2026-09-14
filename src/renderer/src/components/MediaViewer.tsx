@@ -41,6 +41,8 @@ export function MediaViewer({
   const [manualOverride, setManualOverride] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const autoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // 快速切换作品时，旧请求可能晚于新请求返回，用序号丢弃过期结果
+  const mediaRequestSeq = useRef(0)
 
   useEffect(() => {
     if (open && post) {
@@ -129,7 +131,6 @@ export function MediaViewer({
         try {
           // 总是调用 getCoverPath 获取实际封面路径
           const coverPath = await window.api.post.getCoverPath(rec.sec_uid, rec.folder_name)
-          console.log('Cover path for', rec.id, ':', coverPath)
           if (coverPath) {
             covers.set(rec.id, coverPath)
           }
@@ -146,24 +147,22 @@ export function MediaViewer({
 
   const loadMedia = async () => {
     if (!post) return
+    const seq = ++mediaRequestSeq.current
+    setMedia(null)
     setLoading(true)
     try {
-      console.log('Loading media for:', {
-        sec_uid: post.sec_uid,
-        folder_name: post.folder_name,
-        aweme_type: post.aweme_type
-      })
       const result = await window.api.post.getMediaFiles(
         post.sec_uid,
         post.folder_name,
         post.aweme_type
       )
-      console.log('Media result:', result)
+      if (seq !== mediaRequestSeq.current) return
       setMedia(result)
     } catch (error) {
+      if (seq !== mediaRequestSeq.current) return
       console.error('Failed to load media:', error)
     } finally {
-      setLoading(false)
+      if (seq === mediaRequestSeq.current) setLoading(false)
     }
   }
 

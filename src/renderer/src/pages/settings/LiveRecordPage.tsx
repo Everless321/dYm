@@ -26,18 +26,30 @@ export default function LiveRecordPage() {
   const [checkDialogOpen, setCheckDialogOpen] = useState(false)
 
   const loadRecords = useCallback(async () => {
-    const list = await window.api.live.getRecords()
-    setRecords(list)
+    try {
+      const list = await window.api.live.getRecords()
+      setRecords(list)
+    } catch (error) {
+      toast.error(`加载录制记录失败: ${(error as Error).message}`)
+    }
   }, [])
 
   const loadRecordingIds = useCallback(async () => {
-    const ids = await window.api.live.getRecordingUsers()
-    setRecordingUserIds(ids)
+    try {
+      const ids = await window.api.live.getRecordingUsers()
+      setRecordingUserIds(ids)
+    } catch (error) {
+      toast.error(`获取录制状态失败: ${(error as Error).message}`)
+    }
   }, [])
 
   const loadConvertingIds = useCallback(async () => {
-    const ids = await window.api.live.getConvertingIds()
-    setConvertingIds(ids)
+    try {
+      const ids = await window.api.live.getConvertingIds()
+      setConvertingIds(ids)
+    } catch (error) {
+      toast.error(`获取转换状态失败: ${(error as Error).message}`)
+    }
   }, [])
 
   useEffect(() => {
@@ -87,18 +99,28 @@ export default function LiveRecordPage() {
   }
 
   const handleStop = async (userId: number) => {
-    const stopped = await window.api.live.stop(userId)
-    if (stopped) {
-      toast.info('正在停止录制，收尾中…')
-    } else {
-      toast.warning('没有正在进行的录制（状态已刷新）')
+    try {
+      const stopped = await window.api.live.stop(userId)
+      if (stopped) {
+        toast.info('正在停止录制，收尾中…')
+      } else {
+        toast.warning('没有正在进行的录制（状态已刷新）')
+      }
+    } catch (error) {
+      toast.error(`停止录制失败: ${(error as Error).message}`)
     }
     loadRecords()
     loadRecordingIds()
   }
 
   const handleDelete = async (id: number) => {
-    await window.api.live.deleteRecord(id)
+    if (!window.confirm('确定要删除这条录制记录吗？')) return
+    try {
+      await window.api.live.deleteRecord(id)
+      toast.success('录制记录已删除')
+    } catch (error) {
+      toast.error(`删除失败: ${(error as Error).message}`)
+    }
     loadRecords()
   }
 

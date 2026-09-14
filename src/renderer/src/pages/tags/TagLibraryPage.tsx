@@ -48,17 +48,23 @@ export default function TagLibraryPage() {
   const [newOpen, setNewOpen] = useState(false)
   const [newValue, setNewValue] = useState('')
   const [deleteTargets, setDeleteTargets] = useState<string[] | null>(null)
+  // 防止输入框回车和确认按钮同时触发两次写操作
+  const [saving, setSaving] = useState(false)
 
   const load = useCallback(async () => {
-    const [s, t, c] = await Promise.all([
-      window.api.tag.getLibraryStats(),
-      window.api.tag.getTagsWithFrequency(),
-      window.api.tag.getCategories()
-    ])
-    setStats(s)
-    setTags(t)
-    setCategories(c)
-    setSelected(new Set())
+    try {
+      const [s, t, c] = await Promise.all([
+        window.api.tag.getLibraryStats(),
+        window.api.tag.getTagsWithFrequency(),
+        window.api.tag.getCategories()
+      ])
+      setStats(s)
+      setTags(t)
+      setCategories(c)
+      setSelected(new Set())
+    } catch (error) {
+      toast.error(`加载标签库失败: ${(error as Error).message}`)
+    }
   }, [])
 
   useEffect(() => {
@@ -87,44 +93,74 @@ export default function TagLibraryPage() {
   }
 
   const doRename = async () => {
-    if (!renameTarget) return
+    if (!renameTarget || saving) return
     const v = renameValue.trim()
     if (!v || v === renameTarget) {
       setRenameTarget(null)
       return
     }
-    const n = await window.api.tag.rename(renameTarget, v)
-    toast.success(`已重命名，影响 ${n} 个视频`)
-    setRenameTarget(null)
-    load()
+    setSaving(true)
+    try {
+      const n = await window.api.tag.rename(renameTarget, v)
+      toast.success(`已重命名，影响 ${n} 个视频`)
+      setRenameTarget(null)
+      load()
+    } catch (error) {
+      toast.error(`重命名失败: ${(error as Error).message}`)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const doMerge = async () => {
+    if (saving) return
     const names = Array.from(selected)
     const into = mergeInto.trim()
     if (names.length < 2 || !into) return
-    const n = await window.api.tag.merge(names, into)
-    toast.success(`已合并，影响 ${n} 个视频`)
-    setMergeOpen(false)
-    load()
+    setSaving(true)
+    try {
+      const n = await window.api.tag.merge(names, into)
+      toast.success(`已合并，影响 ${n} 个视频`)
+      setMergeOpen(false)
+      load()
+    } catch (error) {
+      toast.error(`合并失败: ${(error as Error).message}`)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const doNew = async () => {
+    if (saving) return
     const v = newValue.trim()
     if (!v) return
-    await window.api.tag.addCustomTag(v)
-    toast.success(`已新建标签「${v}」`)
-    setNewValue('')
-    setNewOpen(false)
-    load()
+    setSaving(true)
+    try {
+      await window.api.tag.addCustomTag(v)
+      toast.success(`已新建标签「${v}」`)
+      setNewValue('')
+      setNewOpen(false)
+      load()
+    } catch (error) {
+      toast.error(`新建标签失败: ${(error as Error).message}`)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const doDelete = async () => {
-    if (!deleteTargets?.length) return
-    const n = await window.api.tag.deleteTag(deleteTargets)
-    toast.success(`已删除 ${deleteTargets.length} 个标签，影响 ${n} 个视频`)
-    setDeleteTargets(null)
-    load()
+    if (!deleteTargets?.length || saving) return
+    setSaving(true)
+    try {
+      const n = await window.api.tag.deleteTag(deleteTargets)
+      toast.success(`已删除 ${deleteTargets.length} 个标签，影响 ${n} 个视频`)
+      setDeleteTargets(null)
+      load()
+    } catch (error) {
+      toast.error(`删除失败: ${(error as Error).message}`)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const selectedArr = Array.from(selected)
@@ -323,7 +359,9 @@ export default function TagLibraryPage() {
             <Button variant="outline" onClick={() => setRenameTarget(null)}>
               取消
             </Button>
-            <Button onClick={doRename}>确认</Button>
+            <Button onClick={doRename} disabled={saving}>
+              确认
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -364,7 +402,9 @@ export default function TagLibraryPage() {
             <Button variant="outline" onClick={() => setMergeOpen(false)}>
               取消
             </Button>
-            <Button onClick={doMerge}>确认合并</Button>
+            <Button onClick={doMerge} disabled={saving}>
+              确认合并
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -387,7 +427,9 @@ export default function TagLibraryPage() {
             <Button variant="outline" onClick={() => setNewOpen(false)}>
               取消
             </Button>
-            <Button onClick={doNew}>新建</Button>
+            <Button onClick={doNew} disabled={saving}>
+              新建
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -417,7 +459,11 @@ export default function TagLibraryPage() {
             <Button variant="outline" onClick={() => setDeleteTargets(null)}>
               取消
             </Button>
-            <Button className="bg-[#FF3B30] hover:bg-[#E5352B]" onClick={doDelete}>
+            <Button
+              className="bg-[#FF3B30] hover:bg-[#E5352B]"
+              onClick={doDelete}
+              disabled={saving}
+            >
               确认删除
             </Button>
           </div>

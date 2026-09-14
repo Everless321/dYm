@@ -165,6 +165,8 @@ export default function ScriptsPage(): React.JSX.Element {
       setLogs([])
       return
     }
+    // 先清掉上一个脚本的日志，避免在历史拉取期间短暂显示错误的内容
+    setLogs([])
     let cancelled = false
     window.api.scripts
       .getLogs(selectedId)
@@ -302,6 +304,8 @@ export default function ScriptsPage(): React.JSX.Element {
     setStopping(true)
     try {
       await window.api.scripts.stop(selected.id)
+    } catch (error) {
+      toast.error(`停止失败: ${(error as Error).message}`)
     } finally {
       setStopping(false)
     }
@@ -309,10 +313,14 @@ export default function ScriptsPage(): React.JSX.Element {
 
   const handleClearLogs = async (): Promise<void> => {
     if (!selectedId) return
-    await window.api.scripts.clearLogs(selectedId)
-    setLogs([])
-    setSelectedRunId(null)
-    setFollowLatestRun(true)
+    try {
+      await window.api.scripts.clearLogs(selectedId)
+      setLogs([])
+      setSelectedRunId(null)
+      setFollowLatestRun(true)
+    } catch (error) {
+      toast.error(`清空日志失败: ${(error as Error).message}`)
+    }
   }
 
   const handleLogLimit = async (limit: number): Promise<void> => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
@@ -31,21 +31,51 @@ export default function VideoTagEditPage() {
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [reanalyzing, setReanalyzing] = useState(false)
   const [siblings, setSiblings] = useState<number[]>([])
+  const [status, setStatus] = useState<'loading' | 'ready' | 'notFound' | 'error'>('loading')
+  const [errorMessage, setErrorMessage] = useState('')
+  // 上/下一条切换很快时，旧请求可能晚于新请求返回，用序号丢弃过期结果
+  const loadSeqRef = useRef(0)
 
   const load = useCallback(async () => {
-    const p = await window.api.tag.getPost(id)
-    setPost(p || null)
-    if (p) {
-      const c = await window.api.post.getCoverPath(p.sec_uid, p.folder_name)
-      setCover(c)
+    const seq = ++loadSeqRef.current
+    try {
+      const p = await window.api.tag.getPost(id)
+      if (seq !== loadSeqRef.current) return
+      if (!p) {
+        setPost(null)
+        setStatus('notFound')
+        return
+      }
+      setPost(p)
+      setStatus('ready')
+      try {
+        const c = await window.api.post.getCoverPath(p.sec_uid, p.folder_name)
+        if (seq !== loadSeqRef.current) return
+        setCover(c)
+      } catch (error) {
+        console.error('[VideoTagEditPage] 获取封面失败:', error)
+      }
+    } catch (error) {
+      if (seq !== loadSeqRef.current) return
+      setErrorMessage((error as Error).message)
+      setStatus('error')
     }
   }, [id])
 
   useEffect(() => {
+    // 换作品时清掉上一条的封面和内容，避免短暂显示旧数据
+    setStatus('loading')
+    setPost(null)
+    setCover(null)
     load()
-    window.api.tag.getTagsWithFrequency().then((list) => {
-      setSuggestions(list.slice(0, 24).map((t) => t.tag))
-    })
+    window.api.tag
+      .getTagsWithFrequency()
+      .then((list) => {
+        setSuggestions(list.slice(0, 24).map((t) => t.tag))
+      })
+      .catch((error) => {
+        console.error('[VideoTagEditPage] 获取推荐标签失败:', error)
+      })
   }, [load])
 
   useEffect(() => {
@@ -74,7 +104,12 @@ export default function VideoTagEditPage() {
         ? { secUid: queueSecUid }
         : null
     if (!filters) return
-    window.api.tag.queryPostIds(filters).then(setSiblings)
+    window.api.tag
+      .queryPostIds(filters)
+      .then(setSiblings)
+      .catch((error) => {
+        console.error('[VideoTagEditPage] 获取作品队列失败:', error)
+      })
   }, [search, queueSecUid])
 
   const idx = siblings.indexOf(id)
@@ -105,29 +140,56 @@ export default function VideoTagEditPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [prevId, nextId, go, viewerOpen])
 
-  if (!post) {
+  if (status === 'loading') {
     return <div className="p-10 text-sm text-[#A1A1A6]">加载中…</div>
+  }
+
+  if (status === 'notFound' || status === 'error' || !post) {
+    return (
+      <div className="flex flex-col h-full">
+        <PageHeader left={<BackLink label="返回列表" onClick={() => navigate(backTo)} />} />
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center">
+          <p className="text-sm text-[#6E6E73]">
+            {status === 'error' ? `加载失败: ${errorMessage}` : '作品不存在'}
+          </p>
+          <div className="flex items-center gap-2">
+            {status === 'error' && (
+              <Button variant="outline" onClick={load}>
+                重试
+              </Button>
+            )}
+            <Button onClick={() => navigate(backTo)}>返回列表</Button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   const aiTags = parseTags(post.analysis_tags)
   const manualTags = parseTags(post.manual_tags)
 
-  const save = async (input: { aiTags?: string[]; manualTags?: string[] }) => {
-    await window.api.tag.setPostTags(id, input)
-    load()
+  const save = async (input: { aiTags?: string[]; manualTags?: string[] }): Promise<boolean> => {
+    try {
+      await window.api.tag.setPostTags(id, input)
+      load()
+      return true
+    } catch (error) {
+      toast.error(`保存标签失败: ${(error as Error).message}`)
+      return false
+    }
   }
 
   const removeAi = (t: string) => save({ aiTags: aiTags.filter((x) => x !== t) })
   const removeManual = (t: string) => save({ manualTags: manualTags.filter((x) => x !== t) })
-  const addManual = (t: string) => {
+  const addManual = async (t: string) => {
     const tag = t.trim()
     if (!tag) return
     if (manualTags.includes(tag) || aiTags.includes(tag)) {
       toast.info('标签已存在')
       return
     }
-    save({ manualTags: [...manualTags, tag] })
-    setInput('')
+    const ok = await save({ manualTags: [...manualTags, tag] })
+    if (ok) setInput('')
   }
 
   const handleReanalyze = async () => {

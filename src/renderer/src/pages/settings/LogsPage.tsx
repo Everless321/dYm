@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { AlertCircle, Info, AlertTriangle, Trash2, Clock, User, ListTodo } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { formatMillisTime } from '@/lib/format'
@@ -14,7 +15,12 @@ export default function LogsPage() {
 
   useEffect(() => {
     // 加载历史日志
-    window.api.scheduler.getLogs().then(setLogs)
+    window.api.scheduler
+      .getLogs()
+      .then(setLogs)
+      .catch((error) => {
+        toast.error(`加载日志失败: ${(error as Error).message}`)
+      })
     // 监听新日志
     const unsubscribe = window.api.scheduler.onLog((log) => {
       setLogs((prev) => [log, ...prev].slice(0, 500))
@@ -81,9 +87,13 @@ export default function LogsPage() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => {
-            window.api.scheduler.clearLogs()
-            setLogs([])
+          onClick={async () => {
+            try {
+              await window.api.scheduler.clearLogs()
+              setLogs([])
+            } catch (error) {
+              toast.error(`清空日志失败: ${(error as Error).message}`)
+            }
           }}
           disabled={logs.length === 0}
           className="border-[#E5E5E7] text-[#6E6E73]"
