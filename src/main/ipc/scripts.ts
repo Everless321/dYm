@@ -59,8 +59,9 @@ export function registerScriptsIpc(): void {
   ipcMain.handle('scripts:getLogs', (_event, id: string) => getScriptLogs(id))
   ipcMain.handle('scripts:clearLogs', (_event, id: string) => clearScriptLogs(id))
   ipcMain.handle('scripts:getDir', () => ensureScriptsDir())
-  ipcMain.handle('scripts:openDir', () => {
-    shell.openPath(ensureScriptsDir())
+  ipcMain.handle('scripts:openDir', async () => {
+    const failure = await shell.openPath(ensureScriptsDir())
+    if (failure) throw new Error(failure)
   })
 
   // 应用内编辑：读源码 / 新建 / 保存 / 重命名 / 删除

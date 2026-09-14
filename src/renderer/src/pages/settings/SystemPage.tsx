@@ -169,11 +169,12 @@ export default function SystemPage() {
     setFetchingCookie(true)
     try {
       const result = await window.api.cookie.fetchDouyin()
-      setCookie(result)
       if (result) {
+        setCookie(result)
         toast.success('Cookie 获取成功')
       } else {
-        toast.warning('未获取到 Cookie，请确保已登录')
+        // 没登录就关窗：保留输入框里原来的 Cookie，别让接下来的「保存」把它清空
+        toast.warning('未检测到登录会话，Cookie 未更新，请在窗口中完成登录')
       }
     } catch {
       toast.error('获取 Cookie 失败')

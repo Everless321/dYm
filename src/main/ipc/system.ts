@@ -32,8 +32,9 @@ export function registerSystemIpc(): void {
   })
 
   // Open data directory
-  ipcMain.handle('system:openDataDirectory', () => {
-    shell.openPath(app.getPath('userData'))
+  ipcMain.handle('system:openDataDirectory', async () => {
+    const failure = await shell.openPath(app.getPath('userData'))
+    if (failure) throw new Error(failure)
   })
 
   // Open URL in app browser (reuse douyin login session)

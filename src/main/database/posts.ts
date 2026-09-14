@@ -1,4 +1,4 @@
-import { join } from 'path'
+import { join, sep } from 'path'
 import { existsSync, readFileSync } from 'fs'
 import { getDatabase } from './connection'
 
@@ -441,9 +441,10 @@ export function updatePostAnalysis(id: number, result: AnalysisResult): void {
     )
 }
 
-// 标准化路径前缀（确保尾部有 /）
+// 标准化路径前缀（确保尾部有平台分隔符）。
+// 库里的路径由 join() 生成，Windows 上是反斜杠；只补 '/' 会让 LIKE 永远不匹配，迁移变成静默空操作
 function normalizeDirPrefix(p: string): string {
-  return p.endsWith('/') ? p : p + '/'
+  return p.endsWith('/') || p.endsWith('\\') ? p : p + sep
 }
 
 // 获取需要迁移的帖子数量
@@ -485,7 +486,7 @@ export function batchReplacePaths(
   if (!secUids) return runFor(`${oldPrefix}%`)
   if (secUids.length === 0) return 0
   return database.transaction(() =>
-    secUids.reduce((sum, secUid) => sum + runFor(`${oldPrefix}${secUid}/%`), 0)
+    secUids.reduce((sum, secUid) => sum + runFor(`${oldPrefix}${secUid}${sep}%`), 0)
   )()
 }
 
@@ -500,7 +501,7 @@ export function getMigrationSecUids(oldBasePath: string): string[] {
   const secUids = new Set<string>()
   for (const row of rows) {
     const relative = row.video_path.slice(prefix.length)
-    const slashIdx = relative.indexOf('/')
+    const slashIdx = relative.search(/[\\/]/)
     if (slashIdx > 0) {
       secUids.add(relative.slice(0, slashIdx))
     }

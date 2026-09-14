@@ -52,6 +52,7 @@ export interface UpdateLiveRecordInput {
   status?: DbLiveRecord['status']
   file_path?: string
   file_size?: number
+  cover_path?: string
   error?: string
   ended_at?: number
 }
@@ -71,6 +72,10 @@ export function updateLiveRecord(id: number, input: UpdateLiveRecordInput): void
   if (input.file_size !== undefined) {
     fields.push('file_size = ?')
     values.push(input.file_size)
+  }
+  if (input.cover_path !== undefined) {
+    fields.push('cover_path = ?')
+    values.push(input.cover_path)
   }
   if (input.error !== undefined) {
     fields.push('error = ?')

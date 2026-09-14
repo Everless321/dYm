@@ -294,7 +294,19 @@ protocol.registerSchemesAsPrivileged([
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(async () => {
+// 单实例：双开会让两个进程共享 data.db、cron 双份跑、ffmpeg 写两份文件
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+}
+
+async function bootstrap(): Promise<void> {
   for (const scheme of ['bytedance', 'snssdk', 'aweme']) {
     protocol.handle(scheme, () => new Response('', { status: 400 }))
   }
@@ -393,7 +405,21 @@ app.whenReady().then(async () => {
       }
     }
   })
-})
+}
+
+// 启动链任何一步抛错（典型是 data.db 损坏 / userData 不可写）都要让用户看到，
+// 否则没有窗口、没有托盘，进程静默挂着，用户只会觉得「双击没反应」
+app
+  .whenReady()
+  .then(bootstrap)
+  .catch((error) => {
+    console.error('[App] 启动失败:', error)
+    dialog.showErrorBox(
+      '启动失败',
+      `${(error as Error).message || String(error)}\n\n数据目录：${app.getPath('userData')}`
+    )
+    app.exit(1)
+  })
 
 // 应用退出前清理资源。
 // 有录制在跑时先拦一次退出：SIGINT 之后 ffmpeg 要写完文件、finishRecording 要落库，

@@ -308,12 +308,11 @@ async function doCheckAndRecord(userId: number): Promise<boolean> {
   const baseName = `live_${roomId}_${timestampStr()}`
   const filePath = join(userDir, `${baseName}.flv`)
 
-  // 抓取直播封面（与 .flv 同名 .jpg）；失败不影响录制，coverPath 保持 undefined
-  let coverPath: string | undefined
-  if (live.cover) {
-    const saved = await downloadLiveCover(live.cover, join(userDir, `${baseName}.jpg`))
-    if (saved) coverPath = saved
-  }
+  // 抓取直播封面（与 .flv 同名 .jpg）；失败不影响录制。
+  // 不在这里 await：CDN 卡住会推迟 ffmpeg 启动、漏掉开头，下载完再补写到记录上
+  const coverPromise = live.cover
+    ? downloadLiveCover(live.cover, join(userDir, `${baseName}.jpg`))
+    : Promise.resolve(null)
 
   const recordId = createLiveRecord({
     user_id: userId,
@@ -322,10 +321,18 @@ async function doCheckAndRecord(userId: number): Promise<boolean> {
     room_id: roomId,
     title,
     quality: key,
-    cover_path: coverPath,
+    cover_path: undefined,
     file_path: filePath
   })
   updateUserLiveStatus(userId, 'recording', nowSec())
+  void coverPromise.then((saved) => {
+    if (!saved) return
+    try {
+      updateLiveRecord(recordId, { cover_path: saved })
+    } catch (error) {
+      console.warn('[Live] 补写直播封面失败:', (error as Error).message)
+    }
+  })
 
   // 5) ffmpeg 录制（-c copy 直接转储，不转码）；带最大时长上限（0=不限）。
   // -rw_timeout：60s 收不到数据就自己退出，作为看门狗的兜底。

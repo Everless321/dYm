@@ -20,7 +20,7 @@ export async function downloadAvatar(secUid: string, avatarUrl: string): Promise
   }
 
   try {
-    const res = await net.fetch(avatarUrl)
+    const res = await net.fetch(avatarUrl, { signal: AbortSignal.timeout(15_000) })
     if (!res.ok) {
       console.warn(`[Avatar] download failed ${res.status} for ${secUid}`)
       return null

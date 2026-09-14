@@ -113,7 +113,8 @@ export function registerVideoIpc(): void {
         await convertFolderImagesToJpg(folderPath)
       }
 
-      shell.openPath(folderPath)
+      const failure = await shell.openPath(folderPath)
+      if (failure) console.warn('[Video] 打开目录失败:', failure)
     }
   )
 }

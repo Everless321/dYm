@@ -38,7 +38,8 @@ export async function pullCollectedItems(): Promise<CollectItem[]> {
 
   let res: Response
   try {
-    res = await fetch(url, { method: 'GET' })
+    // 没有超时的话服务端黑洞一次，collectSyncRunning 就永远不复位，之后每次都「正在进行中，跳过」
+    res = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(30_000) })
   } catch (error) {
     throw new Error(`无法连接收藏服务: ${(error as Error).message}`)
   }
@@ -50,7 +51,12 @@ export async function pullCollectedItems(): Promise<CollectItem[]> {
     throw new Error(`收藏服务返回 ${res.status}`)
   }
 
-  const data = (await res.json()) as { ok?: boolean; items?: CollectItem[]; error?: string }
+  let data: { ok?: boolean; items?: CollectItem[]; error?: string }
+  try {
+    data = (await res.json()) as typeof data
+  } catch {
+    throw new Error(`收藏服务返回了非 JSON 内容（HTTP ${res.status}）`)
+  }
   if (!data.ok) {
     throw new Error(data.error || '收藏服务返回失败')
   }

@@ -54,7 +54,7 @@ export async function refreshUserProfile(id: number): Promise<RefreshOutcome> {
   try {
     const profileRes = await fetchUserProfileSmart(existing.homepage_url)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    fetched = (profileRes as any)._data?.user
+    fetched = (profileRes as any)?._data?.user
   } catch (error) {
     return { status: 'failed', error: (error as Error).message }
   }

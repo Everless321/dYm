@@ -20,6 +20,7 @@ import {
   type PostSortConfig
 } from '../database'
 import { findCoverFile, findMediaFiles, getDownloadPath } from '../services/media'
+import { assertFolderName, assertSecUid } from '../utils/path-segment'
 import { checkPostFileIntegrity, cleanupFailedDownload } from '../services/download-validator'
 
 export function registerPostIpc(): void {
@@ -38,17 +39,18 @@ export function registerPostIpc(): void {
     (_event, secUid: string, folderName: string, awemeType: number) =>
       findMediaFiles(secUid, folderName, awemeType)
   )
-  ipcMain.handle('post:openFolder', (_event, secUid: string, folderName: string) => {
-    const folderPath = join(getDownloadPath(), secUid, folderName)
-    if (existsSync(folderPath)) {
-      shell.openPath(folderPath)
-    } else {
-      // 如果具体文件夹不存在，打开用户目录
-      const userPath = join(getDownloadPath(), secUid)
-      if (existsSync(userPath)) {
-        shell.openPath(userPath)
-      }
+  ipcMain.handle('post:openFolder', async (_event, secUid: string, folderName: string) => {
+    assertSecUid(secUid)
+    const folderPath = join(getDownloadPath(), secUid, assertFolderName(folderName))
+    // 具体文件夹不存在时退回作者目录
+    const userPath = join(getDownloadPath(), secUid)
+    const target = existsSync(folderPath) ? folderPath : existsSync(userPath) ? userPath : null
+    if (!target) {
+      throw new Error(`目录不存在：${folderPath}`)
     }
+    // openPath 失败时 resolve 一个错误字符串而不是 reject
+    const failure = await shell.openPath(target)
+    if (failure) throw new Error(failure)
   })
 
   // Files management IPC handlers
@@ -102,7 +104,7 @@ export function registerPostIpc(): void {
   })
 
   ipcMain.handle('files:getPostSize', (_event, secUid: string, folderName: string) => {
-    const folderPath = join(getDownloadPath(), secUid, folderName)
+    const folderPath = join(getDownloadPath(), assertSecUid(secUid), assertFolderName(folderName))
     if (!existsSync(folderPath)) return 0
     let total = 0
     try {
@@ -135,7 +137,7 @@ export function registerPostIpc(): void {
   })
 
   ipcMain.handle('files:deleteUserFiles', (_event, userId: number, secUid: string) => {
-    const userDir = join(getDownloadPath(), secUid)
+    const userDir = join(getDownloadPath(), assertSecUid(secUid))
     if (existsSync(userDir)) {
       // 只删作品子目录；头像等用户级文件留下，用户记录本身还在
       for (const entry of readdirSync(userDir, { withFileTypes: true })) {

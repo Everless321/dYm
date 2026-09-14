@@ -143,6 +143,13 @@ export async function startUserSync(
     console.log(`[Syncer] Starting to fetch videos for ${user.nickname}`)
     for await (const postFilter of handler.fetchUserPostVideos(user.sec_uid, { maxCounts })) {
       if (syncState?.abort) break
+      // 风控 / 未登录时抖音返回 status_code≠0 且 aweme_list 为空的合法 JSON，
+      // polydl 不会抛错；不检查就会被当成「无新作品」并更新 last_sync_at
+      if (postFilter.statusCode !== null && postFilter.statusCode !== 0) {
+        throw new Error(
+          `抖音接口返回 status_code=${postFilter.statusCode}，通常是 Cookie 失效或触发风控，请重新登录后重试`
+        )
+      }
 
       const awemeList = postFilter.toAwemeDataList()
       for (const awemeData of awemeList) {

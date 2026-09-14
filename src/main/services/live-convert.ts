@@ -118,7 +118,7 @@ async function remuxAtomic(src: string, dest: string): Promise<void> {
 
 // 探测视频流真实编码（不能靠画质档位猜：抖音「原画」多为 H.264，个别才是 HEVC）
 function probeVideoCodec(src: string): Promise<string> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     execFile(
       ffprobePath,
       [
@@ -132,7 +132,11 @@ function probeVideoCodec(src: string): Promise<string> {
         'csv=p=0',
         src
       ],
-      (err, stdout) => resolve(err ? '' : stdout.trim().toLowerCase())
+      // 探测失败不能当成「非 HEVC」继续：HEVC 不打 hvc1 tag 转出来的 MP4 播放黑屏，而源 FLV 随后会被删
+      (err, stdout) =>
+        err
+          ? reject(new Error(`ffprobe 探测编码失败：${err.message}`))
+          : resolve(stdout.trim().toLowerCase())
     )
   })
 }
