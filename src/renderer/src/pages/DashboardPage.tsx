@@ -131,6 +131,25 @@ export default function DashboardPage() {
     fetchData()
   }, [fetchData])
 
+  // 主进程先建窗口再起 Web 服务：首屏可能拿到 started=false 的占位信息（端口回退时地址会错），
+  // 服务起来后重拉一次
+  useEffect(() => {
+    if (!webInfo || webInfo.started) return
+    let cancelled = false
+    const timer = setTimeout(() => {
+      window.api.system
+        .getWebServerInfo()
+        .then((info) => {
+          if (!cancelled) setWebInfo(info)
+        })
+        .catch(() => undefined)
+    }, 1500)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [webInfo])
+
   const trendFormatted = useMemo(
     () => trend.map((p) => ({ ...p, label: p.date.slice(5) })),
     [trend]
