@@ -61,6 +61,10 @@ const FORCE_KILL_GRACE_MS = 5_000
 // key: userId —— 保证同一用户同一时刻只录一路
 const runningRecordings: Map<number, RunningRecording> = new Map()
 
+// 正在走「检测开播 → 起 ffmpeg」流程的用户。这段流程里有多次 await，
+// cron 与手动「立即检测」同时进来时，只靠 runningRecordings 判断会双开进程、写两条记录。
+const pendingChecks: Set<number> = new Set()
+
 // 看门狗轮询间隔：抖音直播结束后 CDN 常保持连接不断、只是停发数据，
 // ffmpeg 会一直傻等不退出，必须定时查开播状态、结束了主动停。
 const LIVE_WATCHDOG_INTERVAL_MS = 45_000
@@ -211,7 +215,20 @@ export async function checkAndRecordUser(userId: number): Promise<boolean> {
   if (runningRecordings.has(userId)) {
     return true
   }
+  // 另一路检测还没走完，本次直接让位，以它的结果为准
+  if (pendingChecks.has(userId)) {
+    return false
+  }
 
+  pendingChecks.add(userId)
+  try {
+    return await doCheckAndRecord(userId)
+  } finally {
+    pendingChecks.delete(userId)
+  }
+}
+
+async function doCheckAndRecord(userId: number): Promise<boolean> {
   const user = getUserById(userId)
   if (!user) {
     throw new Error('用户不存在')
@@ -401,6 +418,11 @@ export function stopLiveRecording(userId: number): boolean {
 export function stopAllLiveRecordings(): void {
   for (const [, rec] of runningRecordings) {
     rec.stopReason = 'manual'
+    // 应用马上退出，看门狗与强杀定时器不该再触发
+    if (rec.watchdog) clearInterval(rec.watchdog)
+    if (rec.killTimer) clearTimeout(rec.killTimer)
+    rec.watchdog = undefined
+    rec.killTimer = undefined
     rec.danmaku?.stop()
     rec.proc.kill('SIGINT')
   }
