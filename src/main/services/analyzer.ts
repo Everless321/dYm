@@ -64,6 +64,19 @@ export interface AnalysisProgress {
 
 let isAnalyzing = false
 let shouldStop = false
+/** 本轮分析的中断控制器：停止时把在途的 API 请求一起掐掉，否则 isAnalyzing 会卡到请求自己超时 */
+let abortController: AbortController | null = null
+
+/** 单次视觉 API 请求的超时；网关挂起时不能让整个分析永远停在「进行中」 */
+const VISION_API_TIMEOUT_MS = 120_000
+
+/** 用户主动停止时抛出，与真正的失败区分开，不计入失败数 */
+class AnalysisStoppedError extends Error {
+  constructor() {
+    super('已停止')
+    this.name = 'AnalysisStoppedError'
+  }
+}
 
 function sendProgress(progress: AnalysisProgress): void {
   const windows = BrowserWindow.getAllWindows()
@@ -273,15 +286,20 @@ async function callVisionAPI(
   prompt: string,
   apiKey: string,
   apiUrl: string,
-  model: string
+  model: string,
+  signal?: AbortSignal
 ): Promise<AnalysisResult> {
   const imageContents = images.map((img) => ({
     type: 'image_url',
     image_url: { url: img }
   }))
 
+  const signals = [AbortSignal.timeout(VISION_API_TIMEOUT_MS)]
+  if (signal) signals.push(signal)
+
   const response = await fetch(`${normalizeApiUrl(apiUrl)}/chat/completions`, {
     method: 'POST',
+    signal: AbortSignal.any(signals),
     headers: buildAuthHeaders(apiKey),
     body: JSON.stringify({
       model,
@@ -330,7 +348,8 @@ async function analyzePost(
   apiKey: string,
   apiUrl: string,
   model: string,
-  prompt: string
+  prompt: string,
+  signal?: AbortSignal
 ): Promise<AnalysisResult> {
   const mediaFolder = findMediaFolder(post.sec_uid, post.folder_name)
   if (!mediaFolder) {
@@ -366,7 +385,8 @@ async function analyzePost(
     }
 
     await rateLimiter.wait()
-    const result = await callVisionAPI(images, prompt, apiKey, apiUrl, model)
+    if (signal?.aborted) throw new AnalysisStoppedError()
+    const result = await callVisionAPI(images, prompt, apiKey, apiUrl, model, signal)
     return result
   } finally {
     if (tempFrames.length > 0) {
@@ -397,9 +417,10 @@ function loadAnalysisConfig(): AnalysisConfig {
     apiUrl: getSetting('grok_api_url') || 'https://api.x.ai/v1',
     model: getSetting('analysis_model') || 'grok-4-fast',
     prompt,
-    concurrency: parseInt(getSetting('analysis_concurrency') || '2') || 2,
-    rpm: parseInt(getSetting('analysis_rpm') || '10') || 10,
-    sliceCount: parseInt(getSetting('analysis_slices') || '4') || 4
+    // 设置页存的是原始输入，负数会让 Array.from({ length }) 抛 RangeError、并发池空转
+    concurrency: Math.max(1, parseInt(getSetting('analysis_concurrency') || '2') || 2),
+    rpm: Math.max(1, parseInt(getSetting('analysis_rpm') || '10') || 10),
+    sliceCount: Math.max(1, parseInt(getSetting('analysis_slices') || '4') || 4)
   }
 }
 
@@ -415,6 +436,8 @@ async function runAnalysisForPosts(posts: DbPost[]): Promise<void> {
 
   isAnalyzing = true
   shouldStop = false
+  const controller = new AbortController()
+  abortController = controller
 
   const totalCount = posts.length
   let analyzedCount = 0
@@ -435,7 +458,7 @@ async function runAnalysisForPosts(posts: DbPost[]): Promise<void> {
   try {
     const tasks = posts.map((post, index) => async () => {
       if (shouldStop) {
-        throw new Error('已停止')
+        throw new AnalysisStoppedError()
       }
 
       sendProgress({
@@ -455,8 +478,10 @@ async function runAnalysisForPosts(posts: DbPost[]): Promise<void> {
         config.apiKey,
         config.apiUrl,
         config.model,
-        config.prompt
+        config.prompt,
+        controller.signal
       )
+      if (shouldStop) throw new AnalysisStoppedError()
       updatePostAnalysis(post.id, result)
       const updated = getPostById(post.id)
       if (updated) emitPostAnalyzed(updated)
@@ -467,6 +492,13 @@ async function runAnalysisForPosts(posts: DbPost[]): Promise<void> {
       shouldStop: () => shouldStop,
       onComplete: (index, result) => {
         const post = posts[index]
+        // 用户点了停止而被打断的条目不是失败，不计数也不推 lastResult
+        if (
+          result instanceof AnalysisStoppedError ||
+          (result instanceof Error && shouldStop && result.name === 'AbortError')
+        ) {
+          return
+        }
         const ok = !(result instanceof Error)
         if (ok) {
           analyzedCount++
@@ -516,6 +548,7 @@ async function runAnalysisForPosts(posts: DbPost[]): Promise<void> {
   } finally {
     isAnalyzing = false
     shouldStop = false
+    abortController = null
   }
 }
 
@@ -543,6 +576,7 @@ export async function reanalyzePosts(postIds: number[]): Promise<void> {
 
 export function stopAnalysis(): void {
   shouldStop = true
+  abortController?.abort()
 }
 
 export function isAnalysisRunning(): boolean {

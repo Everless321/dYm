@@ -40,6 +40,7 @@ export function registerSettingsIpc(): void {
   ipcMain.handle('grok:verify', async (_event, apiKey: string, apiUrl: string, model: string) => {
     const response = await fetch(`${normalizeApiUrl(apiUrl)}/chat/completions`, {
       method: 'POST',
+      signal: AbortSignal.timeout(30_000),
       headers: buildAuthHeaders(apiKey),
       body: JSON.stringify({
         model,
@@ -48,8 +49,17 @@ export function registerSettingsIpc(): void {
       })
     })
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error?.message || response.statusText)
+      // 网关返回 HTML 错误页时 response.json() 会抛 SyntaxError，把真实状态码盖掉
+      const text = await response.text()
+      let detail = ''
+      try {
+        detail = (JSON.parse(text) as { error?: { message?: string } }).error?.message ?? ''
+      } catch {
+        detail = text.slice(0, 200)
+      }
+      throw new Error(
+        `HTTP ${response.status} ${response.statusText}${detail ? `：${detail}` : ''}`
+      )
     }
     return true
   })

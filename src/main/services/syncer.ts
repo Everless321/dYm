@@ -75,14 +75,17 @@ export async function startUserSync(
   }
   console.log(`[Syncer] Cookie found, length: ${cookie.length}`)
 
-  const globalMaxDownloadCount = parseInt(getSetting('max_download_count') || '0') || 0
-  const videoConcurrency = parseInt(getSetting('video_download_concurrency') || '3') || 3
-
-  runningSyncs.set(userId, { abort: false })
-  updateUserSyncStatus(userId, 'syncing')
+  const globalMaxDownloadCount = Math.max(0, parseInt(getSetting('max_download_count') || '0') || 0)
+  const videoConcurrency = Math.max(
+    1,
+    parseInt(getSetting('video_download_concurrency') || '3') || 3
+  )
 
   const downloadPath = getDownloadPath()
   const userPath = join(downloadPath, user.sec_uid)
+
+  runningSyncs.set(userId, { abort: false })
+  updateUserSyncStatus(userId, 'syncing')
 
   const maxDownloadCount =
     user.max_download_count > 0 ? user.max_download_count : globalMaxDownloadCount

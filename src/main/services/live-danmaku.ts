@@ -41,9 +41,18 @@ export function startDanmakuRecording(
 ): DanmakuRecorder {
   const controller = new AbortController()
   const out = createWriteStream(filePath, { flags: 'a' })
+  // 磁盘满 / 目录被删时写流会冒 error，没有监听就是主进程未捕获异常，会把录像一起带走
+  out.on('error', (error) => {
+    console.error(`[Danmaku] 房间 ${roomId} 弹幕文件写入失败，停止录弹幕：`, error.message)
+    controller.abort()
+  })
+  const writeLine = (value: unknown): void => {
+    if (out.destroyed || out.writableEnded) return
+    out.write(`${JSON.stringify(value)}\n`)
+  }
 
   const meta: DanmakuMetaLine = { v: 1, startedAt, roomId }
-  out.write(`${JSON.stringify(meta)}\n`)
+  writeLine(meta)
 
   void (async () => {
     const handler = getDouyinHandler()
@@ -72,7 +81,7 @@ export function startDanmakuRecording(
           line = { t, type: 'member', name: ev.user.nickname || '' }
         }
         if (line) {
-          out.write(`${JSON.stringify(line)}\n`)
+          writeLine(line)
           count++
         }
       }
@@ -81,7 +90,7 @@ export function startDanmakuRecording(
       console.log(`[Danmaku] 房间 ${roomId} 弹幕流结束：${(error as Error).message}`)
     } finally {
       console.log(`[Danmaku] 房间 ${roomId} 共记录 ${count} 条`)
-      out.end()
+      if (!out.destroyed && !out.writableEnded) out.end()
     }
   })()
 

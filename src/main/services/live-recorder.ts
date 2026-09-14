@@ -51,12 +51,22 @@ interface RunningRecording {
   watchdog?: ReturnType<typeof setInterval>
   danmaku?: DanmakuRecorder
   killTimer?: ReturnType<typeof setTimeout>
+  /** ffmpeg stderr 的最后几行，录制失败时用来给出可读原因 */
+  stderrTail: string[]
+  /** 看门狗连续查询失败次数，超过阈值就当直播已结束主动收尾 */
+  watchdogFailures: number
 }
 
 // SIGINT 后等待 ffmpeg 自行收尾的宽限期，超时强杀。
 // ffmpeg 卡在阻塞的网络读取时收不到信号，靠 -rw_timeout 要等到 60s 才退出。
 // FLV 是流式格式，强杀不会损坏已写入的内容。
 const FORCE_KILL_GRACE_MS = 5_000
+
+/** stderr 只留这么多行给失败提示用 */
+const STDERR_TAIL_LINES = 20
+
+/** 看门狗连续失败这么多次（Cookie 过期等）就不再等，主动结束录制，避免条目永远挂着 */
+const WATCHDOG_MAX_FAILURES = 10
 
 // key: userId —— 保证同一用户同一时刻只录一路
 const runningRecordings: Map<number, RunningRecording> = new Map()
@@ -319,9 +329,13 @@ async function doCheckAndRecord(userId: number): Promise<boolean> {
 
   // 5) ffmpeg 录制（-c copy 直接转储，不转码）；带最大时长上限（0=不限）。
   // -rw_timeout：60s 收不到数据就自己退出，作为看门狗的兜底。
-  const maxDurationMin = parseInt(getSetting('live_max_duration') || '0') || 0
+  const maxDurationMin = Math.max(0, parseInt(getSetting('live_max_duration') || '0') || 0)
   const args = [
     '-y',
+    // 不打进度行、只留错误：stderr 是管道，没人消费时写满缓冲区 ffmpeg 会阻塞，录制静默停住
+    '-nostats',
+    '-loglevel',
+    'error',
     '-rw_timeout',
     '60000000',
     '-headers',
@@ -336,8 +350,23 @@ async function doCheckAndRecord(userId: number): Promise<boolean> {
 
   // 取录制起点墙钟时间作为弹幕对齐基准：紧贴 spawn，两者同时开始
   const startedAtMs = Date.now()
-  const proc = spawn(ffmpegPath, args)
-  const rec: RunningRecording = { proc, recordId, roomId, filePath }
+  const proc = spawn(ffmpegPath, args, { stdio: ['ignore', 'ignore', 'pipe'] })
+  const rec: RunningRecording = {
+    proc,
+    recordId,
+    roomId,
+    filePath,
+    stderrTail: [],
+    watchdogFailures: 0
+  }
+  proc.stderr?.setEncoding('utf-8')
+  proc.stderr?.on('data', (chunk: string) => {
+    for (const line of chunk.split(/\r?\n/)) {
+      if (!line.trim()) continue
+      rec.stderrTail.push(line.trim())
+      if (rec.stderrTail.length > STDERR_TAIL_LINES) rec.stderrTail.shift()
+    }
+  })
   // 并行录弹幕（聊天/礼物/进场）到 sidecar，失败不影响录像
   rec.danmaku = startDanmakuRecording(roomId, danmakuPathFor(filePath), startedAtMs)
   runningRecordings.set(userId, rec)
@@ -349,12 +378,22 @@ async function doCheckAndRecord(userId: number): Promise<boolean> {
     void (async () => {
       try {
         const st = await handler.fetchUserLiveStatus(String(uid))
+        rec.watchdogFailures = 0
         if (st.liveStatus !== 1) {
-          rec.stopReason = 'ended'
-          rec.proc.kill('SIGINT')
+          requestStop(userId, rec, 'ended')
         }
-      } catch {
-        // 网络抖动忽略，靠 -rw_timeout 兜底
+      } catch (error) {
+        // 偶发网络抖动忽略，靠 -rw_timeout 兜底；但连续失败（Cookie 过期）不能永远沉默
+        rec.watchdogFailures++
+        if (rec.watchdogFailures === 1 || rec.watchdogFailures % 5 === 0) {
+          console.warn(
+            `[Live] 看门狗查询开播状态失败 ${rec.watchdogFailures} 次: ${(error as Error).message}`
+          )
+        }
+        if (rec.watchdogFailures >= WATCHDOG_MAX_FAILURES) {
+          console.warn(`[Live] 看门狗连续失败 ${rec.watchdogFailures} 次，主动结束录制`)
+          requestStop(userId, rec, 'ended')
+        }
       }
     })()
   }, LIVE_WATCHDOG_INTERVAL_MS)
@@ -380,11 +419,29 @@ async function doCheckAndRecord(userId: number): Promise<boolean> {
     } else if (code === 0) {
       finishRecording(userId, 'completed')
     } else {
-      finishRecording(userId, 'failed', `ffmpeg 退出码 ${code}`)
+      const detail = rec.stderrTail.length > 0 ? `：${rec.stderrTail.slice(-3).join(' | ')}` : ''
+      finishRecording(userId, 'failed', `ffmpeg 退出码 ${code}${detail}`)
     }
   })
 
   return true
+}
+
+/**
+ * 请求 ffmpeg 收尾：SIGINT 让它写完当前文件，宽限期内没退出就强杀。
+ * 手动停止和看门狗判定结束共用这一条路径，否则看门狗那边卡住的 ffmpeg 永远不会被清理。
+ */
+function requestStop(userId: number, rec: RunningRecording, reason: 'manual' | 'ended'): void {
+  rec.stopReason = reason
+  rec.proc.kill('SIGINT')
+  if (!rec.killTimer) {
+    rec.killTimer = setTimeout(() => {
+      if (runningRecordings.get(userId) === rec) {
+        console.warn(`[Live] ffmpeg 未在 ${FORCE_KILL_GRACE_MS}ms 内退出，强制结束`)
+        rec.proc.kill('SIGKILL')
+      }
+    }, FORCE_KILL_GRACE_MS)
+  }
 }
 
 /**
@@ -395,20 +452,9 @@ export function stopLiveRecording(userId: number): boolean {
   // 没有进行中的录制（如应用重启后残留的界面状态），返回 false 让调用方如实反馈
   if (!rec) return false
 
-  rec.stopReason = 'manual'
   // 立即断开弹幕流，不等 ffmpeg 收尾
   rec.danmaku?.stop()
-  rec.proc.kill('SIGINT')
-
-  // 宽限期内没退出就强杀，避免卡在阻塞读取上迟迟不停
-  if (!rec.killTimer) {
-    rec.killTimer = setTimeout(() => {
-      if (runningRecordings.has(userId)) {
-        console.warn(`[Live] ffmpeg 未在 ${FORCE_KILL_GRACE_MS}ms 内退出，强制结束`)
-        rec.proc.kill('SIGKILL')
-      }
-    }, FORCE_KILL_GRACE_MS)
-  }
+  requestStop(userId, rec, 'manual')
   return true
 }
 

@@ -107,6 +107,8 @@ export async function addUserByUrl(url: string): Promise<AddUserResult> {
     }
 
     homepageUrl = `https://www.douyin.com/user/${secUid}`
+  } else if (parseResult.error) {
+    throw new Error(`链接解析失败：${parseResult.error}。请检查网络后重试`)
   } else {
     throw new Error('无法识别的链接类型，请输入用户主页或作品链接')
   }

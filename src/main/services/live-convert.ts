@@ -59,7 +59,12 @@ export function enqueueConvert(recordId: number): void {
       progressOf(recordId, 'converting', '正在转换为可播放格式…')
       const convertedOk = await convertRecord(recordId)
       const converted = getLiveRecordById(recordId)
-      if (convertedOk && converted?.file_path?.toLowerCase().endsWith('.mp4')) {
+      if (!convertedOk) {
+        // 记录已被删 / 源文件不在了：没有东西可看，不能提示「可以观看了」
+        progressOf(recordId, 'convert-failed', '转换未执行：记录或源文件已不存在')
+        return
+      }
+      if (converted?.file_path?.toLowerCase().endsWith('.mp4')) {
         emitLiveConverted(converted)
       }
       progressOf(recordId, 'converted', '转换完成，可以观看了')

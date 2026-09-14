@@ -457,22 +457,36 @@ export function getMigrationCount(oldBasePath: string): number {
 }
 
 // 批量替换路径前缀
-export function batchReplacePaths(oldBasePath: string, newBasePath: string): number {
+/**
+ * 把 posts 里以 oldBasePath 开头的路径改成 newBasePath。
+ * 传 secUids 时只改这些作者目录下的记录：迁移时哪些作者真正搬成功了就只改哪些，
+ * 否则搬失败的作者在库里会指向一个不存在的新位置。
+ */
+export function batchReplacePaths(
+  oldBasePath: string,
+  newBasePath: string,
+  secUids?: string[]
+): number {
   const oldPrefix = normalizeDirPrefix(oldBasePath)
   const newPrefix = normalizeDirPrefix(newBasePath)
   const database = getDatabase()
   const len = oldPrefix.length + 1
-  const like = `${oldPrefix}%`
-  const result = database
-    .prepare(
-      `UPDATE posts SET
-        video_path = CASE WHEN video_path LIKE ? THEN ? || substr(video_path, ?) ELSE video_path END,
-        cover_path = CASE WHEN cover_path LIKE ? THEN ? || substr(cover_path, ?) ELSE cover_path END,
-        music_path = CASE WHEN music_path LIKE ? THEN ? || substr(music_path, ?) ELSE music_path END
-      WHERE video_path LIKE ? OR cover_path LIKE ? OR music_path LIKE ?`
-    )
-    .run(like, newPrefix, len, like, newPrefix, len, like, newPrefix, len, like, like, like)
-  return result.changes
+  const stmt = database.prepare(
+    `UPDATE posts SET
+      video_path = CASE WHEN video_path LIKE ? THEN ? || substr(video_path, ?) ELSE video_path END,
+      cover_path = CASE WHEN cover_path LIKE ? THEN ? || substr(cover_path, ?) ELSE cover_path END,
+      music_path = CASE WHEN music_path LIKE ? THEN ? || substr(music_path, ?) ELSE music_path END
+    WHERE video_path LIKE ? OR cover_path LIKE ? OR music_path LIKE ?`
+  )
+  const runFor = (like: string): number =>
+    stmt.run(like, newPrefix, len, like, newPrefix, len, like, newPrefix, len, like, like, like)
+      .changes
+
+  if (!secUids) return runFor(`${oldPrefix}%`)
+  if (secUids.length === 0) return 0
+  return database.transaction(() =>
+    secUids.reduce((sum, secUid) => sum + runFor(`${oldPrefix}${secUid}/%`), 0)
+  )()
 }
 
 // 获取需要迁移的不重复作者目录

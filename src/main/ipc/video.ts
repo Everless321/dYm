@@ -58,7 +58,14 @@ export function registerVideoIpc(): void {
       }
 
       const savePath = result.filePaths[0]
-      const folderName = `${info.nickname}_${info.awemeId}`
+      // 昵称可能含 / \ : ? 等字符，直接拼路径会建目录失败或跑到所选目录之外
+      const safeNickname =
+        info.nickname
+          // eslint-disable-next-line no-control-regex
+          .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_')
+          .replace(/^\.+/, '')
+          .trim() || 'unknown'
+      const folderName = `${safeNickname}_${info.awemeId}`
       const folderPath = join(savePath, folderName)
 
       await mkdir(folderPath, { recursive: true })
@@ -78,14 +85,26 @@ export function registerVideoIpc(): void {
         const fileStream = createWriteStream(videoPath)
         await pipeline(response.body as unknown as NodeJS.ReadableStream, fileStream)
       } else if (info.type === 'images' && info.imageUrls) {
+        const failedImages: number[] = []
         for (let i = 0; i < info.imageUrls.length; i++) {
           const imgUrl = info.imageUrls[i]
           const ext = imgUrl.includes('.webp') ? 'webp' : 'jpg'
           const imgPath = join(folderPath, `${info.awemeId}_${i + 1}.${ext}`)
-          const response = await fetch(imgUrl, { headers })
-          if (!response.ok || !response.body) continue
-          const fileStream = createWriteStream(imgPath)
-          await pipeline(response.body as unknown as NodeJS.ReadableStream, fileStream)
+          try {
+            const response = await fetch(imgUrl, { headers })
+            if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`)
+            const fileStream = createWriteStream(imgPath)
+            await pipeline(response.body as unknown as NodeJS.ReadableStream, fileStream)
+          } catch (error) {
+            console.error(`[Video] 第 ${i + 1} 张图片下载失败:`, error)
+            failedImages.push(i + 1)
+          }
+        }
+        if (failedImages.length === info.imageUrls.length) {
+          throw new Error('图片全部下载失败')
+        }
+        if (failedImages.length > 0) {
+          throw new Error(`已保存到 ${folderPath}，但第 ${failedImages.join('、')} 张图片下载失败`)
         }
       }
 

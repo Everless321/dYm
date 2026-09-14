@@ -86,16 +86,19 @@ export async function startDownloadTask(
     throw new Error('请先配置抖音 Cookie')
   }
 
-  const globalMaxDownloadCount = parseInt(getSetting('max_download_count') || '0') || 0
-  const videoDownloadConcurrency = parseInt(getSetting('video_download_concurrency') || '3') || 3
-
-  runningTasks.set(taskId, { abort: false })
-
-  // 更新任务状态
-  updateTask(taskId, { status: 'running' })
+  const globalMaxDownloadCount = Math.max(0, parseInt(getSetting('max_download_count') || '0') || 0)
+  // 负数 / 0 会让分批循环 i += batchSize 永不前进
+  const videoDownloadConcurrency = Math.max(
+    1,
+    parseInt(getSetting('video_download_concurrency') || '3') || 3
+  )
 
   const downloadPath = getDownloadPath()
-  const concurrency = task.concurrency || 3
+  const concurrency = Math.max(1, task.concurrency || 3)
+
+  // 占位放在 try 里：之前 updateTask / getDownloadPath 抛错会让 runningTasks 里留下永远删不掉的条目
+  runningTasks.set(taskId, { abort: false })
+  updateTask(taskId, { status: 'running' })
 
   // 计算历史已下载数量（从用户的 downloaded_count 动态统计）
   const historicalDownloads = task.users.reduce((sum, u) => sum + (u.downloaded_count || 0), 0)
@@ -137,13 +140,13 @@ export async function startDownloadTask(
     })
 
     const results = await runWithConcurrency(userTasks, concurrency)
-    // 单个用户失败不中断其他用户；这里只累计成功的数量，失败的记日志
+    // 单个用户失败不中断其他用户；累计成功数量，同时记下失败的用户
+    const failedUsers: { nickname: string; message: string }[] = []
     for (const [index, result] of results.entries()) {
       if (result instanceof Error) {
-        console.error(
-          `[Downloader] 用户 ${task.users[index]?.nickname ?? index} 下载失败:`,
-          result.message
-        )
+        const nickname = task.users[index]?.nickname ?? String(index)
+        console.error(`[Downloader] 用户 ${nickname} 下载失败:`, result.message)
+        failedUsers.push({ nickname, message: result.message })
         continue
       }
       totalDownloaded += result
@@ -151,6 +154,13 @@ export async function startDownloadTask(
 
     // 检查是否被中止
     const taskState = runningTasks.get(taskId)
+    const allFailed = task.users.length > 0 && failedUsers.length === task.users.length
+    if (allFailed && !taskState?.abort) {
+      // 每个用户都失败（典型是 Cookie 过期 / 被风控）不能记成「完成」，否则用户永远不知道
+      throw new Error(
+        `全部 ${failedUsers.length} 个用户下载失败，首个错误：${failedUsers[0].message}`
+      )
+    }
     if (taskState?.abort) {
       finishStatus = 'cancelled'
       updateTask(taskId, { status: 'failed', downloaded_videos: totalDownloaded })
@@ -167,6 +177,11 @@ export async function startDownloadTask(
       })
     } else {
       finishStatus = 'completed'
+      if (failedUsers.length > 0) {
+        failureMessage = `${failedUsers.length} 个用户下载失败：${failedUsers
+          .map((item) => `${item.nickname}（${item.message}）`)
+          .join('；')}`
+      }
       updateTask(taskId, { status: 'completed', downloaded_videos: totalDownloaded })
       sendProgress({
         taskId,
@@ -176,7 +191,10 @@ export async function startDownloadTask(
         totalUsers: task.users.length,
         currentVideo: 0,
         totalVideos: 0,
-        message: `下载完成，共 ${totalDownloaded} 个作品`,
+        message:
+          failedUsers.length > 0
+            ? `下载完成，共 ${totalDownloaded} 个作品，${failedUsers.length} 个用户失败`
+            : `下载完成，共 ${totalDownloaded} 个作品`,
         downloadedPosts: historicalDownloads + totalDownloaded
       })
     }
@@ -485,6 +503,8 @@ async function downloadUserVideos(
       message: `${user.nickname} 下载出错: ${(error as Error).message}`,
       downloadedPosts: historicalDownloads + downloadedCount
     })
+    // 抛给并发池，让任务层知道这个用户失败了；池不会因此中断其他用户
+    throw error
   }
 
   return downloadedCount

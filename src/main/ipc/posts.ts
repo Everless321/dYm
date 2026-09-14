@@ -7,6 +7,7 @@ import {
   getAllPosts,
   getAllTags,
   deletePost,
+  getPostById,
   getPostsByUserId,
   fixAllPostTitles,
   deletePostsByUserId,
@@ -120,22 +121,30 @@ export function registerPostIpc(): void {
   })
 
   ipcMain.handle('files:deletePost', (_event, postId: number) => {
-    const post = deletePost(postId)
+    const post = getPostById(postId)
     if (!post) return false
-    const folderPath = join(getDownloadPath(), post.sec_uid, post.folder_name)
-    if (existsSync(folderPath)) {
-      rmSync(folderPath, { recursive: true, force: true })
+    // 先删文件再删记录：文件被占用（Windows EBUSY）时保留记录，用户还能再试；反过来会留下无主文件
+    if (post.folder_name) {
+      const folderPath = join(getDownloadPath(), post.sec_uid, post.folder_name)
+      if (existsSync(folderPath)) {
+        rmSync(folderPath, { recursive: true, force: true })
+      }
     }
+    deletePost(postId)
     return true
   })
 
   ipcMain.handle('files:deleteUserFiles', (_event, userId: number, secUid: string) => {
-    const count = deletePostsByUserId(userId)
     const userDir = join(getDownloadPath(), secUid)
     if (existsSync(userDir)) {
-      rmSync(userDir, { recursive: true, force: true })
+      // 只删作品子目录；头像等用户级文件留下，用户记录本身还在
+      for (const entry of readdirSync(userDir, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          rmSync(join(userDir, entry.name), { recursive: true, force: true })
+        }
+      }
     }
-    return count
+    return deletePostsByUserId(userId)
   })
 
   // Post integrity check & redownload IPC handlers
@@ -233,6 +242,7 @@ export function registerPostIpc(): void {
 
       const { rename: fsRename } = await import('fs/promises')
       await mkdir(newPath, { recursive: true })
+      const movedSecUids: string[] = []
 
       for (const secUid of secUids) {
         const sourceDir = join(oldPath, secUid)
@@ -273,14 +283,15 @@ export function registerPostIpc(): void {
           }
 
           result.success++
+          movedSecUids.push(secUid)
         } catch (error) {
           console.error(`[Migration] Failed to migrate ${secUid}:`, error)
           result.failed++
         }
       }
 
-      // Batch update all paths in database
-      batchReplacePaths(oldPath, newPath)
+      // 只改真正搬过去的作者；搬失败的仍指向旧目录，文件还在那里
+      batchReplacePaths(oldPath, newPath, movedSecUids)
 
       return result
     }
