@@ -133,7 +133,10 @@ export default function AnalysisPage(): React.JSX.Element {
           {tab === 'queue' && (
             <JobsPanel jobs={jobs} totals={totals} onCreate={() => setNewJobOpen(true)} />
           )}
-          {tab === 'settings' && <SettingsPanel />}
+          {/* 设置页常驻挂载：切页签不丢未保存的草稿 */}
+          <div className={tab === 'settings' ? '' : 'hidden'}>
+            <SettingsPanel />
+          </div>
           {tab === 'providers' && <ProvidersPanel onChanged={setProviders} />}
         </div>
       </div>

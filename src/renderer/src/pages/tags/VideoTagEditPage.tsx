@@ -80,14 +80,29 @@ export default function VideoTagEditPage() {
       })
   }, [load])
 
-  // 本页发起的重新分析在队列里跑；等到这条作品完成再刷新（别的页面发起的也会命中）
+  // 本页发起的重新分析在队列里跑；等到这条作品完成再刷新（别的页面发起的也会命中）。
+  // 作业被取消 / 整体失败时不会有 itemDone，所以还要盯着作业本身的状态收尾。
+  const reanalyzeJobRef = useRef<number | null>(null)
   useEffect(() => {
     const unsub = window.api.analysis.onQueue((event) => {
       const done = event.itemDone
-      if (!done || done.postId !== id) return
+      if (done && done.postId === id) {
+        reanalyzeJobRef.current = null
+        setReanalyzingId((prev) => (prev === id ? null : prev))
+        if (done.ok) load()
+        else toast.error(`重新分析失败: ${done.error || '未知错误'}`)
+        return
+      }
+      const jobId = reanalyzeJobRef.current
+      if (jobId === null) return
+      const job = event.jobs.find((j) => j.id === jobId)
+      const active =
+        job && (job.status === 'queued' || job.status === 'running' || job.status === 'paused')
+      if (active) return
+      reanalyzeJobRef.current = null
       setReanalyzingId((prev) => (prev === id ? null : prev))
-      if (done.ok) load()
-      else toast.error(`重新分析失败: ${done.error || '未知错误'}`)
+      if (job?.error) toast.error(`重新分析未完成: ${job.error}`)
+      else if (job?.status === 'cancelled') toast.info('重新分析已取消')
     })
     return unsub
   }, [id, load])
@@ -199,7 +214,12 @@ export default function VideoTagEditPage() {
   const handleReanalyze = async () => {
     setReanalyzingId(id)
     try {
-      await window.api.analysis.createJob({ kind: 'reanalyze', postIds: [id], priority: true })
+      const job = await window.api.analysis.createJob({
+        kind: 'reanalyze',
+        postIds: [id],
+        priority: true
+      })
+      reanalyzeJobRef.current = job.id
       toast.info('已加入分析队列，完成后自动刷新')
     } catch (error) {
       setReanalyzingId((prev) => (prev === id ? null : prev))

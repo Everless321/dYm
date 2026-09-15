@@ -255,9 +255,27 @@ export function ProviderDialog({
     try {
       await window.api.ai.codexCancelLogin()
     } catch {
-      /* 取消失败无妨，登录 promise 会自己超时 */
+      // 取消都失败就别把用户锁在对话框里；登录 promise 会自己超时收尾
+      setCodexBusy(null)
     }
   }
+
+  // 登录等待中关掉对话框 / 离开页面：把主进程里挂着的授权流程一并取消
+  const codexBusyRef = useRef(codexBusy)
+  codexBusyRef.current = codexBusy
+  useEffect(() => {
+    if (open) return
+    if (codexBusyRef.current === 'login')
+      void window.api.ai.codexCancelLogin().catch(() => undefined)
+  }, [open])
+  useEffect(
+    () => () => {
+      if (codexBusyRef.current === 'login') {
+        void window.api.ai.codexCancelLogin().catch(() => undefined)
+      }
+    },
+    []
+  )
 
   const modelOptions = useMemo(() => {
     if (!models) return null
@@ -524,7 +542,7 @@ export function ProviderDialog({
 
             <div className="flex items-center justify-between pt-2">
               <div>
-                {!provider && (
+                {!provider && !savedId && (
                   <Button type="button" variant="ghost" onClick={() => setStep('template')}>
                     返回模板
                   </Button>

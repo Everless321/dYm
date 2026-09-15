@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ChevronLeft, ChevronRight, ExternalLink, RotateCw } from 'lucide-react'
@@ -45,13 +45,19 @@ export function JobDetailDialog({ job, onOpenChange }: JobDetailDialogProps): Re
   // 作业进度变化（done/failed 计数）时刷新当前页，用这几个数做依赖而不是整个对象
   const progressKey = job ? `${job.done}:${job.failed}:${job.skipped}:${job.status}` : ''
 
+  // 换作业时清掉上一条的列表和筛选，避免旧作业的条目挂在新标题下
   useEffect(() => {
     setFilter('all')
     setPage(1)
+    setItems([])
+    setTotal(0)
   }, [jobId])
 
+  // 进度推送会频繁触发刷新，与用户切筛选/翻页交错时响应可能乱序，用序号丢弃过期结果
+  const loadSeqRef = useRef(0)
   const load = useCallback(async () => {
     if (jobId === null) return
+    const seq = ++loadSeqRef.current
     setLoading(true)
     try {
       const result = await window.api.analysis.getJobItems(jobId, {
@@ -59,12 +65,13 @@ export function JobDetailDialog({ job, onOpenChange }: JobDetailDialogProps): Re
         page,
         pageSize: PAGE_SIZE
       })
+      if (seq !== loadSeqRef.current) return
       setItems(result.items)
       setTotal(result.total)
     } catch (error) {
-      toast.error(`加载条目失败: ${(error as Error).message}`)
+      if (seq === loadSeqRef.current) toast.error(`加载条目失败: ${(error as Error).message}`)
     } finally {
-      setLoading(false)
+      if (seq === loadSeqRef.current) setLoading(false)
     }
   }, [jobId, filter, page])
 

@@ -19,8 +19,6 @@ export default function SystemPage() {
   const [cookie, setCookie] = useState('')
   const [fetchingCookie, setFetchingCookie] = useState(false)
 
-  // API
-
   // 下载
   const [downloadPath, setDownloadPath] = useState('')
   const [maxDownloadCount, setMaxDownloadCount] = useState('0')

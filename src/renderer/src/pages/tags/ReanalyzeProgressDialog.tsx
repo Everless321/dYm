@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { CheckCircle2, XCircle, Loader2, RotateCw, Pause, Play, Square } from 'lucide-react'
+import {
+  CheckCircle2,
+  XCircle,
+  MinusCircle,
+  Loader2,
+  RotateCw,
+  Pause,
+  Play,
+  Square
+} from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -24,7 +33,7 @@ import { analysisPath } from '@/pages/analysis/shared'
 interface ItemState {
   postId: number
   title: string
-  status: 'pending' | 'success' | 'failed'
+  status: 'pending' | 'success' | 'failed' | 'skipped'
   error: string | null
 }
 
@@ -99,6 +108,18 @@ export function ReanalyzeProgressDialog({
       }
       if (mine && !isActive(mine) && !finishedNotified) {
         finishedNotified = true
+        // 作品被删 / 作业取消的条目不会有 itemDone，别让它们一直显示为等待
+        setItems((prev) => {
+          let changed = false
+          const next = new Map(prev)
+          for (const [id, item] of next) {
+            if (item.status === 'pending') {
+              next.set(id, { ...item, status: 'skipped' })
+              changed = true
+            }
+          }
+          return changed ? next : prev
+        })
         onDoneRef.current?.()
       }
     })
@@ -368,6 +389,7 @@ function StatusIcon({
 }): React.JSX.Element {
   if (status === 'success') return <CheckCircle2 className="h-4 w-4 text-[#34C759] shrink-0" />
   if (status === 'failed') return <XCircle className="h-4 w-4 text-[#FF3B30] shrink-0" />
+  if (status === 'skipped') return <MinusCircle className="h-4 w-4 text-[#A1A1A6] shrink-0" />
   if (running) return <Loader2 className="h-4 w-4 text-[#0A84FF] shrink-0 animate-spin" />
   return <div className="h-4 w-4 rounded-full border border-[#D1D1D6] shrink-0" />
 }
