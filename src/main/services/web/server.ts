@@ -13,9 +13,9 @@ import {
   type DbUser,
   type PostFilters,
   type UpdateUserSettingsInput
-} from '../database'
-import { findMediaFiles, fromUrlPath, getDownloadPath, isPathInDownloadRoot } from './media'
-import { isUserSyncing, startUserSync } from './syncer'
+} from '../../database'
+import { findMediaFiles, fromUrlPath, getDownloadPath, isPathInDownloadRoot } from '../media'
+import { isUserSyncing, startUserSync } from '../download/syncer'
 
 const DEFAULT_WEB_SERVER_PORT = 38595
 const DEFAULT_PAGE_SIZE = 12

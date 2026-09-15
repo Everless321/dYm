@@ -1,5 +1,5 @@
-import { getUserById, updateUser, getSetting, type DbUser, type CreateUserInput } from '../database'
-import { fetchUserProfileSmart } from './douyin'
+import { getUserById, updateUser, getSetting, type DbUser, type CreateUserInput } from '../../database'
+import { fetchUserProfileSmart } from '../douyin/client'
 import { downloadAvatar } from './avatar'
 
 export type RefreshStatus = 'success' | 'degraded' | 'failed'

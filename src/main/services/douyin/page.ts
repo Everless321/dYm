@@ -1,7 +1,7 @@
 import { BrowserWindow, session, type Session } from 'electron'
-import { getSetting } from '../database'
-import { blockCustomProtocols } from '../utils/block-protocols'
-import { CHROME_UA } from '../utils/user-agent'
+import { getSetting } from '../../database'
+import { blockCustomProtocols } from '../../utils/block-protocols'
+import { CHROME_UA } from '../../utils/user-agent'
 
 /**
  * 在真实抖音页面里发接口请求。

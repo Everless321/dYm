@@ -5,9 +5,9 @@ import {
   stopLiveRecording,
   isRecordingLive,
   getRecordingUserIds
-} from '../services/live-recorder'
-import { preparePlayback, getDanmaku } from '../services/live-playback'
-import { getConvertingIds } from '../services/live-convert'
+} from '../services/live/recorder'
+import { preparePlayback, getDanmaku } from '../services/live/playback'
+import { getConvertingIds } from '../services/live/convert'
 import { syncUserSchedules } from '../services/scheduler'
 import { createLivePlayerWindow } from '../windows/live-player'
 

@@ -2,12 +2,12 @@ import { spawn, type ChildProcess } from 'child_process'
 import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { mkdirSync, statSync } from 'fs'
-import { ffmpegPath } from '../utils/ffmpeg-path'
-import { track } from './telemetry'
-import { getDouyinHandler } from './douyin'
-import { downloadLiveCover } from './live-cover'
-import { startDanmakuRecording, danmakuPathFor, type DanmakuRecorder } from './live-danmaku'
-import { enqueueConvert } from './live-convert'
+import { ffmpegPath } from '../../utils/ffmpeg-path'
+import { track } from '../telemetry'
+import { getDouyinHandler } from '../douyin/client'
+import { downloadLiveCover } from './cover'
+import { startDanmakuRecording, danmakuPathFor, type DanmakuRecorder } from './danmaku'
+import { enqueueConvert } from './convert'
 import {
   getUserById,
   getSetting,
@@ -15,7 +15,7 @@ import {
   createLiveRecord,
   updateLiveRecord,
   type DbLiveRecord
-} from '../database'
+} from '../../database'
 
 // 画质优先级：从高到低（真实清晰度顺序，SD2 高清 > SD1 标清）
 const QUALITY_ORDER = ['FULL_HD1', 'HD1', 'SD2', 'SD1']

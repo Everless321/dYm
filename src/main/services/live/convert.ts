@@ -1,10 +1,10 @@
 import { spawn, execFile } from 'child_process'
 import { BrowserWindow } from 'electron'
 import { existsSync, renameSync, rmSync, statSync } from 'fs'
-import { ffmpegPath, ffprobePath } from '../utils/ffmpeg-path'
-import { getLiveRecords, getLiveRecordById, updateLiveRecord } from '../database'
-import type { LiveProgress } from './live-recorder'
-import { emitLiveConverted } from './scripts/emit'
+import { ffmpegPath, ffprobePath } from '../../utils/ffmpeg-path'
+import { getLiveRecords, getLiveRecordById, updateLiveRecord } from '../../database'
+import type { LiveProgress } from './recorder'
+import { emitLiveConverted } from '../scripts/emit'
 
 /**
  * 录制收尾转换：FLV -> MP4（视频 copy + 音频重编码 + faststart）。

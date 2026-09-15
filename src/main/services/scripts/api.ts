@@ -32,9 +32,9 @@ import {
   setSetting
 } from '../../database'
 import { getDownloadPath } from '../media'
-import { addUserByUrl } from '../user-add'
-import { startUserSync } from '../syncer'
-import { startDownloadTask } from '../downloader'
+import { addUserByUrl } from '../users/add'
+import { startUserSync } from '../download/syncer'
+import { startDownloadTask } from '../download/downloader'
 import { enqueueUnanalyzed, enqueueReanalyze } from '../ai'
 import { createDouyinApi } from './douyin-api'
 import { createShellApi } from './shell-api'

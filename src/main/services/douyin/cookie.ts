@@ -1,8 +1,8 @@
 import { BrowserWindow, session } from 'electron'
-import { setSetting } from '../database'
-import { refreshDouyinHandler } from './douyin'
-import { blockCustomProtocols } from '../utils/block-protocols'
-import { CHROME_UA } from '../utils/user-agent'
+import { setSetting } from '../../database'
+import { refreshDouyinHandler } from './client'
+import { blockCustomProtocols } from '../../utils/block-protocols'
+import { CHROME_UA } from '../../utils/user-agent'
 
 // Cookie 刷新状态
 let isRefreshing = false

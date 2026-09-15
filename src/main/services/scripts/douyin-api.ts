@@ -5,8 +5,8 @@ import {
   fetchVideoDetail,
   getDouyinHandler,
   parseDouyinUrl
-} from '../douyin'
-import { fetchGuarded } from '../douyin-page'
+} from '../douyin/client'
+import { fetchGuarded } from '../douyin/page'
 import type {
   CollectedAweme,
   DouyinAccount,

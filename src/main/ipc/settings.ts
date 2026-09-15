@@ -5,8 +5,8 @@ import {
   fetchDouyinCookie,
   refreshDouyinCookieSilent,
   isCookieRefreshing
-} from '../services/cookie'
-import { refreshDouyinHandler } from '../services/douyin'
+} from '../services/douyin/cookie'
+import { refreshDouyinHandler } from '../services/douyin/client'
 
 export function registerSettingsIpc(): void {
   // Settings IPC handlers

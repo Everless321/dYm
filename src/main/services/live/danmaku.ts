@@ -1,5 +1,5 @@
 import { createWriteStream } from 'fs'
-import { getDouyinHandler } from './douyin'
+import { getDouyinHandler } from '../douyin/client'
 
 // 只记录这三类：聊天 / 礼物 / 进场。点赞、房间统计等刷屏事件丢弃，避免文件膨胀。
 const RECORDED_TYPES = new Set(['chat', 'gift', 'member'])

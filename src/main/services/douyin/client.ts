@@ -1,5 +1,5 @@
 import { DouyinCrawler, DouyinHandler, getSecUserId, getAwemeId, setConfig } from 'polydl'
-import { getSetting } from '../database'
+import { getSetting } from '../../database'
 
 let handler: DouyinHandler | null = null
 

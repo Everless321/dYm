@@ -1,6 +1,6 @@
 import { net } from 'electron'
 import { writeFileSync } from 'fs'
-import { toUrlPath } from './media'
+import { toUrlPath } from '../media'
 
 /**
  * 下载直播封面到本地 `destPath`（与录制的 .flv 同目录、同名 .jpg）。

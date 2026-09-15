@@ -1,7 +1,7 @@
 import { net } from 'electron'
 import { mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { getDownloadPath, toUrlPath } from './media'
+import { getDownloadPath, toUrlPath } from '../media'
 
 // 抖音 sec_uid 仅含字母/数字/下划线/连字符；用作路径前先校验，防止路径穿越
 const SEC_UID_PATTERN = /^[A-Za-z0-9_-]+$/

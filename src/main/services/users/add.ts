@@ -6,16 +6,16 @@ import {
   getUserBySecUid,
   getPostByAwemeId,
   type DbUser
-} from '../database'
+} from '../../database'
 import {
   diagnosePostDetail,
   fetchUserProfileBySecUid,
   fetchVideoDetail,
   parseDouyinUrl
-} from './douyin'
-import { downloadSinglePost } from './downloader'
+} from '../douyin/client'
+import { downloadSinglePost } from '../download/downloader'
 import { downloadAvatar } from './avatar'
-import { emitUserAdded } from './scripts/emit'
+import { emitUserAdded } from '../scripts/emit'
 
 export type AddUserPostDownload =
   | { status: 'downloading'; awemeId: string }

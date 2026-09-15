@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from 'fs'
-import { toUrlPath } from './media'
-import { getLiveRecordById } from '../database'
-import { isConverting } from './live-convert'
-import { danmakuPathFor, type DanmakuLine } from './live-danmaku'
+import { toUrlPath } from '../media'
+import { getLiveRecordById } from '../../database'
+import { isConverting } from './convert'
+import { danmakuPathFor, type DanmakuLine } from './danmaku'
 
 export interface LivePlaybackInfo {
   videoUrl: string

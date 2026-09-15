@@ -7,12 +7,12 @@ import {
   createPost,
   getPostByAwemeId,
   updateUserSyncStatus
-} from '../database'
+} from '../../database'
 import { convertFolderImagesToJpg } from './downloader'
-import { validateDownloadFolder, cleanupFailedDownload, expectsMusic } from './download-validator'
-import { emitPostDownloaded } from './scripts/emit'
-import { track } from './telemetry'
-import { getDownloadPath } from './media'
+import { validateDownloadFolder, cleanupFailedDownload, expectsMusic } from './validator'
+import { emitPostDownloaded } from '../scripts/emit'
+import { track } from '../telemetry'
+import { getDownloadPath } from '../media'
 
 /** 同步触发来源：手动 / 定时调度 */
 export type SyncSource = 'manual' | 'schedule'

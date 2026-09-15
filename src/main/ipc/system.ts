@@ -9,7 +9,7 @@ import {
   getContentLevelDistribution
 } from '../database'
 import { blockCustomProtocols } from '../utils/block-protocols'
-import { getWebServerInfo } from '../services/web-browser'
+import { getWebServerInfo } from '../services/web/server'
 
 export function registerSystemIpc(): void {
   // Database IPC handlers

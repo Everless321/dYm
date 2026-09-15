@@ -1,4 +1,4 @@
-import { getSetting } from '../database'
+import { getSetting } from '../../database'
 
 export interface CollectItem {
   aweme_id: string

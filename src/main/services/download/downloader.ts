@@ -3,7 +3,7 @@ import { join } from 'path'
 import { existsSync, readdirSync, unlinkSync } from 'fs'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { ffmpegPath } from '../utils/ffmpeg-path'
+import { ffmpegPath } from '../../utils/ffmpeg-path'
 
 const execFileAsync = promisify(execFile)
 import { DouyinHandler } from 'polydl'
@@ -16,12 +16,12 @@ import {
   getPostByAwemeId,
   type DbTaskWithUsers,
   type DbUser
-} from '../database'
-import { validateDownloadFolder, cleanupFailedDownload, expectsMusic } from './download-validator'
-import { emitPostDownloaded } from './scripts/emit'
-import { track } from './telemetry'
-import { getDownloadPath } from './media'
-import { runWithConcurrency } from '../utils/concurrency'
+} from '../../database'
+import { validateDownloadFolder, cleanupFailedDownload, expectsMusic } from './validator'
+import { emitPostDownloaded } from '../scripts/emit'
+import { track } from '../telemetry'
+import { getDownloadPath } from '../media'
+import { runWithConcurrency } from '../../utils/concurrency'
 
 /** 下载任务触发来源：手动点开始 / 定时调度 */
 export type DownloadSource = 'manual' | 'schedule'

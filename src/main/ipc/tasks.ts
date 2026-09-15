@@ -9,14 +9,14 @@ import {
   type DbTask,
   type CreateTaskInput
 } from '../database'
-import { startDownloadTask, stopDownloadTask, isTaskRunning } from '../services/downloader'
+import { startDownloadTask, stopDownloadTask, isTaskRunning } from '../services/download/downloader'
 import {
   startUserSync,
   stopUserSync,
   isUserSyncing,
   getAnyUserSyncing,
   getAllSyncingUserIds
-} from '../services/syncer'
+} from '../services/download/syncer'
 import {
   syncUserSchedules,
   syncTaskSchedule,
