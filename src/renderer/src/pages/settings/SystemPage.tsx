@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
+import { Link } from 'react-router-dom'
 import {
   Loader2,
   Chrome,
-  CheckCircle,
   Download,
   RefreshCw,
   FolderSync,
   FolderOpen,
   Database,
-  X
+  X,
+  Sparkles
 } from 'lucide-react'
 import { emitDeveloperModeChange } from '@/lib/developer-mode'
 
@@ -19,9 +20,6 @@ export default function SystemPage() {
   const [fetchingCookie, setFetchingCookie] = useState(false)
 
   // API
-  const [apiKey, setApiKey] = useState('')
-  const [apiUrl, setApiUrl] = useState('https://api.x.ai/v1')
-  const [verifyingApi, setVerifyingApi] = useState(false)
 
   // 下载
   const [downloadPath, setDownloadPath] = useState('')
@@ -37,13 +35,6 @@ export default function SystemPage() {
   const [pendingNewPath, setPendingNewPath] = useState('')
   const [pendingOldPath, setPendingOldPath] = useState('')
   const [migrating, setMigrating] = useState(false)
-
-  // 分析
-  const [analysisConcurrency, setAnalysisConcurrency] = useState('2')
-  const [analysisRpm, setAnalysisRpm] = useState('10')
-  const [analysisModel, setAnalysisModel] = useState('grok-4-fast')
-  const [analysisSlices, setAnalysisSlices] = useState('4')
-  const [analysisPrompt, setAnalysisPrompt] = useState('')
 
   // 收藏同步
   const [collectEnabled, setCollectEnabled] = useState(false)
@@ -102,8 +93,6 @@ export default function SystemPage() {
     try {
       const settings = await window.api.settings.getAll()
       setCookie(settings.douyin_cookie || '')
-      setApiKey(settings.grok_api_key || '')
-      setApiUrl(settings.grok_api_url || 'https://api.x.ai/v1')
       const savedPath = settings.download_path || ''
       setDownloadPath(savedPath)
       originalDownloadPath.current = savedPath
@@ -111,11 +100,6 @@ export default function SystemPage() {
       setVideoDownloadConcurrency(settings.video_download_concurrency || '3')
       setConvertToJpg(settings.convert_images_to_jpg === 'true')
       setDownloadPostOnAddUser(settings.download_post_on_add_user !== 'false')
-      setAnalysisConcurrency(settings.analysis_concurrency || '2')
-      setAnalysisRpm(settings.analysis_rpm || '10')
-      setAnalysisModel(settings.analysis_model || 'grok-4-fast')
-      setAnalysisSlices(settings.analysis_slices || '4')
-      setAnalysisPrompt(settings.analysis_prompt || '')
       setCollectEnabled(settings.collect_sync_enabled === 'true')
       setCollectBaseUrl(settings.collect_sync_base_url || 'https://dymserver.everless.app')
       setCollectToken(settings.collect_sync_token || '')
@@ -192,30 +176,6 @@ export default function SystemPage() {
     }
   }
 
-  // API handlers
-  const handleSaveApi = async () => {
-    try {
-      await window.api.settings.set('grok_api_key', apiKey)
-      await window.api.settings.set('grok_api_url', apiUrl)
-      toast.success('API 设置已保存')
-    } catch {
-      toast.error('保存失败')
-    }
-  }
-
-  const handleVerifyApi = async () => {
-    // 不校验 API Key：Ollama / LM Studio 等本地服务无需鉴权
-    setVerifyingApi(true)
-    try {
-      await window.api.grok.verify(apiKey, apiUrl, analysisModel)
-      toast.success('连接验证成功')
-    } catch (error) {
-      toast.error(`验证失败: ${(error as Error).message}`)
-    } finally {
-      setVerifyingApi(false)
-    }
-  }
-
   // Download handlers
   const handleSaveDownload = async () => {
     try {
@@ -284,20 +244,6 @@ export default function SystemPage() {
     setShowMigrationDialog(false)
     try {
       await saveDownloadSettings()
-    } catch {
-      toast.error('保存失败')
-    }
-  }
-
-  // Analysis handlers
-  const handleSaveAnalysis = async () => {
-    try {
-      await window.api.settings.set('analysis_concurrency', analysisConcurrency)
-      await window.api.settings.set('analysis_rpm', analysisRpm)
-      await window.api.settings.set('analysis_model', analysisModel)
-      await window.api.settings.set('analysis_slices', analysisSlices)
-      await window.api.settings.set('analysis_prompt', analysisPrompt)
-      toast.success('分析设置已保存')
     } catch {
       toast.error('保存失败')
     }
@@ -432,64 +378,21 @@ export default function SystemPage() {
                 </div>
               </div>
 
-              {/* API Settings Card */}
+              {/* AI 服务入口（配置已迁到「视频分析」页） */}
               <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-6">
-                <h2 className="text-base font-semibold text-[#1D1D1F] mb-4">API 设置</h2>
+                <h2 className="text-base font-semibold text-[#1D1D1F] mb-2">AI 服务</h2>
                 <p className="text-xs text-[#A1A1A6] mb-4">
-                  配置兼容 OpenAI 接口的服务用于视频内容分析（Grok、Ollama、LM Studio 等）
+                  AI 提供方（Grok / OpenAI / Claude / Gemini / OpenCode / ChatGPT
+                  订阅等）、分析指令与队列参数已统一到「视频分析」页管理
                 </p>
-
-                <div className="space-y-4">
-                  {/* API Key */}
-                  <div className="flex items-center justify-between">
-                    <div className="md:min-w-[120px]">
-                      <p className="text-sm text-[#1D1D1F]">API Key</p>
-                      <p className="text-xs text-[#A1A1A6] mt-0.5">本地服务可留空</p>
-                    </div>
-                    <input
-                      type="password"
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      placeholder="本地服务（Ollama / LM Studio）可留空"
-                      className="w-full md:w-[360px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
-                    />
-                  </div>
-
-                  {/* API URL */}
-                  <div className="flex items-center justify-between">
-                    <div className="md:min-w-[120px]">
-                      <p className="text-sm text-[#1D1D1F]">API URL</p>
-                    </div>
-                    <input
-                      type="text"
-                      value={apiUrl}
-                      onChange={(e) => setApiUrl(e.target.value)}
-                      placeholder="https://api.x.ai/v1"
-                      className="w-full md:w-[360px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
-                    />
-                  </div>
-
-                  <div className="flex justify-end gap-2">
-                    <button
-                      onClick={handleVerifyApi}
-                      disabled={verifyingApi}
-                      className="h-9 px-4 rounded-lg border border-[#E5E5E7] text-sm text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center gap-2 disabled:opacity-50"
-                    >
-                      {verifyingApi ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <CheckCircle className="h-4 w-4" />
-                      )}
-                      验证
-                    </button>
-                    <button
-                      onClick={handleSaveApi}
-                      disabled={!settingsLoaded}
-                      className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors disabled:opacity-50"
-                    >
-                      保存
-                    </button>
-                  </div>
+                <div className="flex justify-end">
+                  <Link
+                    to="/analysis?tab=providers"
+                    className="h-9 px-4 rounded-lg border border-[#E5E5E7] text-sm text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center gap-2"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    前往配置 AI 提供方
+                  </Link>
                 </div>
               </div>
             </div>
@@ -617,98 +520,6 @@ export default function SystemPage() {
                     className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors disabled:opacity-50"
                   >
                     保存下载设置
-                  </button>
-                </div>
-              </div>
-
-              {/* Analysis Settings Card */}
-              <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-6">
-                <h2 className="text-base font-semibold text-[#1D1D1F] mb-4">分析设置</h2>
-                <p className="text-xs text-[#A1A1A6] mb-4">配置视频内容分析参数</p>
-
-                <div className="divide-y divide-[#E5E5E7]">
-                  {/* Analysis Model */}
-                  <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-sm text-[#1D1D1F]">AI 模型</p>
-                      <p className="text-xs text-[#A1A1A6] mt-1">用于视频分析的模型</p>
-                    </div>
-                    <input
-                      type="text"
-                      value={analysisModel}
-                      onChange={(e) => setAnalysisModel(e.target.value)}
-                      placeholder="grok-4-fast"
-                      className="w-48 h-9 px-3 rounded-md bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] focus:outline-none focus:border-[#0A84FF]"
-                    />
-                  </div>
-
-                  {/* Analysis Concurrency */}
-                  <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-sm text-[#1D1D1F]">分析并发数</p>
-                      <p className="text-xs text-[#A1A1A6] mt-1">同时分析的视频数量</p>
-                    </div>
-                    <input
-                      type="number"
-                      value={analysisConcurrency}
-                      onChange={(e) => setAnalysisConcurrency(e.target.value)}
-                      min="1"
-                      className="w-20 h-9 px-3 rounded-md bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono text-center focus:outline-none focus:border-[#0A84FF]"
-                    />
-                  </div>
-
-                  {/* Analysis RPM */}
-                  <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-sm text-[#1D1D1F]">RPM 限制</p>
-                      <p className="text-xs text-[#A1A1A6] mt-1">每分钟最大请求数</p>
-                    </div>
-                    <input
-                      type="number"
-                      value={analysisRpm}
-                      onChange={(e) => setAnalysisRpm(e.target.value)}
-                      className="w-full md:w-[140px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20 text-center"
-                    />
-                  </div>
-
-                  {/* Analysis Slices */}
-                  <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-sm text-[#1D1D1F]">视频切片数</p>
-                      <p className="text-xs text-[#A1A1A6] mt-1">每个视频分析的帧数</p>
-                    </div>
-                    <input
-                      type="number"
-                      value={analysisSlices}
-                      onChange={(e) => setAnalysisSlices(e.target.value)}
-                      min="1"
-                      className="w-20 h-9 px-3 rounded-md bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono text-center focus:outline-none focus:border-[#0A84FF]"
-                    />
-                  </div>
-
-                  {/* Analysis Prompt */}
-                  <div className="py-4">
-                    <div className="mb-2">
-                      <p className="text-sm text-[#1D1D1F]">自定义 Prompt</p>
-                      <p className="text-xs text-[#A1A1A6] mt-1">留空使用默认 Prompt</p>
-                    </div>
-                    <textarea
-                      value={analysisPrompt}
-                      onChange={(e) => setAnalysisPrompt(e.target.value)}
-                      placeholder="自定义分析提示词..."
-                      rows={4}
-                      className="w-full px-3 py-2 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] resize-none transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end pt-2">
-                  <button
-                    onClick={handleSaveAnalysis}
-                    disabled={!settingsLoaded}
-                    className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors disabled:opacity-50"
-                  >
-                    保存分析设置
                   </button>
                 </div>
               </div>

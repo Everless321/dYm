@@ -512,6 +512,8 @@ declare global {
 
   interface AnalysisAPI {
     getSettings: () => Promise<AnalysisSettings>
+    /** 只更新传入字段；主进程校验范围，非法值抛错 */
+    saveSettings: (patch: Partial<AnalysisSettings>) => Promise<AnalysisSettings>
     createJob: (input: CreateAnalysisJobInput) => Promise<AnalysisJobView>
     listJobs: () => Promise<AnalysisJobView[]>
     getJob: (id: number) => Promise<AnalysisJobView | null>

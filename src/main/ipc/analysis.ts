@@ -47,11 +47,13 @@ import {
   cancelJob,
   retryFailed,
   deleteJob,
-  getAnalysisSettings
+  getAnalysisSettings,
+  saveAnalysisSettings
 } from '../services/ai'
 import type {
   AiProviderInput,
   AnalysisJobItemStatus,
+  AnalysisSettings,
   CreateAnalysisJobInput
 } from '../../shared/ai'
 import { track } from '../services/telemetry'
@@ -74,6 +76,9 @@ export function registerAnalysisIpc(): void {
 
   // ---- 分析队列 ----
   ipcMain.handle('analysis:getSettings', () => getAnalysisSettings())
+  ipcMain.handle('analysis:saveSettings', (_event, patch: Partial<AnalysisSettings>) =>
+    saveAnalysisSettings(patch)
+  )
   ipcMain.handle('analysis:createJob', (_event, input: CreateAnalysisJobInput) => {
     track('analysis_started')
     return createJob(input)

@@ -214,6 +214,8 @@ const aiAPI = {
 
 const analysisAPI = {
   getSettings: (): Promise<AnalysisSettings> => ipcRenderer.invoke('analysis:getSettings'),
+  saveSettings: (patch: Partial<AnalysisSettings>): Promise<AnalysisSettings> =>
+    ipcRenderer.invoke('analysis:saveSettings', patch),
   createJob: (input: CreateAnalysisJobInput): Promise<AnalysisJobView> =>
     ipcRenderer.invoke('analysis:createJob', input),
   listJobs: (): Promise<AnalysisJobView[]> => ipcRenderer.invoke('analysis:listJobs'),

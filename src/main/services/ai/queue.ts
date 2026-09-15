@@ -19,6 +19,7 @@ import {
   recountJob,
   releaseRunningItems,
   requeueFailedItems,
+  setSetting,
   toJobView,
   updateJobStatus,
   type AnalysisJobRow
@@ -56,6 +57,35 @@ export function getAnalysisSettings(): AnalysisSettings {
     tagMode: getSetting('analysis_tag_mode') === 'closed' ? 'closed' : 'open',
     autoAnalyze: getSetting('analysis_auto') === 'true'
   }
+}
+
+function clampInt(value: unknown, min: number, max: number, field: string): number {
+  const n = typeof value === 'number' ? value : parseInt(String(value ?? ''), 10)
+  if (!Number.isFinite(n) || n < min || n > max) {
+    throw new Error(`${field} 必须是 ${min}-${max} 之间的整数`)
+  }
+  return Math.trunc(n)
+}
+
+/** 校验并写入分析设置；只更新传入的字段。空提示词表示恢复默认 */
+export function saveAnalysisSettings(patch: Partial<AnalysisSettings>): AnalysisSettings {
+  if (patch.prompt !== undefined) setSetting('analysis_prompt', String(patch.prompt).trim())
+  if (patch.slices !== undefined) {
+    setSetting('analysis_slices', String(clampInt(patch.slices, 1, 20, '截帧数')))
+  }
+  if (patch.concurrency !== undefined) {
+    setSetting('analysis_concurrency', String(clampInt(patch.concurrency, 1, 16, '并发数')))
+  }
+  if (patch.rpm !== undefined) {
+    setSetting('analysis_rpm', String(clampInt(patch.rpm, 1, 600, '每分钟请求数')))
+  }
+  if (patch.tagMode !== undefined) {
+    setSetting('analysis_tag_mode', patch.tagMode === 'closed' ? 'closed' : 'open')
+  }
+  if (patch.autoAnalyze !== undefined) {
+    setSetting('analysis_auto', patch.autoAnalyze ? 'true' : 'false')
+  }
+  return getAnalysisSettings()
 }
 
 // ==================== 队列状态 ====================
