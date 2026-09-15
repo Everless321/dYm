@@ -1,3 +1,5 @@
+import { Page } from '@/components/layout/Page'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -423,25 +425,26 @@ export default function BrowsePage() {
   }, [showAuthorDropdown])
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Header */}
-      <header className="h-16 flex items-center justify-between px-6 border-b border-[#E5E5E7] bg-white">
-        <h1 className="text-xl font-semibold text-[#1D1D1F]">视频库</h1>
-        <div className="flex items-center gap-4">
-          {/* Search Box */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#A1A1A6]" />
-            <input
-              type="text"
-              value={searchKeyword}
-              onChange={(e) => setSearchKeyword(e.target.value)}
-              placeholder="搜索标题 / 作者 / 标签"
-              className="h-10 w-[280px] pl-10 pr-4 rounded-lg border border-[#E5E5E7] bg-white text-sm placeholder:text-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-[#0A84FF]/20 focus:border-[#0A84FF]"
-            />
-          </div>
-          <SortSelect value={sort} onChange={setSort} />
-        </div>
-      </header>
+    <Page>
+      <PageHeader
+        title="视频库"
+        actions={
+          <>
+            {/* Search Box */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#A1A1A6]" />
+              <input
+                type="text"
+                value={searchKeyword}
+                onChange={(e) => setSearchKeyword(e.target.value)}
+                placeholder="搜索标题 / 作者 / 标签"
+                className="h-10 w-[280px] pl-10 pr-4 rounded-lg border border-[#E5E5E7] bg-white text-sm placeholder:text-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-[#0A84FF]/20 focus:border-[#0A84FF]"
+              />
+            </div>
+            <SortSelect value={sort} onChange={setSort} />
+          </>
+        }
+      />
 
       {/* Filters */}
       <div className="px-6 py-4 bg-[#F5F5F7] border-b border-[#E5E5E7]">
@@ -749,6 +752,6 @@ export default function BrowsePage() {
       />
 
       <VideoDownloadDialog open={downloadDialogOpen} onOpenChange={setDownloadDialogOpen} />
-    </div>
+    </Page>
   )
 }

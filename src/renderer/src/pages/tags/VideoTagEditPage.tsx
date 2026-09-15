@@ -231,7 +231,7 @@ export default function VideoTagEditPage() {
     <div className="flex flex-col h-full">
       <PageHeader
         left={<BackLink label="返回列表" onClick={() => navigate(backTo)} />}
-        right={
+        actions={
           idx >= 0 && siblings.length > 1 ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-[#A1A1A6] tabular-nums mr-1">
@@ -262,7 +262,7 @@ export default function VideoTagEditPage() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto p-8">
+      <div className="flex-1 overflow-y-auto p-6">
         <div className="flex gap-8 max-w-5xl">
           {/* Left: preview */}
           <div className="w-80 shrink-0 space-y-4">

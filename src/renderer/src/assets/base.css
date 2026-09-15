@@ -1,15 +1,15 @@
 :root {
   /* Apple-inspired minimal palette */
-  --accent-primary: #0A84FF;
-  --accent-secondary: #5AC8FA;
-  --bg-primary: #F5F5F7;
-  --bg-surface: #FFFFFF;
-  --bg-active: #E8F0FE;
-  --bg-hover: #F2F2F4;
-  --border-color: #E5E5E7;
-  --text-primary: #1D1D1F;
-  --text-secondary: #6E6E73;
-  --text-muted: #A1A1A6;
+  --accent-primary: #0a84ff;
+  --accent-secondary: #5ac8fa;
+  --bg-primary: #f5f5f7;
+  --bg-surface: #ffffff;
+  --bg-active: #e8f0fe;
+  --bg-hover: #f2f2f4;
+  --border-color: #e5e5e7;
+  --text-primary: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-muted: #a1a1a6;
 
   /* shadcn/ui 变量映射 */
   --background: 240 10% 97%;

@@ -1,19 +1,42 @@
 import { ReactNode } from 'react'
 import { ChevronLeft } from 'lucide-react'
 
-/** 页头外壳：统一 h-16 白底分隔线，左右两个插槽 */
+interface PageHeaderProps {
+  /** 标题；与 description / meta 组成默认左侧内容 */
+  title?: ReactNode
+  /** 标题下方一行小字说明 */
+  description?: ReactNode
+  /** 标题右侧的小字统计（如「(12)」「3 路录制中」） */
+  meta?: ReactNode
+  /** 完全自定义左侧（面包屑、返回按钮等），传了就忽略 title / description / meta */
+  left?: ReactNode
+  /** 右侧操作区 */
+  actions?: ReactNode
+}
+
+/** 页头外壳：统一 h-16 白底分隔线、px-6，左右两个插槽 */
 export function PageHeader({
+  title,
+  description,
+  meta,
   left,
-  right
-}: {
-  left: ReactNode
-  right?: ReactNode
-}): React.JSX.Element {
+  actions
+}: PageHeaderProps): React.JSX.Element {
   return (
-    <div className="h-16 flex items-center justify-between px-8 border-b border-[#E5E5E7] bg-white shrink-0">
-      <div className="flex items-center gap-2 min-w-0">{left}</div>
-      {right && <div className="flex items-center gap-2 shrink-0">{right}</div>}
-    </div>
+    <header className="h-16 flex items-center justify-between gap-4 px-6 border-b border-[#E5E5E7] bg-white shrink-0">
+      <div className="flex items-center gap-3 min-w-0">
+        {left ?? (
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-3 min-w-0">
+              <h1 className="text-xl font-semibold text-[#1D1D1F] truncate">{title}</h1>
+              {meta && <span className="text-sm text-[#A1A1A6] shrink-0">{meta}</span>}
+            </div>
+            {description && <p className="text-sm text-[#6E6E73] mt-0.5 truncate">{description}</p>}
+          </div>
+        )}
+      </div>
+      {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+    </header>
   )
 }
 

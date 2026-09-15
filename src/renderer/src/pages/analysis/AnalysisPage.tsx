@@ -1,3 +1,5 @@
+import { Page, PageBody } from '@/components/layout/Page'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -82,24 +84,22 @@ export default function AnalysisPage(): React.JSX.Element {
   const activeCount = jobs?.filter(isJobActive).length ?? 0
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="h-16 flex items-center justify-between px-6 border-b border-[#E5E5E7] bg-white shrink-0">
-        <div>
-          <h1 className="text-xl font-semibold text-[#1D1D1F]">AI 视频分析</h1>
-          <p className="text-sm text-[#6E6E73] mt-0.5">
-            按作业排队分析，自动打标签；支持多个 AI 服务切换
-          </p>
-        </div>
-        <button
-          onClick={() => setNewJobOpen(true)}
-          className="h-9 px-4 rounded-lg bg-[#0A84FF] text-white text-sm font-medium flex items-center gap-2 hover:bg-[#0060D5] transition-colors"
-        >
-          <Sparkles className="h-4 w-4" />
-          新建分析
-        </button>
-      </div>
+    <Page>
+      <PageHeader
+        title="AI 视频分析"
+        description="按作业排队分析，自动打标签；支持多个 AI 服务切换"
+        actions={
+          <button
+            onClick={() => setNewJobOpen(true)}
+            className="h-9 px-4 rounded-lg bg-[#0A84FF] text-white text-sm font-medium flex items-center gap-2 hover:bg-[#0060D5] transition-colors"
+          >
+            <Sparkles className="h-4 w-4" />
+            新建分析
+          </button>
+        }
+      />
 
-      <div className="px-6 pt-4 shrink-0">
+      <PageBody>
         <div className="inline-flex h-9 items-center rounded-lg bg-[#F2F2F4] p-1">
           {TABS.map((t) => {
             const Icon = t.icon
@@ -126,10 +126,8 @@ export default function AnalysisPage(): React.JSX.Element {
             )
           })}
         </div>
-      </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        <div className="mx-auto max-w-6xl w-full">
+        <div>
           {tab === 'queue' && (
             <JobsPanel jobs={jobs} totals={totals} onCreate={() => setNewJobOpen(true)} />
           )}
@@ -139,7 +137,7 @@ export default function AnalysisPage(): React.JSX.Element {
           </div>
           {tab === 'providers' && <ProvidersPanel onChanged={setProviders} />}
         </div>
-      </div>
+      </PageBody>
 
       <NewJobDialog
         open={newJobOpen}
@@ -151,6 +149,6 @@ export default function AnalysisPage(): React.JSX.Element {
           setTab('providers')
         }}
       />
-    </div>
+    </Page>
   )
 }

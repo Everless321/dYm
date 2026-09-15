@@ -1,3 +1,5 @@
+import { Page, PageBody } from '@/components/layout/Page'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
@@ -466,459 +468,454 @@ export default function ScriptsPage(): React.JSX.Element {
   )
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <header className="h-16 flex items-center justify-between px-6 border-b border-[#E5E5E7] bg-white flex-shrink-0">
-        <div>
-          <h1 className="text-xl font-semibold text-[#1D1D1F]">自定义脚本</h1>
-          <p className="text-sm text-[#6E6E73] mt-0.5">在这里直接写脚本，或把 .js 放进脚本目录</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              setPendingSource(null)
-              setCreateOpen(true)
-            }}
-            className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            新建脚本
-          </button>
-          <button
-            onClick={() => refresh()}
-            disabled={loading}
-            className="h-9 px-4 rounded-lg border border-[#E5E5E7] text-sm text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center gap-2 disabled:opacity-50"
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            重新扫描
-          </button>
-          <button
-            onClick={() => window.api.scripts.openDir()}
-            className="h-9 px-4 rounded-lg border border-[#E5E5E7] text-sm text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center gap-2"
-          >
-            <FolderOpen className="h-4 w-4" />
-            打开脚本目录
-          </button>
-        </div>
-      </header>
+    <Page>
+      <PageHeader
+        title="自定义脚本"
+        description="在这里直接写脚本，或把 .js 放进脚本目录"
+        actions={
+          <>
+            <button
+              onClick={() => {
+                setPendingSource(null)
+                setCreateOpen(true)
+              }}
+              className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              新建脚本
+            </button>
+            <button
+              onClick={() => refresh()}
+              disabled={loading}
+              className="h-9 px-4 rounded-lg border border-[#E5E5E7] text-sm text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center gap-2 disabled:opacity-50"
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              重新扫描
+            </button>
+            <button
+              onClick={() => window.api.scripts.openDir()}
+              className="h-9 px-4 rounded-lg border border-[#E5E5E7] text-sm text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center gap-2"
+            >
+              <FolderOpen className="h-4 w-4" />
+              打开脚本目录
+            </button>
+          </>
+        }
+      />
 
-      {/* Content */}
-      <div className="flex-1 overflow-hidden px-6 py-8">
-        <div className="mx-auto max-w-7xl h-full flex gap-6">
-          {/* 脚本列表 */}
-          <aside className="w-60 flex-shrink-0 bg-white rounded-2xl border border-[#E5E5E7] shadow-sm overflow-y-auto p-3 space-y-6">
-            {renderGroup(
-              '内置脚本',
-              <Package className="h-3.5 w-3.5 text-[#A1A1A6]" />,
-              builtinScripts,
-              '暂无内置脚本'
-            )}
-            {renderGroup(
-              '我的脚本',
-              <FileCode className="h-3.5 w-3.5 text-[#A1A1A6]" />,
-              externalScripts,
-              '还没有脚本，点右上角「新建脚本」'
-            )}
-          </aside>
+      <PageBody width="full" fill className="flex-row gap-6">
+        {/* 脚本列表 */}
+        <aside className="w-60 flex-shrink-0 bg-white rounded-2xl border border-[#E5E5E7] shadow-sm overflow-y-auto p-3 space-y-6">
+          {renderGroup(
+            '内置脚本',
+            <Package className="h-3.5 w-3.5 text-[#A1A1A6]" />,
+            builtinScripts,
+            '暂无内置脚本'
+          )}
+          {renderGroup(
+            '我的脚本',
+            <FileCode className="h-3.5 w-3.5 text-[#A1A1A6]" />,
+            externalScripts,
+            '还没有脚本，点右上角「新建脚本」'
+          )}
+        </aside>
 
-          {/* 详情 + 编辑器/输出：min-w-0 让长路径/日志在容器内换行而不是撑破布局 */}
-          <div className="flex-1 min-w-0 bg-white rounded-2xl border border-[#E5E5E7] shadow-sm flex flex-col overflow-hidden">
-            {selected ? (
-              <>
-                <div className="px-6 py-5 border-b border-[#E5E5E7] flex-shrink-0">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-base font-semibold text-[#1D1D1F] truncate">
-                          {selected.name}
-                        </h2>
-                        <span className="text-[11px] px-2 py-0.5 rounded-md bg-[#F2F2F4] text-[#6E6E73] flex-shrink-0">
-                          {selected.source === 'builtin' ? '内置 · 只读' : '我的脚本'}
+        {/* 详情 + 编辑器/输出：min-w-0 让长路径/日志在容器内换行而不是撑破布局 */}
+        <div className="flex-1 min-w-0 bg-white rounded-2xl border border-[#E5E5E7] shadow-sm flex flex-col overflow-hidden">
+          {selected ? (
+            <>
+              <div className="px-6 py-5 border-b border-[#E5E5E7] flex-shrink-0">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-base font-semibold text-[#1D1D1F] truncate">
+                        {selected.name}
+                      </h2>
+                      <span className="text-[11px] px-2 py-0.5 rounded-md bg-[#F2F2F4] text-[#6E6E73] flex-shrink-0">
+                        {selected.source === 'builtin' ? '内置 · 只读' : '我的脚本'}
+                      </span>
+                      {dirty && (
+                        <span className="text-[11px] px-2 py-0.5 rounded-md bg-[#FFF8ED] text-[#8A5A00] flex-shrink-0">
+                          未保存
                         </span>
-                        {dirty && (
-                          <span className="text-[11px] px-2 py-0.5 rounded-md bg-[#FFF8ED] text-[#8A5A00] flex-shrink-0">
-                            未保存
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm text-[#6E6E73] mt-1">
-                        {selected.description || '（无描述）'}
-                      </p>
-                      {selected.hook && (
-                        <p className="text-xs text-[#0A84FF] mt-1.5 flex items-center gap-1.5">
-                          <Zap className="h-3.5 w-3.5 flex-shrink-0" />
-                          <span>{scriptHookLabel(selected.hook)}</span>
-                          {!selected.hookEnabled && <span className="text-[#A1A1A6]">已暂停</span>}
-                        </p>
-                      )}
-                      {selectedSchedule?.enabled && (
-                        <p className="text-xs text-[#0A84FF] mt-1.5 flex items-center gap-1.5">
-                          <CalendarClock className="h-3.5 w-3.5 flex-shrink-0" />
-                          <span className="font-mono">{selectedSchedule.cron}</span>
-                          <span className="text-[#A1A1A6]">
-                            下次 {formatNextRun(selectedSchedule.nextRun)}
-                          </span>
-                        </p>
-                      )}
-                      {selected.filePath && (
-                        <p className="text-xs text-[#A1A1A6] mt-1.5 font-mono break-all">
-                          {selected.filePath}
-                        </p>
                       )}
                     </div>
+                    <p className="text-sm text-[#6E6E73] mt-1">
+                      {selected.description || '（无描述）'}
+                    </p>
+                    {selected.hook && (
+                      <p className="text-xs text-[#0A84FF] mt-1.5 flex items-center gap-1.5">
+                        <Zap className="h-3.5 w-3.5 flex-shrink-0" />
+                        <span>{scriptHookLabel(selected.hook)}</span>
+                        {!selected.hookEnabled && <span className="text-[#A1A1A6]">已暂停</span>}
+                      </p>
+                    )}
+                    {selectedSchedule?.enabled && (
+                      <p className="text-xs text-[#0A84FF] mt-1.5 flex items-center gap-1.5">
+                        <CalendarClock className="h-3.5 w-3.5 flex-shrink-0" />
+                        <span className="font-mono">{selectedSchedule.cron}</span>
+                        <span className="text-[#A1A1A6]">
+                          下次 {formatNextRun(selectedSchedule.nextRun)}
+                        </span>
+                      </p>
+                    )}
+                    {selected.filePath && (
+                      <p className="text-xs text-[#A1A1A6] mt-1.5 font-mono break-all">
+                        {selected.filePath}
+                      </p>
+                    )}
+                  </div>
 
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <button
-                        onClick={() => setScheduleOpen(true)}
-                        title={
-                          selectedSchedule?.enabled
-                            ? `定时执行：${selectedSchedule.cron}`
-                            : '设置定时执行'
-                        }
-                        className={cn(
-                          'h-9 w-9 rounded-lg border transition-colors flex items-center justify-center',
-                          selectedSchedule?.enabled
-                            ? 'border-[#0A84FF] bg-[#E8F0FE] text-[#0A84FF]'
-                            : 'border-[#E5E5E7] text-[#6E6E73] hover:bg-[#F2F2F4]'
-                        )}
-                      >
-                        <CalendarClock className="h-4 w-4" />
-                      </button>
-                      {editable && (
-                        <>
-                          <button
-                            onClick={() => setRenameOpen(true)}
-                            title="重命名"
-                            className="h-9 w-9 rounded-lg border border-[#E5E5E7] text-[#6E6E73] hover:bg-[#F2F2F4] transition-colors flex items-center justify-center"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => setDeleteOpen(true)}
-                            title="删除"
-                            className="h-9 w-9 rounded-lg border border-[#E5E5E7] text-[#6E6E73] hover:bg-[#FFF1F0] hover:text-[#FF3B30] transition-colors flex items-center justify-center"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => setScheduleOpen(true)}
+                      title={
+                        selectedSchedule?.enabled
+                          ? `定时执行：${selectedSchedule.cron}`
+                          : '设置定时执行'
+                      }
+                      className={cn(
+                        'h-9 w-9 rounded-lg border transition-colors flex items-center justify-center',
+                        selectedSchedule?.enabled
+                          ? 'border-[#0A84FF] bg-[#E8F0FE] text-[#0A84FF]'
+                          : 'border-[#E5E5E7] text-[#6E6E73] hover:bg-[#F2F2F4]'
                       )}
-                      {isRunning ? (
+                    >
+                      <CalendarClock className="h-4 w-4" />
+                    </button>
+                    {editable && (
+                      <>
                         <button
-                          onClick={handleStop}
-                          disabled={stopping}
-                          className="h-9 px-4 rounded-lg bg-[#FF3B30] text-sm text-white font-medium hover:bg-[#D70015] transition-colors flex items-center gap-2 disabled:opacity-50"
+                          onClick={() => setRenameOpen(true)}
+                          title="重命名"
+                          className="h-9 w-9 rounded-lg border border-[#E5E5E7] text-[#6E6E73] hover:bg-[#F2F2F4] transition-colors flex items-center justify-center"
                         >
-                          {stopping ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Square className="h-4 w-4 fill-current" />
-                          )}
-                          {stopping ? '停止中' : '停止'}
+                          <Pencil className="h-4 w-4" />
                         </button>
+                        <button
+                          onClick={() => setDeleteOpen(true)}
+                          title="删除"
+                          className="h-9 w-9 rounded-lg border border-[#E5E5E7] text-[#6E6E73] hover:bg-[#FFF1F0] hover:text-[#FF3B30] transition-colors flex items-center justify-center"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </>
+                    )}
+                    {isRunning ? (
+                      <button
+                        onClick={handleStop}
+                        disabled={stopping}
+                        className="h-9 px-4 rounded-lg bg-[#FF3B30] text-sm text-white font-medium hover:bg-[#D70015] transition-colors flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {stopping ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Square className="h-4 w-4 fill-current" />
+                        )}
+                        {stopping ? '停止中' : '停止'}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleRun}
+                        disabled={saving || (!!selected.error && !dirty)}
+                        title={
+                          selected.error && !dirty
+                            ? selected.error
+                            : selected.hook && selected.hasLastHookEvent
+                              ? '用上次钩子入参再执行一次，上次失败也可以再跑'
+                              : dirty
+                                ? '会先保存再运行'
+                                : selected.hook
+                                  ? '还没有钩子入参时 event 为空，等自动触发一次后就可以带着上次数据再跑'
+                                  : undefined
+                        }
+                        className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors flex items-center gap-2 disabled:opacity-50"
+                      >
+                        <Play className="h-4 w-4" />
+                        {selected.hook && selected.hasLastHookEvent ? '再次运行' : '运行'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {selected.hookWarning && (
+                  <div className="mt-3 flex items-start gap-2 rounded-lg bg-[#FFF8ED] border border-[#FF9500]/25 px-3 py-2">
+                    <AlertTriangle className="h-4 w-4 text-[#FF9500] flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-[#8A5A00]">{selected.hookWarning}</p>
+                  </div>
+                )}
+                {selected.hook && (
+                  <div className="mt-3 flex items-start justify-between gap-3 rounded-lg border border-[#E5E5E7] bg-[#F5F5F7] px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-xs text-[#1D1D1F] mb-2">
+                        {selected.source === 'builtin'
+                          ? `范例：复制后才会在「${scriptHookLabel(selected.hook)}」时自动运行`
+                          : `会在「${scriptHookLabel(selected.hook)}」时自动运行`}
+                      </p>
+                      <HookParamHelp option={scriptHookOption(selected.hook)} compact />
+                    </div>
+                    {selected.source === 'external' && (
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-[11px] text-[#6E6E73]">启用</span>
+                        <Switch
+                          checked={selected.hookEnabled}
+                          onCheckedChange={handleHookEnabled}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+                {selected.error && (
+                  <div className="mt-3 flex items-start gap-2 rounded-lg bg-[#FFF8ED] border border-[#FF9500]/25 px-3 py-2">
+                    <AlertTriangle className="h-4 w-4 text-[#FF9500] flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-[#8A5A00] whitespace-pre-wrap break-all">
+                      {selected.error}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* 代码 / 输出 切换 */}
+              <div className="flex items-center gap-1 px-6 pt-3 flex-shrink-0">
+                {(
+                  [
+                    { key: 'code', label: '代码', icon: <Code2 className="h-3.5 w-3.5" /> },
+                    {
+                      key: 'output',
+                      label: runs.length > 0 ? `输出 · ${runs.length}` : '输出',
+                      icon: <Terminal className="h-3.5 w-3.5" />
+                    }
+                  ] as const
+                ).map((item) => (
+                  <button
+                    key={item.key}
+                    onClick={() => setTab(item.key)}
+                    className={cn(
+                      'h-8 px-3 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5',
+                      tab === item.key
+                        ? 'bg-[#E8F0FE] text-[#0A84FF]'
+                        : 'text-[#6E6E73] hover:bg-[#F2F2F4]'
+                    )}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+
+              {tab === 'code' ? (
+                <>
+                  <div className="flex-1 min-h-0 px-6 pt-3">
+                    <div className="h-full rounded-xl border border-[#E5E5E7] overflow-hidden">
+                      {entry ? (
+                        <CodeEditor
+                          key={selected.id}
+                          value={entry.draft}
+                          onChange={handleDraftChange}
+                          onSave={handleSave}
+                          readOnly={!editable}
+                        />
                       ) : (
-                        <button
-                          onClick={handleRun}
-                          disabled={saving || (!!selected.error && !dirty)}
-                          title={
-                            selected.error && !dirty
-                              ? selected.error
-                              : selected.hook && selected.hasLastHookEvent
-                                ? '用上次钩子入参再执行一次，上次失败也可以再跑'
-                                : dirty
-                                  ? '会先保存再运行'
-                                  : selected.hook
-                                    ? '还没有钩子入参时 event 为空，等自动触发一次后就可以带着上次数据再跑'
-                                    : undefined
-                          }
-                          className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors flex items-center gap-2 disabled:opacity-50"
-                        >
-                          <Play className="h-4 w-4" />
-                          {selected.hook && selected.hasLastHookEvent ? '再次运行' : '运行'}
-                        </button>
+                        <div className="h-full flex items-center justify-center bg-[#F5F5F7]">
+                          <Loader2 className="h-4 w-4 animate-spin text-[#A1A1A6]" />
+                        </div>
                       )}
                     </div>
                   </div>
 
-                  {selected.hookWarning && (
-                    <div className="mt-3 flex items-start gap-2 rounded-lg bg-[#FFF8ED] border border-[#FF9500]/25 px-3 py-2">
-                      <AlertTriangle className="h-4 w-4 text-[#FF9500] flex-shrink-0 mt-0.5" />
-                      <p className="text-xs text-[#8A5A00]">{selected.hookWarning}</p>
-                    </div>
-                  )}
-                  {selected.hook && (
-                    <div className="mt-3 flex items-start justify-between gap-3 rounded-lg border border-[#E5E5E7] bg-[#F5F5F7] px-3 py-2">
-                      <div className="min-w-0">
-                        <p className="text-xs text-[#1D1D1F] mb-2">
-                          {selected.source === 'builtin'
-                            ? `范例：复制后才会在「${scriptHookLabel(selected.hook)}」时自动运行`
-                            : `会在「${scriptHookLabel(selected.hook)}」时自动运行`}
-                        </p>
-                        <HookParamHelp option={scriptHookOption(selected.hook)} compact />
+                  <div className="flex items-center justify-between px-6 py-3 flex-shrink-0">
+                    {editable ? (
+                      <>
+                        <span className="text-[11px] text-[#A1A1A6]">
+                          {dirty ? '有未保存的修改 · ⌘/Ctrl+S 保存' : '已保存'}
+                        </span>
+                        <button
+                          onClick={handleSave}
+                          disabled={!dirty || saving}
+                          className="h-8 px-3 rounded-lg bg-[#0A84FF] text-xs text-white font-medium hover:bg-[#0060D5] transition-colors flex items-center gap-1.5 disabled:opacity-40"
+                        >
+                          {saving ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Save className="h-3.5 w-3.5" />
+                          )}
+                          保存
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-[11px] text-[#A1A1A6]">
+                          内置脚本随版本更新，不可编辑——复制一份就能改
+                        </span>
+                        <button
+                          onClick={() => {
+                            setPendingSource(entry?.draft ?? '')
+                            setCreateOpen(true)
+                          }}
+                          disabled={!entry}
+                          className="h-8 px-3 rounded-lg border border-[#E5E5E7] text-xs text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center gap-1.5 disabled:opacity-40"
+                        >
+                          <FilePlus2 className="h-3.5 w-3.5" />
+                          以此为模板新建
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between px-6 pt-2 pb-1 flex-shrink-0 gap-3">
+                    <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                      <span className="text-[11px] text-[#A1A1A6] flex-shrink-0">日志留存</span>
+                      <input
+                        type="number"
+                        min={50}
+                        max={20000}
+                        value={logLimitDraft}
+                        onChange={(e) => setLogLimitDraft(e.target.value)}
+                        onBlur={() => {
+                          const value = Number(logLimitDraft)
+                          if (Number.isFinite(value)) void handleLogLimit(value)
+                          else setLogLimitDraft(String(selected.logLimit))
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                        }}
+                        className="h-7 w-16 rounded-md border border-[#E5E5E7] bg-white px-1.5 text-[11px] text-[#1D1D1F] tabular-nums"
+                      />
+                      <span className="text-[11px] text-[#A1A1A6]">条</span>
+                      <div className="flex flex-wrap gap-1">
+                        {LOG_LIMIT_PRESETS.map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => void handleLogLimit(preset)}
+                            className={cn(
+                              'h-6 px-1.5 rounded border text-[10px] tabular-nums',
+                              selected.logLimit === preset
+                                ? 'border-[#0A84FF] bg-[#E8F0FE] text-[#0A84FF]'
+                                : 'border-[#E5E5E7] text-[#6E6E73] hover:bg-[#F2F2F4]'
+                            )}
+                          >
+                            {preset}
+                          </button>
+                        ))}
                       </div>
-                      {selected.source === 'external' && (
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className="text-[11px] text-[#6E6E73]">启用</span>
-                          <Switch
-                            checked={selected.hookEnabled}
-                            onCheckedChange={handleHookEnabled}
-                          />
-                        </div>
-                      )}
                     </div>
-                  )}
-                  {selected.error && (
-                    <div className="mt-3 flex items-start gap-2 rounded-lg bg-[#FFF8ED] border border-[#FF9500]/25 px-3 py-2">
-                      <AlertTriangle className="h-4 w-4 text-[#FF9500] flex-shrink-0 mt-0.5" />
-                      <p className="text-xs text-[#8A5A00] whitespace-pre-wrap break-all">
-                        {selected.error}
+                    <button
+                      onClick={handleClearLogs}
+                      className="h-7 px-2 rounded-md text-[11px] text-[#A1A1A6] hover:text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center gap-1 flex-shrink-0"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      清空
+                    </button>
+                  </div>
+
+                  {runs.length === 0 ? (
+                    <div className="flex-1 flex items-center justify-center px-6">
+                      <p className="text-sm text-[#A1A1A6]">
+                        {selected.hook
+                          ? '钩子触发或点「运行」后，这里会列出每次执行'
+                          : '点击「运行」后，这里会列出每次执行'}
                       </p>
                     </div>
-                  )}
-                </div>
-
-                {/* 代码 / 输出 切换 */}
-                <div className="flex items-center gap-1 px-6 pt-3 flex-shrink-0">
-                  {(
-                    [
-                      { key: 'code', label: '代码', icon: <Code2 className="h-3.5 w-3.5" /> },
-                      {
-                        key: 'output',
-                        label: runs.length > 0 ? `输出 · ${runs.length}` : '输出',
-                        icon: <Terminal className="h-3.5 w-3.5" />
-                      }
-                    ] as const
-                  ).map((item) => (
-                    <button
-                      key={item.key}
-                      onClick={() => setTab(item.key)}
-                      className={cn(
-                        'h-8 px-3 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5',
-                        tab === item.key
-                          ? 'bg-[#E8F0FE] text-[#0A84FF]'
-                          : 'text-[#6E6E73] hover:bg-[#F2F2F4]'
-                      )}
-                    >
-                      {item.icon}
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-
-                {tab === 'code' ? (
-                  <>
-                    <div className="flex-1 min-h-0 px-6 pt-3">
-                      <div className="h-full rounded-xl border border-[#E5E5E7] overflow-hidden">
-                        {entry ? (
-                          <CodeEditor
-                            key={selected.id}
-                            value={entry.draft}
-                            onChange={handleDraftChange}
-                            onSave={handleSave}
-                            readOnly={!editable}
-                          />
-                        ) : (
-                          <div className="h-full flex items-center justify-center bg-[#F5F5F7]">
-                            <Loader2 className="h-4 w-4 animate-spin text-[#A1A1A6]" />
+                  ) : (
+                    <div className="flex-1 min-h-0 flex gap-3 overflow-hidden px-6 pb-6">
+                      <aside className="w-56 flex-shrink-0 overflow-y-auto rounded-xl border border-[#E5E5E7] bg-white p-1.5">
+                        {runs.map((run) => {
+                          const active = selectedRun?.runId === run.runId
+                          return (
+                            <button
+                              key={run.runId}
+                              type="button"
+                              onClick={() => {
+                                setSelectedRunId(run.runId)
+                                setFollowLatestRun(run.runId === latestRunId)
+                              }}
+                              className={cn(
+                                'w-full text-left rounded-lg px-2.5 py-2 mb-0.5 transition-colors',
+                                active ? 'bg-[#E8F0FE]' : 'hover:bg-[#F2F2F4]'
+                              )}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span
+                                  className={cn(
+                                    'text-[11px] tabular-nums',
+                                    active ? 'text-[#0A84FF]' : 'text-[#A1A1A6]'
+                                  )}
+                                >
+                                  {formatClock(run.startedAt)}
+                                </span>
+                                <RunStatusIcon status={run.status} />
+                              </div>
+                              <p
+                                className={cn(
+                                  'text-xs mt-0.5 truncate',
+                                  active ? 'text-[#0A84FF] font-medium' : 'text-[#1D1D1F]'
+                                )}
+                              >
+                                {run.title}
+                              </p>
+                              <p className="text-[11px] text-[#A1A1A6] mt-0.5 truncate">
+                                {run.preview || (run.status === 'running' ? '正在运行…' : '无输出')}
+                                {run.durationLabel ? ` · ${run.durationLabel}` : ''}
+                              </p>
+                            </button>
+                          )
+                        })}
+                      </aside>
+                      <div
+                        ref={logBoxRef}
+                        className="flex-1 min-w-0 overflow-auto rounded-xl bg-[#F5F5F7] border border-[#E5E5E7] px-4 py-3"
+                      >
+                        {selectedRun ? (
+                          <div className="font-mono text-xs leading-[1.7]">
+                            {selectedRun.logs.map((log, index) => (
+                              <div
+                                key={`${log.runId}-${index}`}
+                                className={cn(
+                                  'flex gap-2 whitespace-pre-wrap break-all',
+                                  log.level === 'error' ? 'text-[#D70015]' : 'text-[#1D1D1F]'
+                                )}
+                              >
+                                <span className="text-[#C7C7CC] select-none flex-shrink-0 tabular-nums">
+                                  {formatClock(log.time)}
+                                </span>
+                                <span className="min-w-0">{log.message}</span>
+                              </div>
+                            ))}
                           </div>
+                        ) : (
+                          <p className="text-sm text-[#A1A1A6]">选一次执行看日志</p>
                         )}
                       </div>
                     </div>
-
-                    <div className="flex items-center justify-between px-6 py-3 flex-shrink-0">
-                      {editable ? (
-                        <>
-                          <span className="text-[11px] text-[#A1A1A6]">
-                            {dirty ? '有未保存的修改 · ⌘/Ctrl+S 保存' : '已保存'}
-                          </span>
-                          <button
-                            onClick={handleSave}
-                            disabled={!dirty || saving}
-                            className="h-8 px-3 rounded-lg bg-[#0A84FF] text-xs text-white font-medium hover:bg-[#0060D5] transition-colors flex items-center gap-1.5 disabled:opacity-40"
-                          >
-                            {saving ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Save className="h-3.5 w-3.5" />
-                            )}
-                            保存
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <span className="text-[11px] text-[#A1A1A6]">
-                            内置脚本随版本更新，不可编辑——复制一份就能改
-                          </span>
-                          <button
-                            onClick={() => {
-                              setPendingSource(entry?.draft ?? '')
-                              setCreateOpen(true)
-                            }}
-                            disabled={!entry}
-                            className="h-8 px-3 rounded-lg border border-[#E5E5E7] text-xs text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center gap-1.5 disabled:opacity-40"
-                          >
-                            <FilePlus2 className="h-3.5 w-3.5" />
-                            以此为模板新建
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between px-6 pt-2 pb-1 flex-shrink-0 gap-3">
-                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                        <span className="text-[11px] text-[#A1A1A6] flex-shrink-0">日志留存</span>
-                        <input
-                          type="number"
-                          min={50}
-                          max={20000}
-                          value={logLimitDraft}
-                          onChange={(e) => setLogLimitDraft(e.target.value)}
-                          onBlur={() => {
-                            const value = Number(logLimitDraft)
-                            if (Number.isFinite(value)) void handleLogLimit(value)
-                            else setLogLimitDraft(String(selected.logLimit))
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-                          }}
-                          className="h-7 w-16 rounded-md border border-[#E5E5E7] bg-white px-1.5 text-[11px] text-[#1D1D1F] tabular-nums"
-                        />
-                        <span className="text-[11px] text-[#A1A1A6]">条</span>
-                        <div className="flex flex-wrap gap-1">
-                          {LOG_LIMIT_PRESETS.map((preset) => (
-                            <button
-                              key={preset}
-                              type="button"
-                              onClick={() => void handleLogLimit(preset)}
-                              className={cn(
-                                'h-6 px-1.5 rounded border text-[10px] tabular-nums',
-                                selected.logLimit === preset
-                                  ? 'border-[#0A84FF] bg-[#E8F0FE] text-[#0A84FF]'
-                                  : 'border-[#E5E5E7] text-[#6E6E73] hover:bg-[#F2F2F4]'
-                              )}
-                            >
-                              {preset}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <button
-                        onClick={handleClearLogs}
-                        className="h-7 px-2 rounded-md text-[11px] text-[#A1A1A6] hover:text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center gap-1 flex-shrink-0"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        清空
-                      </button>
-                    </div>
-
-                    {runs.length === 0 ? (
-                      <div className="flex-1 flex items-center justify-center px-6">
-                        <p className="text-sm text-[#A1A1A6]">
-                          {selected.hook
-                            ? '钩子触发或点「运行」后，这里会列出每次执行'
-                            : '点击「运行」后，这里会列出每次执行'}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="flex-1 min-h-0 flex gap-3 overflow-hidden px-6 pb-6">
-                        <aside className="w-56 flex-shrink-0 overflow-y-auto rounded-xl border border-[#E5E5E7] bg-white p-1.5">
-                          {runs.map((run) => {
-                            const active = selectedRun?.runId === run.runId
-                            return (
-                              <button
-                                key={run.runId}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedRunId(run.runId)
-                                  setFollowLatestRun(run.runId === latestRunId)
-                                }}
-                                className={cn(
-                                  'w-full text-left rounded-lg px-2.5 py-2 mb-0.5 transition-colors',
-                                  active ? 'bg-[#E8F0FE]' : 'hover:bg-[#F2F2F4]'
-                                )}
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span
-                                    className={cn(
-                                      'text-[11px] tabular-nums',
-                                      active ? 'text-[#0A84FF]' : 'text-[#A1A1A6]'
-                                    )}
-                                  >
-                                    {formatClock(run.startedAt)}
-                                  </span>
-                                  <RunStatusIcon status={run.status} />
-                                </div>
-                                <p
-                                  className={cn(
-                                    'text-xs mt-0.5 truncate',
-                                    active ? 'text-[#0A84FF] font-medium' : 'text-[#1D1D1F]'
-                                  )}
-                                >
-                                  {run.title}
-                                </p>
-                                <p className="text-[11px] text-[#A1A1A6] mt-0.5 truncate">
-                                  {run.preview ||
-                                    (run.status === 'running' ? '正在运行…' : '无输出')}
-                                  {run.durationLabel ? ` · ${run.durationLabel}` : ''}
-                                </p>
-                              </button>
-                            )
-                          })}
-                        </aside>
-                        <div
-                          ref={logBoxRef}
-                          className="flex-1 min-w-0 overflow-auto rounded-xl bg-[#F5F5F7] border border-[#E5E5E7] px-4 py-3"
-                        >
-                          {selectedRun ? (
-                            <div className="font-mono text-xs leading-[1.7]">
-                              {selectedRun.logs.map((log, index) => (
-                                <div
-                                  key={`${log.runId}-${index}`}
-                                  className={cn(
-                                    'flex gap-2 whitespace-pre-wrap break-all',
-                                    log.level === 'error' ? 'text-[#D70015]' : 'text-[#1D1D1F]'
-                                  )}
-                                >
-                                  <span className="text-[#C7C7CC] select-none flex-shrink-0 tabular-nums">
-                                    {formatClock(log.time)}
-                                  </span>
-                                  <span className="min-w-0">{log.message}</span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-[#A1A1A6]">选一次执行看日志</p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
-                <div className="h-16 w-16 rounded-full bg-[#F2F2F4] flex items-center justify-center mb-4">
-                  <Code2 className="h-8 w-8 text-[#A1A1A6]" />
-                </div>
-                <p className="text-base font-medium text-[#1D1D1F]">还没有可运行的脚本</p>
-                <p className="text-sm text-[#6E6E73] mt-1 max-w-sm">
-                  点右上角「新建脚本」直接在这里写，或把 .js 放进脚本目录后「重新扫描」
-                </p>
-                {scriptsDir && (
-                  <p className="text-xs text-[#C7C7CC] mt-3 font-mono break-all max-w-md">
-                    {scriptsDir}
-                  </p>
-                )}
+                  )}
+                </>
+              )}
+            </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
+              <div className="h-16 w-16 rounded-full bg-[#F2F2F4] flex items-center justify-center mb-4">
+                <Code2 className="h-8 w-8 text-[#A1A1A6]" />
               </div>
-            )}
-          </div>
+              <p className="text-base font-medium text-[#1D1D1F]">还没有可运行的脚本</p>
+              <p className="text-sm text-[#6E6E73] mt-1 max-w-sm">
+                点右上角「新建脚本」直接在这里写，或把 .js 放进脚本目录后「重新扫描」
+              </p>
+              {scriptsDir && (
+                <p className="text-xs text-[#C7C7CC] mt-3 font-mono break-all max-w-md">
+                  {scriptsDir}
+                </p>
+              )}
+            </div>
+          )}
         </div>
-      </div>
+      </PageBody>
 
       <ScriptNameDialog
         open={createOpen}
@@ -978,6 +975,6 @@ export default function ScriptsPage(): React.JSX.Element {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </Page>
   )
 }

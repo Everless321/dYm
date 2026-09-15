@@ -1,3 +1,5 @@
+import { Page } from '@/components/layout/Page'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { useState, useEffect, useCallback, useRef, memo } from 'react'
 import { toast } from 'sonner'
 import {
@@ -548,58 +550,64 @@ export default function FilesPage() {
   })()
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Header */}
-      <header className="h-16 flex items-center justify-between px-6 border-b border-[#E5E5E7] bg-white">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-semibold text-[#1D1D1F]">文件管理</h1>
-          <span className="text-sm text-[#A1A1A6]">
+    <Page>
+      <PageHeader
+        title="文件管理"
+        meta={
+          <>
             {totalFiles} 个文件 / {formatBytes(totalSize)}
             {sizing && '（计算中）'}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          {selectedUser && <SortSelect value={sort} onChange={setSort} />}
-          <Button variant="outline" size="sm" onClick={handleScanBroken} disabled={scanning}>
-            {scanning ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <ShieldAlert className="h-4 w-4 mr-2" />
-            )}
-            {scanning ? '扫描中...' : '扫描损坏文件'}
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleFixAllTitles} disabled={fixingTitles}>
-            {fixingTitles ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Wand2 className="h-4 w-4 mr-2" />
-            )}
-            {fixingTitles ? '修复中...' : '修复标题'}
-          </Button>
-          {selectedIds.size > 0 && (
+          </>
+        }
+        actions={
+          <>
+            {selectedUser && <SortSelect value={sort} onChange={setSort} />}
+            <Button variant="outline" size="sm" onClick={handleScanBroken} disabled={scanning}>
+              {scanning ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <ShieldAlert className="h-4 w-4 mr-2" />
+              )}
+              {scanning ? '扫描中...' : '扫描损坏文件'}
+            </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setDeleteConfirm({ type: 'batch', count: selectedIds.size })}
-              className="border-red-200 text-red-600 hover:bg-red-50"
+              onClick={handleFixAllTitles}
+              disabled={fixingTitles}
             >
-              <Trash2 className="h-4 w-4 mr-2" />
-              删除选中 ({selectedIds.size})
+              {fixingTitles ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Wand2 className="h-4 w-4 mr-2" />
+              )}
+              {fixingTitles ? '修复中...' : '修复标题'}
             </Button>
-          )}
-          {selectedUser && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setDeleteConfirm({ type: 'user' })}
-              className="border-red-200 text-red-600 hover:bg-red-50"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              清空用户文件
-            </Button>
-          )}
-        </div>
-      </header>
+            {selectedIds.size > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteConfirm({ type: 'batch', count: selectedIds.size })}
+                className="border-red-200 text-red-600 hover:bg-red-50"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                删除选中 ({selectedIds.size})
+              </Button>
+            )}
+            {selectedUser && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteConfirm({ type: 'user' })}
+                className="border-red-200 text-red-600 hover:bg-red-50"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                清空用户文件
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {/* Filter Bar */}
       <div className="px-6 py-3 bg-[#F5F5F7] border-b border-[#E5E5E7]">
@@ -840,6 +848,6 @@ export default function FilesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </Page>
   )
 }

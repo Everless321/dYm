@@ -1,3 +1,5 @@
+import { Page, PageBody } from '@/components/layout/Page'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -206,171 +208,169 @@ export default function DownloadPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Header */}
-      <header className="h-16 flex items-center justify-between px-6 border-b border-[#E5E5E7] bg-white">
-        <h1 className="text-xl font-semibold text-[#1D1D1F]">视频下载</h1>
-        <Button onClick={handleOpenAdd} className="bg-[#0A84FF] hover:bg-[#0A84FF]/90 text-white">
-          <Plus className="h-4 w-4 mr-2" />
-          添加任务
-        </Button>
-      </header>
+    <Page>
+      <PageHeader
+        title="视频下载"
+        actions={
+          <Button onClick={handleOpenAdd} className="bg-[#0A84FF] hover:bg-[#0A84FF]/90 text-white">
+            <Plus className="h-4 w-4 mr-2" />
+            添加任务
+          </Button>
+        }
+      />
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto px-6 py-8">
-        <div className="mx-auto max-w-6xl space-y-6">
-          {/* Task List Card */}
-          <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm overflow-hidden">
-            {/* List Header */}
-            <div className="h-14 flex items-center justify-between px-5 border-b border-[#E5E5E7]">
-              <div className="flex items-center gap-3">
-                <span className="text-base font-semibold text-[#1D1D1F]">任务列表</span>
-                <span className="text-[13px] text-[#A1A1A6]">({tasks.length})</span>
-              </div>
+      <PageBody>
+        {/* Task List Card */}
+        <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm overflow-hidden">
+          {/* List Header */}
+          <div className="h-14 flex items-center justify-between px-5 border-b border-[#E5E5E7]">
+            <div className="flex items-center gap-3">
+              <span className="text-base font-semibold text-[#1D1D1F]">任务列表</span>
+              <span className="text-[13px] text-[#A1A1A6]">({tasks.length})</span>
             </div>
-
-            {/* Table Header */}
-            <div className="h-12 flex items-center px-5 bg-[#F5F5F7] text-[12px] font-semibold text-[#6E6E73] uppercase tracking-wide">
-              <div className="w-[260px]">任务名称</div>
-              <div className="flex-1">用户</div>
-              <div className="w-24 text-center">状态</div>
-              <div className="w-32 text-center">定时同步</div>
-              <div className="w-32 text-center">创建时间</div>
-              <div className="w-32 text-right">操作</div>
-            </div>
-
-            {/* Table Body */}
-            {paginatedTasks.length === 0 ? (
-              <div className="py-20 flex flex-col items-center justify-center text-[#6E6E73]">
-                <div className="h-16 w-16 rounded-full bg-[#F2F2F4] flex items-center justify-center mb-4">
-                  <Download className="h-8 w-8 text-[#A1A1A6]" />
-                </div>
-                <p className="text-base font-medium">暂无任务</p>
-                <p className="text-sm mt-1 text-[#A1A1A6]">点击上方"添加任务"按钮开始</p>
-              </div>
-            ) : (
-              paginatedTasks.map((task) => {
-                const status = statusConfig[task.status]
-                const StatusIcon = status.icon
-                return (
-                  <div
-                    key={task.id}
-                    className="h-[68px] flex items-center px-5 border-b border-[#E5E5E7] hover:bg-[#F2F2F4]/50 transition-colors group"
-                  >
-                    <div className="w-[260px] flex items-center gap-3">
-                      <FileText className="h-5 w-5 text-[#A1A1A6]" />
-                      <span className="font-medium text-[#1D1D1F] truncate">{task.name}</span>
-                    </div>
-                    <div className="flex-1 flex items-center gap-2">
-                      <div className="flex -space-x-2">
-                        {task.users.slice(0, 3).map((user) => (
-                          <Avatar key={user.id} className="h-7 w-7 border-2 border-white">
-                            <AvatarImage src={getAvatarUrl(user)} />
-                            <AvatarFallback className="text-xs bg-[#E8F0FE] text-[#0A84FF]">
-                              {user.nickname?.charAt(0) || 'U'}
-                            </AvatarFallback>
-                          </Avatar>
-                        ))}
-                      </div>
-                      {task.users.length > 3 && (
-                        <span className="text-xs text-[#A1A1A6]">+{task.users.length - 3}</span>
-                      )}
-                      <span className="text-sm text-[#6E6E73] ml-1">{task.users.length} 人</span>
-                    </div>
-                    <div className="w-24 flex justify-center">
-                      <Badge className={`gap-1 ${status.bg} ${status.color} border-0`}>
-                        <StatusIcon
-                          className={`h-3 w-3 ${task.status === 'running' ? 'animate-spin' : ''}`}
-                        />
-                        {status.label}
-                      </Badge>
-                    </div>
-                    <div className="w-32 flex flex-col items-center gap-0.5">
-                      {task.auto_sync && task.sync_cron ? (
-                        <>
-                          <Badge
-                            variant="outline"
-                            className="gap-1 text-xs border-green-500 text-green-600"
-                          >
-                            <Timer className="h-3 w-3" />
-                            已开启
-                          </Badge>
-                          <span className="text-xs text-[#A1A1A6] font-mono">{task.sync_cron}</span>
-                        </>
-                      ) : (
-                        <span className="text-xs text-[#A1A1A6]">未设置</span>
-                      )}
-                    </div>
-                    <div className="w-32 text-center text-sm text-[#6E6E73]">
-                      {formatUnixTime(task.created_at)}
-                    </div>
-                    <div className="w-32 flex justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-[#6E6E73] hover:text-[#1D1D1F]"
-                        onClick={() => navigate(`/download/${task.id}`)}
-                        title="查看详情"
-                      >
-                        <FileText className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-[#6E6E73] hover:text-[#1D1D1F]"
-                        onClick={() => handleOpenEdit(task)}
-                        title="编辑任务"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-[#6E6E73] hover:text-[#0A84FF]"
-                        onClick={() => handleDelete(task.id)}
-                        title="删除任务"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                )
-              })
-            )}
-
-            {/* Pagination */}
-            {tasks.length > PAGE_SIZE && (
-              <div className="h-14 flex items-center justify-between px-5 border-t border-[#E5E5E7]">
-                <span className="text-sm text-[#6E6E73]">
-                  第 {safePage} / {totalPages} 页，共 {tasks.length} 条
-                </span>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(Math.max(1, safePage - 1))}
-                    disabled={safePage === 1}
-                    className="border-[#E5E5E7]"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    上一页
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
-                    disabled={safePage >= totalPages}
-                    className="border-[#E5E5E7]"
-                  >
-                    下一页
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
           </div>
+
+          {/* Table Header */}
+          <div className="h-12 flex items-center px-5 bg-[#F5F5F7] text-[12px] font-semibold text-[#6E6E73] uppercase tracking-wide">
+            <div className="w-[260px]">任务名称</div>
+            <div className="flex-1">用户</div>
+            <div className="w-24 text-center">状态</div>
+            <div className="w-32 text-center">定时同步</div>
+            <div className="w-32 text-center">创建时间</div>
+            <div className="w-32 text-right">操作</div>
+          </div>
+
+          {/* Table Body */}
+          {paginatedTasks.length === 0 ? (
+            <div className="py-20 flex flex-col items-center justify-center text-[#6E6E73]">
+              <div className="h-16 w-16 rounded-full bg-[#F2F2F4] flex items-center justify-center mb-4">
+                <Download className="h-8 w-8 text-[#A1A1A6]" />
+              </div>
+              <p className="text-base font-medium">暂无任务</p>
+              <p className="text-sm mt-1 text-[#A1A1A6]">点击上方"添加任务"按钮开始</p>
+            </div>
+          ) : (
+            paginatedTasks.map((task) => {
+              const status = statusConfig[task.status]
+              const StatusIcon = status.icon
+              return (
+                <div
+                  key={task.id}
+                  className="h-[68px] flex items-center px-5 border-b border-[#E5E5E7] hover:bg-[#F2F2F4]/50 transition-colors group"
+                >
+                  <div className="w-[260px] flex items-center gap-3">
+                    <FileText className="h-5 w-5 text-[#A1A1A6]" />
+                    <span className="font-medium text-[#1D1D1F] truncate">{task.name}</span>
+                  </div>
+                  <div className="flex-1 flex items-center gap-2">
+                    <div className="flex -space-x-2">
+                      {task.users.slice(0, 3).map((user) => (
+                        <Avatar key={user.id} className="h-7 w-7 border-2 border-white">
+                          <AvatarImage src={getAvatarUrl(user)} />
+                          <AvatarFallback className="text-xs bg-[#E8F0FE] text-[#0A84FF]">
+                            {user.nickname?.charAt(0) || 'U'}
+                          </AvatarFallback>
+                        </Avatar>
+                      ))}
+                    </div>
+                    {task.users.length > 3 && (
+                      <span className="text-xs text-[#A1A1A6]">+{task.users.length - 3}</span>
+                    )}
+                    <span className="text-sm text-[#6E6E73] ml-1">{task.users.length} 人</span>
+                  </div>
+                  <div className="w-24 flex justify-center">
+                    <Badge className={`gap-1 ${status.bg} ${status.color} border-0`}>
+                      <StatusIcon
+                        className={`h-3 w-3 ${task.status === 'running' ? 'animate-spin' : ''}`}
+                      />
+                      {status.label}
+                    </Badge>
+                  </div>
+                  <div className="w-32 flex flex-col items-center gap-0.5">
+                    {task.auto_sync && task.sync_cron ? (
+                      <>
+                        <Badge
+                          variant="outline"
+                          className="gap-1 text-xs border-green-500 text-green-600"
+                        >
+                          <Timer className="h-3 w-3" />
+                          已开启
+                        </Badge>
+                        <span className="text-xs text-[#A1A1A6] font-mono">{task.sync_cron}</span>
+                      </>
+                    ) : (
+                      <span className="text-xs text-[#A1A1A6]">未设置</span>
+                    )}
+                  </div>
+                  <div className="w-32 text-center text-sm text-[#6E6E73]">
+                    {formatUnixTime(task.created_at)}
+                  </div>
+                  <div className="w-32 flex justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-[#6E6E73] hover:text-[#1D1D1F]"
+                      onClick={() => navigate(`/download/${task.id}`)}
+                      title="查看详情"
+                    >
+                      <FileText className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-[#6E6E73] hover:text-[#1D1D1F]"
+                      onClick={() => handleOpenEdit(task)}
+                      title="编辑任务"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-[#6E6E73] hover:text-[#0A84FF]"
+                      onClick={() => handleDelete(task.id)}
+                      title="删除任务"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )
+            })
+          )}
+
+          {/* Pagination */}
+          {tasks.length > PAGE_SIZE && (
+            <div className="h-14 flex items-center justify-between px-5 border-t border-[#E5E5E7]">
+              <span className="text-sm text-[#6E6E73]">
+                第 {safePage} / {totalPages} 页，共 {tasks.length} 条
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(Math.max(1, safePage - 1))}
+                  disabled={safePage === 1}
+                  className="border-[#E5E5E7]"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  上一页
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
+                  disabled={safePage >= totalPages}
+                  className="border-[#E5E5E7]"
+                >
+                  下一页
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      </PageBody>
 
       {/* Add/Edit Task Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
@@ -528,6 +528,6 @@ export default function DownloadPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </Page>
   )
 }

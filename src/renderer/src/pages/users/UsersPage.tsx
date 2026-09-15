@@ -1,3 +1,5 @@
+import { Page, PageBody } from '@/components/layout/Page'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
 import {
@@ -579,357 +581,352 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Header */}
-      <header className="h-16 flex items-center justify-between px-6 border-b border-[#E5E5E7] bg-white">
-        <h1 className="text-xl font-semibold text-[#1D1D1F]">用户管理</h1>
-        <Button
-          onClick={() => setOpen(true)}
-          className="bg-[#0A84FF] hover:bg-[#0A84FF]/90 text-white"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          添加用户
-        </Button>
-      </header>
+    <Page>
+      <PageHeader
+        title="用户管理"
+        actions={
+          <Button
+            onClick={() => setOpen(true)}
+            className="bg-[#0A84FF] hover:bg-[#0A84FF]/90 text-white"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            添加用户
+          </Button>
+        }
+      />
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto px-6 py-8">
-        <div className="mx-auto max-w-[1600px]">
-          {/* User List Card */}
-          <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm overflow-hidden">
-            {/* List Header */}
-            <div className="border-b border-[#E5E5E7] px-5 py-4 space-y-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-base font-semibold text-[#1D1D1F]">用户列表</span>
-                    <span className="text-[13px] text-[#A1A1A6]">
-                      ({filteredUsers.length}/{users.length})
-                    </span>
-                  </div>
-                  <p className="text-xs text-[#6E6E73] mt-1">管理用户、同步与下载策略</p>
+      <PageBody width="wide">
+        {/* User List Card */}
+        <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm overflow-hidden">
+          {/* List Header */}
+          <div className="border-b border-[#E5E5E7] px-5 py-4 space-y-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="flex items-center gap-3">
+                  <span className="text-base font-semibold text-[#1D1D1F]">用户列表</span>
+                  <span className="text-[13px] text-[#A1A1A6]">
+                    ({filteredUsers.length}/{users.length})
+                  </span>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {selectedIds.size > 0 && (
-                    <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleBatchCreateDownloadTask}
-                        className="border-[#E5E5E7] text-[#1D1D1F]"
-                      >
-                        <Download className="h-4 w-4 mr-2" />
-                        批量下载 ({selectedIds.size})
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleOpenBatchEdit}
-                        className="border-[#E5E5E7] text-[#1D1D1F]"
-                      >
-                        <Settings2 className="h-4 w-4 mr-2" />
-                        批量编辑
-                      </Button>
-                    </>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleBatchRefresh}
-                    disabled={batchRefreshing || users.length === 0}
-                    className="border-[#E5E5E7] text-[#1D1D1F]"
-                  >
-                    {batchRefreshing ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <RotateCcw className="h-4 w-4 mr-2" />
-                    )}
-                    刷新全部
-                  </Button>
-                </div>
+                <p className="text-xs text-[#6E6E73] mt-1">管理用户、同步与下载策略</p>
               </div>
-
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="relative w-full max-w-sm">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#A1A1A6]" />
-                  <Input
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="搜索用户..."
-                    className="h-10 w-full pl-9 border-[#E5E5E7] text-sm"
-                  />
-                </div>
-                <div className="flex items-center gap-2 text-xs text-[#6E6E73]">
-                  <SlidersHorizontal className="h-4 w-4" />
-                  <span className="font-medium">筛选条件</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Filter Row */}
-            <div className="border-b border-[#E5E5E7] px-5 py-3 bg-[#F5F5F7]/60">
               <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={showInHomeFilter}
-                  onChange={(e) => setShowInHomeFilter(e.target.value as ShowInHomeFilter)}
-                  className="h-9 px-3 text-xs border border-[#E5E5E7] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#0A84FF]/20"
+                {selectedIds.size > 0 && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleBatchCreateDownloadTask}
+                      className="border-[#E5E5E7] text-[#1D1D1F]"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      批量下载 ({selectedIds.size})
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleOpenBatchEdit}
+                      className="border-[#E5E5E7] text-[#1D1D1F]"
+                    >
+                      <Settings2 className="h-4 w-4 mr-2" />
+                      批量编辑
+                    </Button>
+                  </>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBatchRefresh}
+                  disabled={batchRefreshing || users.length === 0}
+                  className="border-[#E5E5E7] text-[#1D1D1F]"
                 >
-                  <option value="all">首页显示: 全部</option>
-                  <option value="yes">首页显示: 是</option>
-                  <option value="no">首页显示: 否</option>
-                </select>
-                <select
-                  value={autoSyncFilter}
-                  onChange={(e) => setAutoSyncFilter(e.target.value as AutoSyncFilter)}
-                  className="h-9 px-3 text-xs border border-[#E5E5E7] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#0A84FF]/20"
-                >
-                  <option value="all">自动同步: 全部</option>
-                  <option value="yes">自动同步: 开启</option>
-                  <option value="no">自动同步: 关闭</option>
-                </select>
-                <select
-                  value={downloadStatusFilter}
-                  onChange={(e) => setDownloadStatusFilter(e.target.value as DownloadStatusFilter)}
-                  className="h-9 px-3 text-xs border border-[#E5E5E7] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#0A84FF]/20"
-                >
-                  <option value="all">下载状态: 全部</option>
-                  <option value="completed">下载状态: 已完成</option>
-                  <option value="partial">下载状态: 部分下载</option>
-                  <option value="none">下载状态: 未开始</option>
-                </select>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as SortOption)}
-                  className="h-9 px-3 text-xs border border-[#E5E5E7] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#0A84FF]/20"
-                >
-                  <option value="default">排序: 默认</option>
-                  <option value="undownloaded">排序: 未下载数</option>
-                  <option value="total">排序: 总作品数</option>
-                </select>
+                  {batchRefreshing ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                  )}
+                  刷新全部
+                </Button>
               </div>
             </div>
 
-            {/* Table Header */}
-            <div className="h-12 flex items-center px-5 bg-[#F5F5F7] text-[12px] font-semibold text-[#6E6E73] uppercase tracking-wide">
-              <div className="w-10">
-                <Checkbox
-                  checked={
-                    paginatedUsers.length > 0 && paginatedUsers.every((u) => selectedIds.has(u.id))
-                  }
-                  onCheckedChange={handleSelectAll}
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="relative w-full max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#A1A1A6]" />
+                <Input
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="搜索用户..."
+                  className="h-10 w-full pl-9 border-[#E5E5E7] text-sm"
                 />
               </div>
-              <div className="flex-1">用户</div>
-              <div className="w-28 text-center">粉丝</div>
-              <div className="w-32 text-center">下载进度</div>
-              <div className="w-16 text-center">限制</div>
-              <div className="w-24 text-center">同步</div>
-              <div className="w-20 text-center">首页</div>
-              <div className="w-44 text-right">操作</div>
+              <div className="flex items-center gap-2 text-xs text-[#6E6E73]">
+                <SlidersHorizontal className="h-4 w-4" />
+                <span className="font-medium">筛选条件</span>
+              </div>
             </div>
-
-            {/* Table Body */}
-            {paginatedUsers.length === 0 ? (
-              <div className="py-20 flex flex-col items-center justify-center text-[#6E6E73]">
-                <div className="h-16 w-16 rounded-full bg-[#F2F2F4] flex items-center justify-center mb-4">
-                  <User className="h-8 w-8 text-[#A1A1A6]" />
-                </div>
-                <p className="text-base font-medium">暂无用户</p>
-                <p className="text-sm mt-1 text-[#A1A1A6]">点击上方添加用户按钮开始</p>
-              </div>
-            ) : (
-              paginatedUsers.map((user) => (
-                <div
-                  key={user.id}
-                  className="h-[72px] flex items-center px-5 border-b border-[#E5E5E7] hover:bg-[#F2F2F4]/50 transition-colors group"
-                >
-                  <div className="w-10">
-                    <Checkbox
-                      checked={selectedIds.has(user.id)}
-                      onCheckedChange={() => handleToggleSelect(user.id)}
-                    />
-                  </div>
-                  <div className="flex-1 flex items-center gap-3">
-                    <Avatar className="h-10 w-10">
-                      <AvatarImage src={getAvatarUrl(user)} className="object-cover" />
-                      <AvatarFallback className="bg-[#E8F0FE] text-[#0A84FF]">
-                        {user.nickname?.charAt(0).toUpperCase() || 'U'}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <p className="font-medium text-[#1D1D1F] truncate">{user.nickname}</p>
-                      <p className="text-xs text-[#A1A1A6] truncate">
-                        @{user.unique_id || user.short_id || '-'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="w-28 text-center">
-                    <Badge
-                      variant="outline"
-                      className="font-medium border-[#E5E5E7] text-[#6E6E73]"
-                    >
-                      {formatCompactNumber(user.follower_count)}
-                    </Badge>
-                  </div>
-                  <div className="w-32 flex flex-col items-center gap-1">
-                    <span className="text-sm font-medium text-[#1D1D1F]">
-                      {user.downloaded_count} / {user.aweme_count}
-                    </span>
-                    <div className="w-20 h-1.5 bg-[#E5E5E7] rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-[#0A84FF] rounded-full transition-all"
-                        style={{
-                          width: `${user.aweme_count > 0 ? (user.downloaded_count / user.aweme_count) * 100 : 0}%`
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="w-16 text-center">
-                    <span className="text-sm text-[#6E6E73]">
-                      {user.max_download_count > 0 ? user.max_download_count : '-'}
-                    </span>
-                  </div>
-                  <div className="w-24 flex flex-col items-center gap-1">
-                    {syncingUserIds.has(user.id) && syncProgressMap.get(user.id) ? (
-                      <span className="text-xs text-[#0A84FF]">
-                        {syncProgressMap.get(user.id)!.downloadedCount}/
-                        {syncProgressMap.get(user.id)!.totalVideos || '?'}
-                      </span>
-                    ) : user.auto_sync ? (
-                      <Badge variant="outline" className="text-xs border-green-500 text-green-600">
-                        <Clock className="h-3 w-3 mr-1" />
-                        自动
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-[#A1A1A6]">手动</span>
-                    )}
-                  </div>
-                  <div className="w-20 flex justify-center">
-                    <Switch
-                      checked={!!user.show_in_home}
-                      onCheckedChange={() => handleToggleShowInHome(user)}
-                    />
-                  </div>
-                  <div className="w-44 flex justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                    {syncingUserIds.has(user.id) ? (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-[#0A84FF] hover:text-[#0A84FF]"
-                        onClick={() => handleStopSync(user.id)}
-                        title="停止同步"
-                      >
-                        <Square className="h-4 w-4" />
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-[#6E6E73] hover:text-green-600"
-                        onClick={() => handleStartSync(user)}
-                        title="开始同步"
-                      >
-                        <Play className="h-4 w-4" />
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-[#6E6E73] hover:text-[#0A84FF]"
-                      onClick={() =>
-                        window.api.system.openInAppBrowser(user.homepage_url, user.nickname)
-                      }
-                      title="打开主页"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-[#6E6E73] hover:text-[#1D1D1F]"
-                      onClick={() => handleOpenEdit(user)}
-                      title="编辑"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-[#6E6E73] hover:text-[#1D1D1F]"
-                      onClick={() => handleRefresh(user)}
-                      disabled={refreshingId === user.id}
-                      title="刷新信息"
-                    >
-                      <RefreshCw
-                        className={`h-4 w-4 ${refreshingId === user.id ? 'animate-spin' : ''}`}
-                      />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-[#6E6E73] hover:text-red-500"
-                      onClick={() => {
-                        setDeleteConfirm({ id: user.id, nickname: user.nickname })
-                        setDeleteFiles(false)
-                      }}
-                      title="删除用户"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))
-            )}
-
-            {/* Pagination */}
-            {filteredUsers.length > 0 && (
-              <div className="h-14 flex items-center justify-between px-5 border-t border-[#E5E5E7]">
-                <div className="flex items-center gap-4">
-                  <span className="text-sm text-[#6E6E73]">
-                    第 {safePage} / {totalPages || 1} 页
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-[#6E6E73]">每页</span>
-                    <input
-                      type="number"
-                      min={1}
-                      value={pageSize}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value, 10)
-                        if (v > 0) setPageSize(v)
-                      }}
-                      className="h-8 w-16 px-2 text-sm text-center border border-[#E5E5E7] rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-[#0A84FF]/20"
-                    />
-                    <span className="text-sm text-[#6E6E73]">条</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(Math.max(1, safePage - 1))}
-                    disabled={safePage === 1}
-                    className="border-[#E5E5E7]"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    上一页
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
-                    disabled={safePage >= totalPages || totalPages === 0}
-                    className="border-[#E5E5E7]"
-                  >
-                    下一页
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
           </div>
+
+          {/* Filter Row */}
+          <div className="border-b border-[#E5E5E7] px-5 py-3 bg-[#F5F5F7]/60">
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={showInHomeFilter}
+                onChange={(e) => setShowInHomeFilter(e.target.value as ShowInHomeFilter)}
+                className="h-9 px-3 text-xs border border-[#E5E5E7] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#0A84FF]/20"
+              >
+                <option value="all">首页显示: 全部</option>
+                <option value="yes">首页显示: 是</option>
+                <option value="no">首页显示: 否</option>
+              </select>
+              <select
+                value={autoSyncFilter}
+                onChange={(e) => setAutoSyncFilter(e.target.value as AutoSyncFilter)}
+                className="h-9 px-3 text-xs border border-[#E5E5E7] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#0A84FF]/20"
+              >
+                <option value="all">自动同步: 全部</option>
+                <option value="yes">自动同步: 开启</option>
+                <option value="no">自动同步: 关闭</option>
+              </select>
+              <select
+                value={downloadStatusFilter}
+                onChange={(e) => setDownloadStatusFilter(e.target.value as DownloadStatusFilter)}
+                className="h-9 px-3 text-xs border border-[#E5E5E7] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#0A84FF]/20"
+              >
+                <option value="all">下载状态: 全部</option>
+                <option value="completed">下载状态: 已完成</option>
+                <option value="partial">下载状态: 部分下载</option>
+                <option value="none">下载状态: 未开始</option>
+              </select>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
+                className="h-9 px-3 text-xs border border-[#E5E5E7] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#0A84FF]/20"
+              >
+                <option value="default">排序: 默认</option>
+                <option value="undownloaded">排序: 未下载数</option>
+                <option value="total">排序: 总作品数</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Table Header */}
+          <div className="h-12 flex items-center px-5 bg-[#F5F5F7] text-[12px] font-semibold text-[#6E6E73] uppercase tracking-wide">
+            <div className="w-10">
+              <Checkbox
+                checked={
+                  paginatedUsers.length > 0 && paginatedUsers.every((u) => selectedIds.has(u.id))
+                }
+                onCheckedChange={handleSelectAll}
+              />
+            </div>
+            <div className="flex-1">用户</div>
+            <div className="w-28 text-center">粉丝</div>
+            <div className="w-32 text-center">下载进度</div>
+            <div className="w-16 text-center">限制</div>
+            <div className="w-24 text-center">同步</div>
+            <div className="w-20 text-center">首页</div>
+            <div className="w-44 text-right">操作</div>
+          </div>
+
+          {/* Table Body */}
+          {paginatedUsers.length === 0 ? (
+            <div className="py-20 flex flex-col items-center justify-center text-[#6E6E73]">
+              <div className="h-16 w-16 rounded-full bg-[#F2F2F4] flex items-center justify-center mb-4">
+                <User className="h-8 w-8 text-[#A1A1A6]" />
+              </div>
+              <p className="text-base font-medium">暂无用户</p>
+              <p className="text-sm mt-1 text-[#A1A1A6]">点击上方添加用户按钮开始</p>
+            </div>
+          ) : (
+            paginatedUsers.map((user) => (
+              <div
+                key={user.id}
+                className="h-[72px] flex items-center px-5 border-b border-[#E5E5E7] hover:bg-[#F2F2F4]/50 transition-colors group"
+              >
+                <div className="w-10">
+                  <Checkbox
+                    checked={selectedIds.has(user.id)}
+                    onCheckedChange={() => handleToggleSelect(user.id)}
+                  />
+                </div>
+                <div className="flex-1 flex items-center gap-3">
+                  <Avatar className="h-10 w-10">
+                    <AvatarImage src={getAvatarUrl(user)} className="object-cover" />
+                    <AvatarFallback className="bg-[#E8F0FE] text-[#0A84FF]">
+                      {user.nickname?.charAt(0).toUpperCase() || 'U'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <p className="font-medium text-[#1D1D1F] truncate">{user.nickname}</p>
+                    <p className="text-xs text-[#A1A1A6] truncate">
+                      @{user.unique_id || user.short_id || '-'}
+                    </p>
+                  </div>
+                </div>
+                <div className="w-28 text-center">
+                  <Badge variant="outline" className="font-medium border-[#E5E5E7] text-[#6E6E73]">
+                    {formatCompactNumber(user.follower_count)}
+                  </Badge>
+                </div>
+                <div className="w-32 flex flex-col items-center gap-1">
+                  <span className="text-sm font-medium text-[#1D1D1F]">
+                    {user.downloaded_count} / {user.aweme_count}
+                  </span>
+                  <div className="w-20 h-1.5 bg-[#E5E5E7] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#0A84FF] rounded-full transition-all"
+                      style={{
+                        width: `${user.aweme_count > 0 ? (user.downloaded_count / user.aweme_count) * 100 : 0}%`
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="w-16 text-center">
+                  <span className="text-sm text-[#6E6E73]">
+                    {user.max_download_count > 0 ? user.max_download_count : '-'}
+                  </span>
+                </div>
+                <div className="w-24 flex flex-col items-center gap-1">
+                  {syncingUserIds.has(user.id) && syncProgressMap.get(user.id) ? (
+                    <span className="text-xs text-[#0A84FF]">
+                      {syncProgressMap.get(user.id)!.downloadedCount}/
+                      {syncProgressMap.get(user.id)!.totalVideos || '?'}
+                    </span>
+                  ) : user.auto_sync ? (
+                    <Badge variant="outline" className="text-xs border-green-500 text-green-600">
+                      <Clock className="h-3 w-3 mr-1" />
+                      自动
+                    </Badge>
+                  ) : (
+                    <span className="text-xs text-[#A1A1A6]">手动</span>
+                  )}
+                </div>
+                <div className="w-20 flex justify-center">
+                  <Switch
+                    checked={!!user.show_in_home}
+                    onCheckedChange={() => handleToggleShowInHome(user)}
+                  />
+                </div>
+                <div className="w-44 flex justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                  {syncingUserIds.has(user.id) ? (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-[#0A84FF] hover:text-[#0A84FF]"
+                      onClick={() => handleStopSync(user.id)}
+                      title="停止同步"
+                    >
+                      <Square className="h-4 w-4" />
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-[#6E6E73] hover:text-green-600"
+                      onClick={() => handleStartSync(user)}
+                      title="开始同步"
+                    >
+                      <Play className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-[#6E6E73] hover:text-[#0A84FF]"
+                    onClick={() =>
+                      window.api.system.openInAppBrowser(user.homepage_url, user.nickname)
+                    }
+                    title="打开主页"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-[#6E6E73] hover:text-[#1D1D1F]"
+                    onClick={() => handleOpenEdit(user)}
+                    title="编辑"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-[#6E6E73] hover:text-[#1D1D1F]"
+                    onClick={() => handleRefresh(user)}
+                    disabled={refreshingId === user.id}
+                    title="刷新信息"
+                  >
+                    <RefreshCw
+                      className={`h-4 w-4 ${refreshingId === user.id ? 'animate-spin' : ''}`}
+                    />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-[#6E6E73] hover:text-red-500"
+                    onClick={() => {
+                      setDeleteConfirm({ id: user.id, nickname: user.nickname })
+                      setDeleteFiles(false)
+                    }}
+                    title="删除用户"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
+
+          {/* Pagination */}
+          {filteredUsers.length > 0 && (
+            <div className="h-14 flex items-center justify-between px-5 border-t border-[#E5E5E7]">
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-[#6E6E73]">
+                  第 {safePage} / {totalPages || 1} 页
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-[#6E6E73]">每页</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={pageSize}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10)
+                      if (v > 0) setPageSize(v)
+                    }}
+                    className="h-8 w-16 px-2 text-sm text-center border border-[#E5E5E7] rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-[#0A84FF]/20"
+                  />
+                  <span className="text-sm text-[#6E6E73]">条</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(Math.max(1, safePage - 1))}
+                  disabled={safePage === 1}
+                  className="border-[#E5E5E7]"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  上一页
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
+                  disabled={safePage >= totalPages || totalPages === 0}
+                  className="border-[#E5E5E7]"
+                >
+                  下一页
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      </PageBody>
 
       {/* Add User Modal */}
       <Dialog open={open} onOpenChange={setOpen}>
@@ -1271,6 +1268,6 @@ export default function UsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </Page>
   )
 }

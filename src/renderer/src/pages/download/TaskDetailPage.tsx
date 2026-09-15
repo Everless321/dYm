@@ -1,3 +1,5 @@
+import { Page, PageBody } from '@/components/layout/Page'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -174,247 +176,253 @@ export default function TaskDetailPage() {
   const totalDownloaded = task.users.reduce((sum, u) => sum + (u.downloaded_count || 0), 0)
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Header */}
-      <header className="h-16 flex items-center gap-4 px-6 border-b border-[#E5E5E7] bg-white">
-        <button
-          onClick={() => navigate('/download')}
-          className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-[#F2F2F4] transition-colors"
-        >
-          <ArrowLeft className="h-5 w-5 text-[#6E6E73]" />
-        </button>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-semibold text-[#1D1D1F] truncate">{task.name}</h1>
-          <p className="text-[13px] text-[#6E6E73]">并发数: {task.concurrency}</p>
-        </div>
-        <div
-          className="h-8 px-3 flex items-center gap-1.5 rounded-full text-sm font-medium"
-          style={{ backgroundColor: status.bg, color: status.color }}
-        >
-          <StatusIcon className={`h-4 w-4 ${task.status === 'running' ? 'animate-spin' : ''}`} />
-          {status.label}
-        </div>
-        {isRunning ? (
-          <Button
-            onClick={handleStopDownload}
-            className="bg-[#0A84FF] hover:bg-[#0A84FF]/90 text-white"
-          >
-            <Square className="h-4 w-4 mr-2" />
-            停止下载
-          </Button>
-        ) : (
-          <Button
-            onClick={handleStartDownload}
-            className="bg-[#0A84FF] hover:bg-[#0A84FF]/90 text-white"
-          >
-            <Play className="h-4 w-4 mr-2" />
-            开始下载
-          </Button>
-        )}
-      </header>
+    <Page>
+      <PageHeader
+        left={
+          <>
+            <button
+              onClick={() => navigate('/download')}
+              className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg hover:bg-[#F2F2F4] transition-colors"
+            >
+              <ArrowLeft className="h-5 w-5 text-[#6E6E73]" />
+            </button>
+            <div className="min-w-0">
+              <h1 className="text-xl font-semibold text-[#1D1D1F] truncate">{task.name}</h1>
+              <p className="text-[13px] text-[#6E6E73]">并发数: {task.concurrency}</p>
+            </div>
+          </>
+        }
+        actions={
+          <>
+            <div
+              className="h-8 px-3 flex items-center gap-1.5 rounded-full text-sm font-medium"
+              style={{ backgroundColor: status.bg, color: status.color }}
+            >
+              <StatusIcon
+                className={`h-4 w-4 ${task.status === 'running' ? 'animate-spin' : ''}`}
+              />
+              {status.label}
+            </div>
+            {isRunning ? (
+              <Button
+                onClick={handleStopDownload}
+                className="bg-[#0A84FF] hover:bg-[#0A84FF]/90 text-white"
+              >
+                <Square className="h-4 w-4 mr-2" />
+                停止下载
+              </Button>
+            ) : (
+              <Button
+                onClick={handleStartDownload}
+                className="bg-[#0A84FF] hover:bg-[#0A84FF]/90 text-white"
+              >
+                <Play className="h-4 w-4 mr-2" />
+                开始下载
+              </Button>
+            )}
+          </>
+        }
+      />
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto px-6 py-8">
-        <div className="mx-auto max-w-6xl space-y-6">
-          {/* Stats Cards */}
-          <div className="grid gap-6 grid-cols-1 md:grid-cols-2 xl:grid-cols-4">
-            <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-5">
-              <div className="flex items-center gap-4">
-                <div className="h-12 w-12 rounded-full bg-[#F2F2F4] flex items-center justify-center">
-                  <User className="h-6 w-6 text-[#6E6E73]" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-[#1D1D1F]">{task.users.length}</p>
-                  <p className="text-sm text-[#6E6E73]">用户数</p>
-                </div>
+      <PageBody>
+        {/* Stats Cards */}
+        <div className="grid gap-6 grid-cols-1 md:grid-cols-2 xl:grid-cols-4">
+          <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-5">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 rounded-full bg-[#F2F2F4] flex items-center justify-center">
+                <User className="h-6 w-6 text-[#6E6E73]" />
               </div>
-            </div>
-            <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-5">
-              <div className="flex items-center gap-4">
-                <div className="h-12 w-12 rounded-full bg-[#F2F2F4] flex items-center justify-center">
-                  <Video className="h-6 w-6 text-[#6E6E73]" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-[#1D1D1F]">
-                    {formatCompactNumber(totalVideos)}
-                  </p>
-                  <p className="text-sm text-[#6E6E73]">视频总数</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-5">
-              <div className="flex items-center gap-4">
-                <div className="h-12 w-12 rounded-full bg-[#F2F2F4] flex items-center justify-center">
-                  <FileText className="h-6 w-6 text-[#6E6E73]" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-[#1D1D1F]">
-                    {totalDownloaded} / {totalVideos}
-                  </p>
-                  <p className="text-sm text-[#6E6E73]">下载进度</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-5">
-              <div className="flex items-center gap-4">
-                <div className="h-12 w-12 rounded-full bg-[#F2F2F4] flex items-center justify-center">
-                  <Calendar className="h-6 w-6 text-[#6E6E73]" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-[#1D1D1F]">
-                    {formatUnixTime(task.created_at, { year: true })}
-                  </p>
-                  <p className="text-sm text-[#6E6E73]">创建时间</p>
-                </div>
+              <div>
+                <p className="text-2xl font-bold text-[#1D1D1F]">{task.users.length}</p>
+                <p className="text-sm text-[#6E6E73]">用户数</p>
               </div>
             </div>
           </div>
-
-          {/* Download Progress */}
-          {progress && isRunning && (
-            <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-6 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-[#E8F0FE] flex items-center justify-center">
-                  <Zap className="h-5 w-5 text-[#0A84FF] animate-pulse" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-[#1D1D1F] truncate">{progress.message}</p>
-                  <p className="text-sm text-[#6E6E73]">
-                    用户 {progress.currentUserIndex}/{progress.totalUsers}
-                    {progress.currentUser && ` · ${progress.currentUser}`}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-2xl font-bold text-[#0A84FF]">{progress.downloadedPosts}</p>
-                  <p className="text-xs text-[#6E6E73]">已下载</p>
-                </div>
+          <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-5">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 rounded-full bg-[#F2F2F4] flex items-center justify-center">
+                <Video className="h-6 w-6 text-[#6E6E73]" />
               </div>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-[#6E6E73]">下载进度</span>
-                  <span className="font-medium text-[#1D1D1F]">
-                    {progress.currentVideo}/{progress.totalVideos}
-                  </span>
-                </div>
-                <div className="h-2 bg-[#E5E5E7] rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[#0A84FF] rounded-full transition-all"
-                    style={{
-                      width: `${progress.totalVideos > 0 ? (progress.currentVideo / progress.totalVideos) * 100 : 0}%`
-                    }}
-                  />
-                </div>
+              <div>
+                <p className="text-2xl font-bold text-[#1D1D1F]">
+                  {formatCompactNumber(totalVideos)}
+                </p>
+                <p className="text-sm text-[#6E6E73]">视频总数</p>
               </div>
             </div>
-          )}
-
-          {/* Users List */}
-          <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm overflow-hidden">
-            {/* List Header */}
-            <div className="h-14 flex items-center justify-between px-5 border-b border-[#E5E5E7]">
-              <div className="flex items-center gap-3">
-                <span className="text-base font-semibold text-[#1D1D1F]">包含用户</span>
-                <span className="text-[13px] text-[#A1A1A6]">({task.users.length})</span>
+          </div>
+          <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-5">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 rounded-full bg-[#F2F2F4] flex items-center justify-center">
+                <FileText className="h-6 w-6 text-[#6E6E73]" />
               </div>
-              <p className="text-[13px] text-[#6E6E73]">此任务将下载以下用户的视频</p>
-            </div>
-
-            {/* Table Header */}
-            <div className="h-12 flex items-center px-5 bg-[#F5F5F7] text-[12px] font-semibold text-[#6E6E73] uppercase tracking-wide">
-              <div className="flex-1">用户</div>
-              <div className="w-28 text-center">抖音号</div>
-              <div className="w-24 text-center">粉丝</div>
-              <div className="w-24 text-center">视频数</div>
-              <div className="w-32 text-center">已下载</div>
-            </div>
-
-            {/* Table Body */}
-            {sortedUsers.length === 0 ? (
-              <div className="py-20 flex flex-col items-center justify-center text-[#6E6E73]">
-                <div className="h-16 w-16 rounded-full bg-[#F2F2F4] flex items-center justify-center mb-4">
-                  <User className="h-8 w-8 text-[#A1A1A6]" />
-                </div>
-                <p className="text-base font-medium">暂无用户</p>
-                <p className="text-sm mt-1 text-[#A1A1A6]">此任务中没有添加用户</p>
+              <div>
+                <p className="text-2xl font-bold text-[#1D1D1F]">
+                  {totalDownloaded} / {totalVideos}
+                </p>
+                <p className="text-sm text-[#6E6E73]">下载进度</p>
               </div>
-            ) : (
-              sortedUsers.map((user) => {
-                const isActiveUser = isRunning && activeUsers.has(user.nickname)
-                return (
-                  <div
-                    key={user.id}
-                    className={`h-[68px] flex items-center px-5 border-b border-[#E5E5E7] transition-colors ${
-                      isActiveUser
-                        ? 'bg-[#E8F0FE]/30 border-l-2 border-l-[#0A84FF]'
-                        : 'hover:bg-[#F2F2F4]/50'
-                    }`}
-                  >
-                    <div className="flex-1 flex items-center gap-3">
-                      <div className="relative">
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage src={getAvatarUrl(user)} className="object-cover" />
-                          <AvatarFallback className="bg-[#E8F0FE] text-[#0A84FF]">
-                            {user.nickname?.charAt(0).toUpperCase() || 'U'}
-                          </AvatarFallback>
-                        </Avatar>
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-5">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 rounded-full bg-[#F2F2F4] flex items-center justify-center">
+                <Calendar className="h-6 w-6 text-[#6E6E73]" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-[#1D1D1F]">
+                  {formatUnixTime(task.created_at, { year: true })}
+                </p>
+                <p className="text-sm text-[#6E6E73]">创建时间</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Download Progress */}
+        {progress && isRunning && (
+          <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-[#E8F0FE] flex items-center justify-center">
+                <Zap className="h-5 w-5 text-[#0A84FF] animate-pulse" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-[#1D1D1F] truncate">{progress.message}</p>
+                <p className="text-sm text-[#6E6E73]">
+                  用户 {progress.currentUserIndex}/{progress.totalUsers}
+                  {progress.currentUser && ` · ${progress.currentUser}`}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold text-[#0A84FF]">{progress.downloadedPosts}</p>
+                <p className="text-xs text-[#6E6E73]">已下载</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-[#6E6E73]">下载进度</span>
+                <span className="font-medium text-[#1D1D1F]">
+                  {progress.currentVideo}/{progress.totalVideos}
+                </span>
+              </div>
+              <div className="h-2 bg-[#E5E5E7] rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[#0A84FF] rounded-full transition-all"
+                  style={{
+                    width: `${progress.totalVideos > 0 ? (progress.currentVideo / progress.totalVideos) * 100 : 0}%`
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Users List */}
+        <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm overflow-hidden">
+          {/* List Header */}
+          <div className="h-14 flex items-center justify-between px-5 border-b border-[#E5E5E7]">
+            <div className="flex items-center gap-3">
+              <span className="text-base font-semibold text-[#1D1D1F]">包含用户</span>
+              <span className="text-[13px] text-[#A1A1A6]">({task.users.length})</span>
+            </div>
+            <p className="text-[13px] text-[#6E6E73]">此任务将下载以下用户的视频</p>
+          </div>
+
+          {/* Table Header */}
+          <div className="h-12 flex items-center px-5 bg-[#F5F5F7] text-[12px] font-semibold text-[#6E6E73] uppercase tracking-wide">
+            <div className="flex-1">用户</div>
+            <div className="w-28 text-center">抖音号</div>
+            <div className="w-24 text-center">粉丝</div>
+            <div className="w-24 text-center">视频数</div>
+            <div className="w-32 text-center">已下载</div>
+          </div>
+
+          {/* Table Body */}
+          {sortedUsers.length === 0 ? (
+            <div className="py-20 flex flex-col items-center justify-center text-[#6E6E73]">
+              <div className="h-16 w-16 rounded-full bg-[#F2F2F4] flex items-center justify-center mb-4">
+                <User className="h-8 w-8 text-[#A1A1A6]" />
+              </div>
+              <p className="text-base font-medium">暂无用户</p>
+              <p className="text-sm mt-1 text-[#A1A1A6]">此任务中没有添加用户</p>
+            </div>
+          ) : (
+            sortedUsers.map((user) => {
+              const isActiveUser = isRunning && activeUsers.has(user.nickname)
+              return (
+                <div
+                  key={user.id}
+                  className={`h-[68px] flex items-center px-5 border-b border-[#E5E5E7] transition-colors ${
+                    isActiveUser
+                      ? 'bg-[#E8F0FE]/30 border-l-2 border-l-[#0A84FF]'
+                      : 'hover:bg-[#F2F2F4]/50'
+                  }`}
+                >
+                  <div className="flex-1 flex items-center gap-3">
+                    <div className="relative">
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage src={getAvatarUrl(user)} className="object-cover" />
+                        <AvatarFallback className="bg-[#E8F0FE] text-[#0A84FF]">
+                          {user.nickname?.charAt(0).toUpperCase() || 'U'}
+                        </AvatarFallback>
+                      </Avatar>
+                      {isActiveUser && (
+                        <div className="absolute -right-1 -bottom-1 h-4 w-4 rounded-full bg-[#0A84FF] flex items-center justify-center">
+                          <Loader2 className="h-2.5 w-2.5 text-white animate-spin" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-[#1D1D1F] truncate">{user.nickname}</p>
                         {isActiveUser && (
-                          <div className="absolute -right-1 -bottom-1 h-4 w-4 rounded-full bg-[#0A84FF] flex items-center justify-center">
-                            <Loader2 className="h-2.5 w-2.5 text-white animate-spin" />
-                          </div>
+                          <Badge className="text-xs px-1.5 py-0 bg-[#0A84FF] text-white">
+                            下载中
+                          </Badge>
                         )}
                       </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium text-[#1D1D1F] truncate">{user.nickname}</p>
-                          {isActiveUser && (
-                            <Badge className="text-xs px-1.5 py-0 bg-[#0A84FF] text-white">
-                              下载中
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-[#A1A1A6] truncate max-w-[180px]">
-                          {user.signature || '暂无签名'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="w-28 text-center">
-                      <span className="text-sm text-[#6E6E73] font-mono">
-                        @{user.unique_id || user.short_id || '-'}
-                      </span>
-                    </div>
-                    <div className="w-24 text-center">
-                      <Badge
-                        variant="outline"
-                        className="font-medium border-[#E5E5E7] text-[#6E6E73]"
-                      >
-                        {formatCompactNumber(user.follower_count)}
-                      </Badge>
-                    </div>
-                    <div className="w-24 text-center">
-                      <span className="font-medium text-[#1D1D1F]">{user.aweme_count}</span>
-                    </div>
-                    <div className="w-32 flex flex-col items-center gap-1">
-                      <span className="text-sm font-medium text-[#1D1D1F]">
-                        {user.downloaded_count} / {user.aweme_count}
-                      </span>
-                      <div className="w-20 h-1.5 bg-[#E5E5E7] rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${
-                            isActiveUser ? 'bg-[#0A84FF]' : 'bg-[#1D1D1F]'
-                          }`}
-                          style={{
-                            width: `${user.aweme_count > 0 ? (user.downloaded_count / user.aweme_count) * 100 : 0}%`
-                          }}
-                        />
-                      </div>
+                      <p className="text-xs text-[#A1A1A6] truncate max-w-[180px]">
+                        {user.signature || '暂无签名'}
+                      </p>
                     </div>
                   </div>
-                )
-              })
-            )}
-          </div>
+                  <div className="w-28 text-center">
+                    <span className="text-sm text-[#6E6E73] font-mono">
+                      @{user.unique_id || user.short_id || '-'}
+                    </span>
+                  </div>
+                  <div className="w-24 text-center">
+                    <Badge
+                      variant="outline"
+                      className="font-medium border-[#E5E5E7] text-[#6E6E73]"
+                    >
+                      {formatCompactNumber(user.follower_count)}
+                    </Badge>
+                  </div>
+                  <div className="w-24 text-center">
+                    <span className="font-medium text-[#1D1D1F]">{user.aweme_count}</span>
+                  </div>
+                  <div className="w-32 flex flex-col items-center gap-1">
+                    <span className="text-sm font-medium text-[#1D1D1F]">
+                      {user.downloaded_count} / {user.aweme_count}
+                    </span>
+                    <div className="w-20 h-1.5 bg-[#E5E5E7] rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          isActiveUser ? 'bg-[#0A84FF]' : 'bg-[#1D1D1F]'
+                        }`}
+                        style={{
+                          width: `${user.aweme_count > 0 ? (user.downloaded_count / user.aweme_count) * 100 : 0}%`
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )
+            })
+          )}
         </div>
-      </div>
-    </div>
+      </PageBody>
+    </Page>
   )
 }

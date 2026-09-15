@@ -1,3 +1,5 @@
+import { Page, PageBody } from '@/components/layout/Page'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -36,13 +38,10 @@ interface StatCardProps {
 
 function StatCard({ label, value, icon: Icon, color, bgColor }: StatCardProps) {
   return (
-    <div
-      className="bg-white rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center"
-      style={{ padding: '14px 18px', gap: 14 }}
-    >
+    <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm flex items-center gap-3.5 px-[18px] py-3.5">
       <div
-        className="rounded-lg flex items-center justify-center shrink-0"
-        style={{ backgroundColor: bgColor, width: 40, height: 40 }}
+        className="h-10 w-10 rounded-lg flex items-center justify-center shrink-0"
+        style={{ backgroundColor: bgColor }}
       >
         <Icon className="w-5 h-5" style={{ color }} />
       </div>
@@ -50,9 +49,7 @@ function StatCard({ label, value, icon: Icon, color, bgColor }: StatCardProps) {
         <p className="text-[26px] font-bold text-[#1D1D1F] tabular-nums leading-none tracking-tight">
           {value.toLocaleString()}
         </p>
-        <p className="text-[12px] text-[#86868B]" style={{ marginTop: 3 }}>
-          {label}
-        </p>
+        <p className="text-[12px] text-[#86868B] mt-1">{label}</p>
       </div>
     </div>
   )
@@ -60,13 +57,8 @@ function StatCard({ label, value, icon: Icon, color, bgColor }: StatCardProps) {
 
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div
-      className="bg-white rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.06)]"
-      style={{ padding: '16px 20px' }}
-    >
-      <h3 className="text-[13px] font-medium text-[#86868B]" style={{ marginBottom: 12 }}>
-        {title}
-      </h3>
+    <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm px-5 py-4">
+      <h3 className="text-[13px] font-medium text-[#86868B] mb-3">{title}</h3>
       {children}
     </div>
   )
@@ -159,54 +151,49 @@ export default function DashboardPage() {
     webInfo?.origin
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#F5F5F7]">
-      {/* Header */}
-      <div
-        className="flex items-center justify-between bg-white border-b border-[#E5E5E7]"
-        style={{ height: 56, padding: '0 28px' }}
-      >
-        <h1 className="text-[16px] font-semibold text-[#1D1D1F]">数据概览</h1>
-        <div className="flex items-center" style={{ gap: 8 }}>
-          {webEntry && (
+    <Page>
+      <PageHeader
+        title="数据概览"
+        actions={
+          <>
+            {webEntry && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => window.api.system.openInAppBrowser(webEntry, '网页端视频流')}
+                className="text-[#30D158] hover:text-[#30D158]/80"
+              >
+                <Wifi className="w-3.5 h-3.5 mr-1" />
+                Web {webInfo?.port}
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => window.api.system.openInAppBrowser(webEntry, '网页端视频流')}
-              className="text-[#30D158] hover:text-[#30D158]/80"
+              onClick={fetchData}
+              disabled={loading}
+              className="text-[#86868B] hover:text-[#1D1D1F]"
             >
-              <Wifi className="w-3.5 h-3.5 mr-1" />
-              Web {webInfo?.port}
+              <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} />
+              刷新
             </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={fetchData}
-            disabled={loading}
-            className="text-[#86868B] hover:text-[#1D1D1F]"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} />
-            刷新
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate('/browse')}
-            className="text-[#0A84FF] hover:text-[#0A84FF]/80"
-          >
-            浏览视频
-            <ArrowRight className="w-3.5 h-3.5 ml-1" />
-          </Button>
-        </div>
-      </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate('/browse')}
+              className="text-[#0A84FF] hover:text-[#0A84FF]/80"
+            >
+              浏览视频
+              <ArrowRight className="w-3.5 h-3.5 ml-1" />
+            </Button>
+          </>
+        }
+      />
 
-      <div className="flex flex-col" style={{ padding: '20px 28px 28px', gap: 16 }}>
+      <PageBody width="full" className="space-y-4">
         {webEntry && (
-          <div
-            className="bg-white rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center justify-between"
-            style={{ padding: '14px 20px' }}
-          >
-            <div className="flex items-center" style={{ gap: 10 }}>
+          <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm flex items-center justify-between px-5 py-3.5">
+            <div className="flex items-center gap-2.5">
               <div className="w-2 h-2 rounded-full bg-[#30D158] shrink-0" />
               <div>
                 <p className="text-[13px] font-medium text-[#1D1D1F]">网页端已启动</p>
@@ -226,7 +213,7 @@ export default function DashboardPage() {
         )}
 
         {/* Stat Cards */}
-        <div className="grid grid-cols-4" style={{ gap: 14 }}>
+        <div className="grid grid-cols-4 gap-4">
           <StatCard
             label="关注用户"
             value={overview?.totalUsers ?? 0}
@@ -258,7 +245,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Row 1: Trend + User Distribution */}
-        <div className="grid grid-cols-2" style={{ gap: 14 }}>
+        <div className="grid grid-cols-2 gap-4">
           <ChartCard title="近 30 天下载趋势">
             {trendFormatted.length > 0 ? (
               <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
@@ -337,7 +324,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Row 2: Tags + Content Level */}
-        <div className="grid grid-cols-2" style={{ gap: 14 }}>
+        <div className="grid grid-cols-2 gap-4">
           <ChartCard title="热门标签 Top 15">
             {topTags.length > 0 ? (
               <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
@@ -403,7 +390,7 @@ export default function DashboardPage() {
             )}
           </ChartCard>
         </div>
-      </div>
-    </div>
+      </PageBody>
+    </Page>
   )
 }
