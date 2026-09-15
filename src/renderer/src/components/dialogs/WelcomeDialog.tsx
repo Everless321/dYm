@@ -7,8 +7,8 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter
-} from './ui/dialog'
-import { Button } from './ui/button'
+} from '../ui/dialog'
+import { Button } from '../ui/button'
 
 const TELEGRAM_URL = 'https://t.me/+a02Yk5OY4gk1N2I1'
 const GITHUB_URL = 'https://github.com/Everless321/dYm'

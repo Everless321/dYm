@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { WelcomeDialog } from './WelcomeDialog'
+import { WelcomeDialog } from '../dialogs/WelcomeDialog'
 import { DEVELOPER_MODE_EVENT } from '@/lib/developer-mode'
 
 const COLLAPSE_KEY = 'sidebar_collapsed'

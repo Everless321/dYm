@@ -14,9 +14,9 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { MediaViewer } from '@/components/MediaViewer'
+import { MediaViewer } from '@/components/media/MediaViewer'
 import { parseTags } from '@/lib/utils'
-import { PageHeader, BackLink } from './components/PageHeader'
+import { PageHeader, BackLink } from '@/components/layout/PageHeader'
 import { parseTagFilters, stripNavMarkers } from './filters'
 
 export default function VideoTagEditPage() {

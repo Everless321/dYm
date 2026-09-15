@@ -12,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
-import { PageHeader, Crumbs } from './components/PageHeader'
+import { PageHeader, Crumbs } from '@/components/layout/PageHeader'
 import { StatCard } from './components/StatCard'
 import { TAG_SOURCE, TagSource, ACCENT } from './components/tokens'
 

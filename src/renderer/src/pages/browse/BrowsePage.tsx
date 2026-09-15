@@ -28,9 +28,9 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger
 } from '@/components/ui/context-menu'
-import { MediaViewer } from '@/components/MediaViewer'
-import { VideoDownloadDialog } from '@/components/VideoDownloadDialog'
-import { SortSelect } from '@/components/SortSelect'
+import { MediaViewer } from '@/components/media/MediaViewer'
+import { VideoDownloadDialog } from '@/components/media/VideoDownloadDialog'
+import { SortSelect } from '@/components/common/SortSelect'
 import { getInitialSort } from '@/lib/post-sort'
 import { getMergedTags } from '@/lib/utils'
 import { AddTagsDialog } from '@/pages/tags/AddTagsDialog'
@@ -187,7 +187,7 @@ const PostCard = memo(function PostCard({
   )
 })
 
-export default function HomePage() {
+export default function BrowsePage() {
   const navigate = useNavigate()
   // 右键「添加标签」的目标作品（null 表示弹窗关闭）
   const [tagTarget, setTagTarget] = useState<DbPost | null>(null)

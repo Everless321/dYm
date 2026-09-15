@@ -19,7 +19,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { SortSelect } from '@/components/SortSelect'
+import { SortSelect } from '@/components/common/SortSelect'
 import { getInitialSort } from '@/lib/post-sort'
 import {
   Dialog,
@@ -35,7 +35,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger
 } from '@/components/ui/context-menu'
-import { MediaViewer } from '@/components/MediaViewer'
+import { MediaViewer } from '@/components/media/MediaViewer'
 import { formatBytes, formatPostDate } from '@/lib/format'
 
 const IMAGE_AWEME_TYPE = 68

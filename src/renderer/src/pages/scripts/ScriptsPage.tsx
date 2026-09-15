@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import CodeEditor from '@/components/CodeEditor'
+import CodeEditor from '@/components/common/CodeEditor'
 import { cn } from '@/lib/utils'
 import { scriptHookLabel, scriptHookOption } from '@/lib/script-hooks'
 import { groupLogsIntoRuns, type ScriptRun } from '@/lib/script-runs'

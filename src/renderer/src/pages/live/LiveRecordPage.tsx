@@ -8,7 +8,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger
 } from '@/components/ui/context-menu'
-import { LiveCheckDialog } from '@/components/LiveCheckDialog'
+import { LiveCheckDialog } from '@/components/dialogs/LiveCheckDialog'
 import { toast } from 'sonner'
 import { formatBytes, formatDuration, formatUnixTime } from '@/lib/format'
 
