@@ -6,7 +6,7 @@ import { RouterProvider } from 'react-router-dom'
 import { toast } from 'sonner'
 import { router } from './routes'
 import { Toaster } from './components/ui/sonner'
-import { ErrorBoundary } from './components/ErrorBoundary'
+import { ErrorBoundary } from './components/common/ErrorBoundary'
 
 // 未被 catch 的 Promise 异常兜底：避免静默失败
 window.addEventListener('unhandledrejection', (event) => {

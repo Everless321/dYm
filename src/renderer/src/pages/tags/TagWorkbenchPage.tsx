@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import { ClearTagsDialog } from './ClearTagsDialog'
 import { ReanalyzeProgressDialog } from './ReanalyzeProgressDialog'
 import { AddTagsDialog } from './AddTagsDialog'
-import { PageHeader } from './components/PageHeader'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { StatCard } from './components/StatCard'
 import { FilterSection, FilterRow } from './components/FilterSection'
 import { VideoCard } from './components/VideoCard'
@@ -413,15 +413,9 @@ export default function TagWorkbenchPage(): React.JSX.Element {
   return (
     <div className="flex flex-col h-full">
       <PageHeader
-        left={
-          <div>
-            <h1 className="text-xl font-semibold text-[#1D1D1F]">标签管理</h1>
-            <p className="text-xs text-[#A1A1A6] mt-0.5">
-              按标注状态、用户、标签等条件筛选视频，支持批量打标
-            </p>
-          </div>
-        }
-        right={
+        title="标签管理"
+        description="按标注状态、用户、标签等条件筛选视频，支持批量打标"
+        actions={
           <>
             {selectMode ? (
               <Button

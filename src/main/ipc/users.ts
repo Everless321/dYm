@@ -10,12 +10,12 @@ import {
   batchUpdateUserSettings,
   type UpdateUserSettingsInput
 } from '../database'
-import { fetchUserProfile, parseDouyinUrl, getSecUserId } from '../services/douyin'
-import { addUserByUrl } from '../services/user-add'
-import { refreshUserProfile, getBatchRefreshDelay, sleep } from '../services/user-refresh'
+import { fetchUserProfile, parseDouyinUrl, getSecUserId } from '../services/douyin/client'
+import { addUserByUrl } from '../services/users/add'
+import { refreshUserProfile, getBatchRefreshDelay, sleep } from '../services/users/refresh'
 import { getDownloadPath } from '../services/media'
-import { stopUserSync, isUserSyncing } from '../services/syncer'
-import { getLiveOutputPath, stopLiveRecordingAndWait } from '../services/live-recorder'
+import { stopUserSync, isUserSyncing } from '../services/download/syncer'
+import { getLiveOutputPath, stopLiveRecordingAndWait } from '../services/live/recorder'
 
 export function registerUserIpc(): void {
   // Douyin IPC handlers

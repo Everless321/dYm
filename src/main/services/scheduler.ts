@@ -14,11 +14,11 @@ import {
   type DbScriptSchedule
 } from '../database'
 import { appEvents } from './app-events'
-import { startUserSync, isUserSyncing, stopUserSync } from './syncer'
-import { startDownloadTask, isTaskRunning, stopDownloadTask } from './downloader'
-import { addUserByUrl } from './user-add'
-import { isCollectSyncEnabled, getCollectCron, pullCollectedItems } from './collect-sync'
-import { checkAndRecordUser, isRecordingLive, stopLiveRecording } from './live-recorder'
+import { startUserSync, isUserSyncing, stopUserSync } from './download/syncer'
+import { startDownloadTask, isTaskRunning, stopDownloadTask } from './download/downloader'
+import { addUserByUrl } from './users/add'
+import { isCollectSyncEnabled, getCollectCron, pullCollectedItems } from './download/collect-sync'
+import { checkAndRecordUser, isRecordingLive, stopLiveRecording } from './live/recorder'
 import { runScript, isScriptRunning } from './scripts/runner'
 import { getScriptName } from './scripts/loader'
 

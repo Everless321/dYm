@@ -21,7 +21,7 @@ import {
 } from '../database'
 import { findCoverFile, findMediaFiles, getDownloadPath } from '../services/media'
 import { assertFolderName, assertSecUid } from '../utils/path-segment'
-import { checkPostFileIntegrity, cleanupFailedDownload } from '../services/download-validator'
+import { checkPostFileIntegrity, cleanupFailedDownload } from '../services/download/validator'
 
 // 文件页挂载时会对每个用户遍历全部作品目录做 stat（几万作品 = 十几万次 stat）；
 // 短时间内反复进出文件页直接复用上次结果，删除作品时按作者失效

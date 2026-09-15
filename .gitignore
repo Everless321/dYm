@@ -5,13 +5,6 @@ out
 .eslintcache
 *.log*
 
-# Playwright
-/test-results/
-/playwright-report/
-/blob-report/
-/playwright/.cache/
-.ace-tool/
-
 # Build info
 *.tsbuildinfo
 
@@ -21,9 +14,6 @@ docs/.vitepress/dist
 
 # Wrangler
 .wrangler/
-
-# Downloaded data
-packages/server/data/
 
 # 下载的 ffmpeg/ffprobe 静态二进制（由 scripts/download-ffmpeg.mjs 拉取）
 resources/ffmpeg/

@@ -1,0 +1,853 @@
+import { Page } from '@/components/layout/Page'
+import { PageHeader } from '@/components/layout/PageHeader'
+import { useState, useEffect, useCallback, useRef, memo } from 'react'
+import { toast } from 'sonner'
+import {
+  HardDrive,
+  Trash2,
+  Loader2,
+  Video,
+  Images,
+  Play,
+  FolderOpen,
+  ChevronDown,
+  Search,
+  X,
+  RefreshCw,
+  ShieldAlert,
+  AlertTriangle,
+  Wand2
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { SortSelect } from '@/components/common/SortSelect'
+import { getInitialSort } from '@/lib/post-sort'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger
+} from '@/components/ui/context-menu'
+import { MediaViewer } from '@/components/media/MediaViewer'
+import { formatBytes, formatPostDate } from '@/lib/format'
+
+const IMAGE_AWEME_TYPE = 68
+const PAGE_SIZE = 50
+/** 同时统计文件大小的用户数；统计要遍历磁盘目录，并发太高会把主进程 IO 打满 */
+const SIZE_CONCURRENCY = 3
+
+interface UserSize {
+  fileSize: number
+  folderCount: number
+}
+
+/** 大小字段为 undefined 表示还在统计中 */
+type UserWithSize = DbUser & Partial<UserSize>
+
+const isImagePost = (post: DbPost): boolean => post.aweme_type === IMAGE_AWEME_TYPE
+
+/** 单个用户的文件大小，失败按 0 处理（与接口返回 null 的处理一致） */
+async function fetchUserSize(secUid: string): Promise<UserSize> {
+  try {
+    const sizes = await window.api.files.getFileSizes(secUid)
+    return { fileSize: sizes?.totalSize ?? 0, folderCount: sizes?.folderCount ?? 0 }
+  } catch {
+    return { fileSize: 0, folderCount: 0 }
+  }
+}
+
+interface PostCardProps {
+  post: DbPost
+  coverUrl: string | null
+  selected: boolean
+  onOpen: (post: DbPost) => void
+  onToggleSelect: (postId: number) => void
+  onRedownload: (post: DbPost) => void
+  onDelete: (postId: number) => void
+}
+
+// 卡片单独 memo：勾选 / 翻页 / 打开弹窗时只有受影响的卡片重渲染
+const PostCard = memo(function PostCard({
+  post,
+  coverUrl,
+  selected,
+  onOpen,
+  onToggleSelect,
+  onRedownload,
+  onDelete
+}: PostCardProps): React.JSX.Element {
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <Card
+          className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow group border-[#E5E5E7] bg-white relative"
+          onClick={() => onOpen(post)}
+        >
+          {/* Select checkbox */}
+          <div
+            className="absolute top-2 right-2 z-10"
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleSelect(post.id)
+            }}
+          >
+            <div
+              className={`h-6 w-6 rounded-md border-2 flex items-center justify-center transition-colors ${selected ? 'bg-[#0A84FF] border-[#0A84FF]' : 'bg-white/80 border-white/60 group-hover:border-white'}`}
+            >
+              {selected && (
+                <svg
+                  className="h-4 w-4 text-white"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={3}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </div>
+          </div>
+
+          <div className="aspect-[9/16] bg-[#F2F2F4] relative">
+            {coverUrl ? (
+              <img
+                src={coverUrl}
+                alt={post.desc}
+                loading="lazy"
+                decoding="async"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                {isImagePost(post) ? (
+                  <Images className="h-12 w-12 text-[#A1A1A6]" />
+                ) : (
+                  <Video className="h-12 w-12 text-[#A1A1A6]" />
+                )}
+              </div>
+            )}
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+              {isImagePost(post) ? (
+                <Images className="h-12 w-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              ) : (
+                <Play className="h-12 w-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              )}
+            </div>
+            <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
+              {isImagePost(post) ? '图集' : '视频'}
+            </div>
+            {post.create_time && (
+              <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
+                {formatPostDate(post.create_time)}
+              </div>
+            )}
+          </div>
+          <div className="p-3">
+            <p className="text-sm font-medium text-[#1D1D1F] line-clamp-2">
+              {post.desc || post.caption || '无标题'}
+            </p>
+            <p className="text-xs text-[#6E6E73] mt-1">@{post.nickname}</p>
+          </div>
+        </Card>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onClick={() => window.api.post.openFolder(post.sec_uid, post.folder_name)}>
+          <FolderOpen className="h-4 w-4 mr-2" />
+          在文件管理器中打开
+        </ContextMenuItem>
+        <ContextMenuItem onClick={() => onRedownload(post)}>
+          <RefreshCw className="h-4 w-4 mr-2" />
+          重新下载
+        </ContextMenuItem>
+        <ContextMenuItem onClick={() => onDelete(post.id)} className="text-red-600">
+          <Trash2 className="h-4 w-4 mr-2" />
+          删除文件
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  )
+})
+
+export default function FilesPage() {
+  const [users, setUsers] = useState<UserWithSize[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedUser, setSelectedUser] = useState<UserWithSize | null>(null)
+  const [posts, setPosts] = useState<DbPost[]>([])
+  const [postsLoading, setPostsLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
+  const [postTotal, setPostTotal] = useState(0)
+  const [coverPaths, setCoverPaths] = useState<Record<string, string>>({})
+  const [selectedPost, setSelectedPost] = useState<DbPost | null>(null)
+  const [viewerOpen, setViewerOpen] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    type: 'post' | 'batch' | 'user'
+    id?: number
+    count?: number
+  } | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [showUserDropdown, setShowUserDropdown] = useState(false)
+  const [userSearch, setUserSearch] = useState('')
+  const [scanning, setScanning] = useState(false)
+  const [brokenPosts, setBrokenPosts] = useState<BrokenPostInfo[]>([])
+  const [showBrokenDialog, setShowBrokenDialog] = useState(false)
+  const [fixingAll, setFixingAll] = useState(false)
+  const [fixingTitles, setFixingTitles] = useState(false)
+  const [sort, setSort] = useState<PostSortConfig>(() => getInitialSort('files_post_sort'))
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  // 作品列表请求序号，用于丢弃切换用户/排序后才返回的旧请求
+  const postsRequestSeq = useRef(0)
+  // 用户列表加载序号 + 挂载标志：大小统计是逐个回填的，卸载或重新加载后不再 setState
+  const usersLoadSeq = useRef(0)
+  const mountedRef = useRef(true)
+
+  const totalSize = users.reduce((sum, u) => sum + (u.fileSize ?? 0), 0)
+  const totalFiles = users.reduce((sum, u) => sum + (u.folderCount ?? 0), 0)
+  const sizing = users.some((u) => u.fileSize === undefined)
+  // 当前用户的大小以列表里的最新值为准（重算后只更新列表，不换 selectedUser 引用）
+  const selectedUserSize = users.find((u) => u.id === selectedUser?.id)?.fileSize
+
+  useEffect(() => {
+    mountedRef.current = true
+    loadUsers()
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (selectedUser) {
+      localStorage.setItem('files_post_sort', JSON.stringify(sort))
+      setPosts([])
+      setPage(1)
+      setHasMore(true)
+      setCoverPaths({})
+      setSelectedIds(new Set())
+      loadPosts(selectedUser, 1, true)
+    }
+  }, [selectedUser, sort])
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !postsLoading && !loadingMore) {
+          loadMorePosts()
+        }
+      },
+      { threshold: 0.1 }
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [hasMore, postsLoading, loadingMore, page, selectedUser])
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowUserDropdown(false)
+      }
+    }
+    if (showUserDropdown) document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showUserDropdown])
+
+  const loadUsers = async (): Promise<void> => {
+    const seq = ++usersLoadSeq.current
+    const alive = (): boolean => mountedRef.current && seq === usersLoadSeq.current
+    setLoading(true)
+    try {
+      const allUsers = (await window.api.user.getAll()) ?? []
+      if (!alive()) return
+      // 先把列表亮出来，大小限并发逐个回填，不让最慢的那个用户拖住整页
+      setUsers(allUsers)
+      setLoading(false)
+
+      const queue = [...allUsers]
+      const sized: UserWithSize[] = []
+      const worker = async (): Promise<void> => {
+        while (alive()) {
+          const user = queue.shift()
+          if (!user) return
+          const size = await fetchUserSize(user.sec_uid)
+          if (!alive()) return
+          sized.push({ ...user, ...size })
+          // 没有文件的用户直接从列表移除（与原先的过滤一致）
+          setUsers((prev) =>
+            prev.flatMap((item) =>
+              item.id !== user.id ? [item] : size.folderCount > 0 ? [{ ...item, ...size }] : []
+            )
+          )
+        }
+      }
+      await Promise.all(Array.from({ length: SIZE_CONCURRENCY }, worker))
+      if (!alive()) return
+
+      const sorted = sized
+        .filter((u) => (u.folderCount ?? 0) > 0)
+        .sort((a, b) => (b.fileSize ?? 0) - (a.fileSize ?? 0))
+      setUsers(sorted)
+      setSelectedUser((cur) => cur ?? sorted[0] ?? null)
+    } catch {
+      if (alive()) toast.error('加载失败')
+    } finally {
+      if (alive()) setLoading(false)
+    }
+  }
+
+  const loadCoverPaths = useCallback(async (postList: DbPost[]): Promise<void> => {
+    const entries = await Promise.all(
+      postList
+        .filter((p) => p.folder_name)
+        .map(async (post) => {
+          try {
+            const path = await window.api.post.getCoverPath(post.sec_uid, post.folder_name)
+            return [post.aweme_id, path] as const
+          } catch {
+            return [post.aweme_id, null] as const
+          }
+        })
+    )
+    setCoverPaths((prev) => {
+      const next = { ...prev }
+      for (const [awemeId, path] of entries) {
+        if (path) next[awemeId] = path
+      }
+      return next
+    })
+  }, [])
+
+  const loadPosts = useCallback(
+    async (user: UserWithSize, pageNum: number, reset = false): Promise<void> => {
+      const seq = ++postsRequestSeq.current
+      if (reset) setPostsLoading(true)
+      else setLoadingMore(true)
+      try {
+        const result = await window.api.files.getUserPosts(user.id, pageNum, PAGE_SIZE, sort)
+        // 期间切换了用户 / 排序，这份结果属于旧列表
+        if (seq !== postsRequestSeq.current) return
+        const newPosts = result?.posts ?? []
+        if (reset) {
+          setPosts(newPosts)
+        } else {
+          setPosts((prev) => [...prev, ...newPosts])
+        }
+        setPostTotal(result?.total ?? 0)
+        setHasMore(newPosts.length === PAGE_SIZE)
+        loadCoverPaths(newPosts)
+      } catch {
+        if (seq !== postsRequestSeq.current) return
+        toast.error('加载作品失败')
+      } finally {
+        if (seq === postsRequestSeq.current) {
+          setPostsLoading(false)
+          setLoadingMore(false)
+        }
+      }
+    },
+    [sort, loadCoverPaths]
+  )
+
+  const loadMorePosts = useCallback(() => {
+    if (!selectedUser) return
+    const nextPage = page + 1
+    setPage(nextPage)
+    loadPosts(selectedUser, nextPage, false)
+  }, [page, selectedUser, loadPosts])
+
+  /** 只重算当前用户的大小；原先是全量重扫所有用户 */
+  const refreshUserSize = useCallback(async (user: UserWithSize): Promise<void> => {
+    const size = await fetchUserSize(user.sec_uid)
+    if (!mountedRef.current) return
+    setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, ...size } : u)))
+  }, [])
+
+  const reloadCurrentUser = useCallback(async (): Promise<void> => {
+    if (!selectedUser) return
+    setPosts([])
+    setPage(1)
+    setHasMore(true)
+    setCoverPaths({})
+    await loadPosts(selectedUser, 1, true)
+    await refreshUserSize(selectedUser)
+  }, [selectedUser, loadPosts, refreshUserSize])
+
+  const handleDeletePost = async (postId: number) => {
+    setDeleteLoading(true)
+    try {
+      await window.api.files.deletePost(postId)
+      toast.success('文件已删除')
+      setDeleteConfirm(null)
+      await reloadCurrentUser()
+    } catch {
+      toast.error('删除失败')
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
+  const handleDeleteBatch = async () => {
+    setDeleteLoading(true)
+    try {
+      let deleted = 0
+      for (const id of selectedIds) {
+        const ok = await window.api.files.deletePost(id)
+        if (ok) deleted++
+      }
+      toast.success(`已删除 ${deleted} 个文件`)
+      setDeleteConfirm(null)
+      setSelectedIds(new Set())
+      await reloadCurrentUser()
+    } catch {
+      toast.error('批量删除失败')
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
+  const handleFixAllTitles = async (): Promise<void> => {
+    if (!confirm('确定要修复所有视频标题吗？\n\n将从 _desc.txt 文件读取原始文案并更新数据库。')) {
+      return
+    }
+    setFixingTitles(true)
+    try {
+      const res = await window.api.files.fixAllTitles()
+      if (res.success && res.result) {
+        toast.success(
+          `修复完成：成功 ${res.result.fixed} / 跳过 ${res.result.skipped} / 失败 ${res.result.failed}`
+        )
+        if (selectedUser) await loadPosts(selectedUser, 1, true)
+      } else {
+        toast.error(`修复失败: ${res.error || '未知错误'}`)
+      }
+    } catch (error) {
+      toast.error(`修复失败: ${error}`)
+    } finally {
+      setFixingTitles(false)
+    }
+  }
+
+  const handleDeleteUserFiles = async () => {
+    if (!selectedUser) return
+    setDeleteLoading(true)
+    try {
+      await window.api.files.deleteUserFiles(selectedUser.id, selectedUser.sec_uid)
+      toast.success('用户文件已清空')
+      setDeleteConfirm(null)
+      setPosts([])
+      setSelectedIds(new Set())
+      await loadUsers()
+      setSelectedUser(null)
+    } catch {
+      toast.error('删除失败')
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirm) return
+    if (deleteConfirm.type === 'post' && deleteConfirm.id) {
+      await handleDeletePost(deleteConfirm.id)
+    } else if (deleteConfirm.type === 'batch') {
+      await handleDeleteBatch()
+    } else if (deleteConfirm.type === 'user') {
+      await handleDeleteUserFiles()
+    }
+  }
+
+  const toggleSelect = useCallback((id: number): void => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const handleOpenPost = useCallback((post: DbPost): void => {
+    setSelectedPost(post)
+    setViewerOpen(true)
+  }, [])
+
+  const requestDeletePost = useCallback((postId: number): void => {
+    setDeleteConfirm({ type: 'post', id: postId })
+  }, [])
+
+  const handleRedownloadPost = useCallback(
+    async (post: DbPost): Promise<void> => {
+      try {
+        await window.api.post.redownload(post.aweme_id)
+        toast.success('已标记重新下载，下次同步时将重新下载此作品')
+        await reloadCurrentUser()
+      } catch (e) {
+        toast.error('重新下载标记失败: ' + (e as Error).message)
+      }
+    },
+    [reloadCurrentUser]
+  )
+
+  const selectAll = () => {
+    if (selectedIds.size === posts.length) setSelectedIds(new Set())
+    else setSelectedIds(new Set(posts.map((p) => p.id)))
+  }
+
+  const getCoverUrl = (post: DbPost) => {
+    const path = coverPaths[post.aweme_id]
+    return path ? `local://file${path}` : null
+  }
+
+  const handleScanBroken = async () => {
+    setScanning(true)
+    try {
+      const results = await window.api.post.scanBroken()
+      setBrokenPosts(results)
+      setShowBrokenDialog(true)
+      if (results.length === 0) {
+        toast.success('所有文件完好，未发现损坏')
+      }
+    } catch {
+      toast.error('扫描失败')
+    } finally {
+      setScanning(false)
+    }
+  }
+
+  const handleFixAllBroken = async () => {
+    if (brokenPosts.length === 0) return
+    setFixingAll(true)
+    try {
+      const awemeIds = brokenPosts.map((p) => p.awemeId)
+      const result = await window.api.post.batchRedownload(awemeIds)
+      toast.success(`已标记 ${result.success} 个作品重新下载`)
+      setBrokenPosts([])
+      setShowBrokenDialog(false)
+      await reloadCurrentUser()
+    } catch {
+      toast.error('批量修复失败')
+    } finally {
+      setFixingAll(false)
+    }
+  }
+
+  const filteredUsers = (() => {
+    if (!userSearch.trim()) return users
+    const s = userSearch.toLowerCase()
+    return users.filter((u) => u.nickname.toLowerCase().includes(s))
+  })()
+
+  return (
+    <Page>
+      <PageHeader
+        title="文件管理"
+        meta={
+          <>
+            {totalFiles} 个文件 / {formatBytes(totalSize)}
+            {sizing && '（计算中）'}
+          </>
+        }
+        actions={
+          <>
+            {selectedUser && <SortSelect value={sort} onChange={setSort} />}
+            <Button variant="outline" size="sm" onClick={handleScanBroken} disabled={scanning}>
+              {scanning ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <ShieldAlert className="h-4 w-4 mr-2" />
+              )}
+              {scanning ? '扫描中...' : '扫描损坏文件'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleFixAllTitles}
+              disabled={fixingTitles}
+            >
+              {fixingTitles ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Wand2 className="h-4 w-4 mr-2" />
+              )}
+              {fixingTitles ? '修复中...' : '修复标题'}
+            </Button>
+            {selectedIds.size > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteConfirm({ type: 'batch', count: selectedIds.size })}
+                className="border-red-200 text-red-600 hover:bg-red-50"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                删除选中 ({selectedIds.size})
+              </Button>
+            )}
+            {selectedUser && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteConfirm({ type: 'user' })}
+                className="border-red-200 text-red-600 hover:bg-red-50"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                清空用户文件
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      {/* Filter Bar */}
+      <div className="px-6 py-3 bg-[#F5F5F7] border-b border-[#E5E5E7]">
+        <div className="flex items-center gap-3">
+          {/* User Selector */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setShowUserDropdown(!showUserDropdown)}
+              className="h-9 px-3 flex items-center gap-2 rounded-lg border border-[#E5E5E7] bg-white text-sm text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors"
+            >
+              <HardDrive className="h-4 w-4 text-[#6E6E73]" />
+              <span>{selectedUser?.nickname || '选择用户'}</span>
+              {selectedUser && (
+                <span className="text-xs text-[#A1A1A6]">
+                  ({selectedUserSize === undefined ? '计算中' : formatBytes(selectedUserSize)})
+                </span>
+              )}
+              <ChevronDown
+                className={`h-4 w-4 text-[#6E6E73] transition-transform ${showUserDropdown ? 'rotate-180' : ''}`}
+              />
+            </button>
+            {selectedUser && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setSelectedUser(null)
+                  setPosts([])
+                }}
+                className="absolute -right-2 -top-2 h-5 w-5 flex items-center justify-center rounded-full bg-[#0A84FF] text-white"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+            {showUserDropdown && (
+              <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-[#E5E5E7] rounded-lg shadow-md z-50 overflow-hidden">
+                <div className="p-2 border-b border-[#E5E5E7]">
+                  <div className="relative">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#A1A1A6]" />
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      defaultValue=""
+                      onInput={(e) => setUserSearch((e.target as HTMLInputElement).value)}
+                      placeholder="搜索用户..."
+                      className="w-full h-8 pl-7 pr-2 rounded-md bg-[#F2F2F4] text-sm text-[#1D1D1F] placeholder:text-[#A1A1A6] focus:outline-none focus:ring-1 focus:ring-[#0A84FF]"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+                <div className="max-h-60 overflow-y-auto">
+                  {filteredUsers.map((u) => (
+                    <button
+                      key={u.id}
+                      onClick={() => {
+                        setSelectedUser(u)
+                        setShowUserDropdown(false)
+                        setUserSearch('')
+                        if (searchInputRef.current) searchInputRef.current.value = ''
+                      }}
+                      className={`w-full h-11 px-3 flex items-center justify-between text-sm hover:bg-[#F2F2F4] transition-colors ${selectedUser?.id === u.id ? 'bg-[#E8F0FE] text-[#0A84FF]' : 'text-[#1D1D1F]'}`}
+                    >
+                      <span className="truncate">{u.nickname}</span>
+                      <span className="text-xs text-[#A1A1A6] flex-shrink-0 ml-2">
+                        {u.fileSize === undefined
+                          ? '计算中'
+                          : `${u.folderCount} 个 / ${formatBytes(u.fileSize)}`}
+                      </span>
+                    </button>
+                  ))}
+                  {filteredUsers.length === 0 && (
+                    <div className="py-4 text-center text-sm text-[#A1A1A6]">无匹配用户</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {posts.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={selectedIds.size === posts.length && posts.length > 0}
+                onCheckedChange={selectAll}
+              />
+              <span className="text-sm text-[#6E6E73]">全选 ({posts.length})</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-auto px-6 pb-8">
+        <div>
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0A84FF]" />
+            </div>
+          ) : !selectedUser ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="rounded-full bg-[#F2F2F4] p-6 mb-4">
+                <HardDrive className="h-12 w-12 text-[#A1A1A6]" />
+              </div>
+              <h2 className="text-xl font-semibold text-[#1D1D1F] mb-2">
+                {users.length === 0 ? '暂无已下载文件' : '选择一个用户'}
+              </h2>
+              <p className="text-[#6E6E73]">
+                {users.length === 0
+                  ? '下载视频后，可在这里管理文件'
+                  : '从上方下拉选择用户，查看和管理已下载的文件'}
+              </p>
+            </div>
+          ) : postsLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0A84FF]" />
+            </div>
+          ) : posts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="rounded-full bg-[#F2F2F4] p-6 mb-4">
+                <Video className="h-12 w-12 text-[#A1A1A6]" />
+              </div>
+              <h2 className="text-xl font-semibold text-[#1D1D1F] mb-2">暂无文件</h2>
+              <p className="text-[#6E6E73]">该用户没有已下载的文件记录</p>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-5 pt-4">
+                {posts.map((post) => (
+                  <PostCard
+                    key={post.id}
+                    post={post}
+                    coverUrl={getCoverUrl(post)}
+                    selected={selectedIds.has(post.id)}
+                    onOpen={handleOpenPost}
+                    onToggleSelect={toggleSelect}
+                    onRedownload={handleRedownloadPost}
+                    onDelete={requestDeletePost}
+                  />
+                ))}
+              </div>
+
+              {/* Infinite scroll sentinel */}
+              <div ref={sentinelRef} className="h-10 flex items-center justify-center mt-4">
+                {loadingMore && (
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#0A84FF]" />
+                )}
+                {!hasMore && posts.length > 0 && (
+                  <span className="text-sm text-[#A1A1A6]">已加载全部 {postTotal} 个作品</span>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      <MediaViewer
+        post={selectedPost}
+        open={viewerOpen}
+        onOpenChange={setViewerOpen}
+        allPosts={posts}
+        onSelectPost={setSelectedPost}
+      />
+
+      {/* Broken Files Dialog */}
+      <Dialog open={showBrokenDialog} onOpenChange={setShowBrokenDialog}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>损坏文件扫描结果</DialogTitle>
+            <DialogDescription>
+              {brokenPosts.length === 0
+                ? '所有文件完好'
+                : `发现 ${brokenPosts.length} 个损坏文件，标记重新下载后将在下次同步时修复`}
+            </DialogDescription>
+          </DialogHeader>
+          {brokenPosts.length > 0 && (
+            <div className="max-h-72 overflow-y-auto space-y-2">
+              {brokenPosts.map((bp) => (
+                <div
+                  key={bp.awemeId}
+                  className="flex items-start gap-3 p-3 rounded-lg bg-[#FFF8F0] border border-orange-100"
+                >
+                  <AlertTriangle className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-[#1D1D1F] truncate">@{bp.nickname}</p>
+                    <p className="text-xs text-[#6E6E73] mt-0.5">{bp.awemeId}</p>
+                    <p className="text-xs text-orange-600 mt-0.5">{bp.reason}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBrokenDialog(false)}>
+              关闭
+            </Button>
+            {brokenPosts.length > 0 && (
+              <Button onClick={handleFixAllBroken} disabled={fixingAll}>
+                {fixingAll ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                全部重新下载 ({brokenPosts.length})
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirm Dialog */}
+      <Dialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>确认删除</DialogTitle>
+            <DialogDescription>
+              {deleteConfirm?.type === 'post' && '确定要删除该作品的文件吗？'}
+              {deleteConfirm?.type === 'batch' &&
+                `确定要删除选中的 ${deleteConfirm.count} 个文件吗？`}
+              {deleteConfirm?.type === 'user' &&
+                `确定要删除 ${selectedUser?.nickname} 的所有文件吗？`}
+            </DialogDescription>
+          </DialogHeader>
+          <p className="text-xs text-red-500 px-1">此操作不可撤销，文件将被永久删除</p>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteConfirm(null)}
+              disabled={deleteLoading}
+            >
+              取消
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmDelete} disabled={deleteLoading}>
+              {deleteLoading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              确认删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Page>
+  )
+}
