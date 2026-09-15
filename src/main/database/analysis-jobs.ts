@@ -1,10 +1,12 @@
 import { getDatabase } from './connection'
-import type {
-  AnalysisJobItemStatus,
-  AnalysisJobItemView,
-  AnalysisJobKind,
-  AnalysisJobStatus,
-  AnalysisJobView
+import {
+  ANALYSIS_DEFAULTS,
+  type AnalysisJobItemStatus,
+  type AnalysisJobItemView,
+  type AnalysisJobKind,
+  type AnalysisJobStatus,
+  type AnalysisJobView,
+  type AnalysisMosaicMode
 } from '../../shared/ai'
 
 export interface AnalysisJobRow {
@@ -27,23 +29,48 @@ export interface AnalysisJobRow {
 }
 
 export interface AnalysisJobOptions {
-  slices: number
   concurrency: number
   rpm: number
   tagMode: 'open' | 'closed'
+  framesShort: number
+  framesPerSegment: number
+  segmentSeconds: number
+  maxMinutes: number
+  skipOverMinutes: number
+  mosaic: AnalysisMosaicMode
+  transcribe: boolean
+  asrRpm: number
+  /** 建作业时选定的转写提供方；null 表示不转写 */
+  asrProviderId: string | null
+}
+
+function pick(n: unknown, fallback: number, min = 1): number {
+  const v = Number(n)
+  return Number.isFinite(v) && v >= min ? Math.trunc(v) : fallback
 }
 
 export function parseJobOptions(row: AnalysisJobRow): AnalysisJobOptions {
+  let parsed: Partial<AnalysisJobOptions> & { slices?: number } = {}
   try {
-    const parsed = JSON.parse(row.options) as Partial<AnalysisJobOptions>
-    return {
-      slices: Math.max(1, Number(parsed.slices) || 4),
-      concurrency: Math.max(1, Number(parsed.concurrency) || 2),
-      rpm: Math.max(1, Number(parsed.rpm) || 10),
-      tagMode: parsed.tagMode === 'closed' ? 'closed' : 'open'
-    }
+    parsed = JSON.parse(row.options) as typeof parsed
   } catch {
-    return { slices: 4, concurrency: 2, rpm: 10, tagMode: 'open' }
+    parsed = {}
+  }
+  const d = ANALYSIS_DEFAULTS
+  return {
+    concurrency: pick(parsed.concurrency, d.concurrency),
+    rpm: pick(parsed.rpm, d.rpm),
+    tagMode: parsed.tagMode === 'closed' ? 'closed' : 'open',
+    // 旧作业只有 slices：当成短视频帧数
+    framesShort: pick(parsed.framesShort ?? parsed.slices, d.framesShort),
+    framesPerSegment: pick(parsed.framesPerSegment, d.framesPerSegment),
+    segmentSeconds: pick(parsed.segmentSeconds, d.segmentSeconds, 30),
+    maxMinutes: pick(parsed.maxMinutes, d.maxMinutes),
+    skipOverMinutes: pick(parsed.skipOverMinutes, d.skipOverMinutes),
+    mosaic: parsed.mosaic === 'on' || parsed.mosaic === 'off' ? parsed.mosaic : 'auto',
+    transcribe: parsed.transcribe !== false,
+    asrRpm: pick(parsed.asrRpm, d.asrRpm),
+    asrProviderId: typeof parsed.asrProviderId === 'string' ? parsed.asrProviderId : null
   }
 }
 

@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import { ensureColumn } from './schema'
 
 /**
  * AI 分析相关的表：提供方、标签正规化、分析队列。
@@ -92,5 +93,92 @@ export function initAiSchema(database: Database.Database): void {
   )
   database.exec(
     `CREATE INDEX IF NOT EXISTS idx_analysis_jobs_status ON analysis_jobs(status, priority DESC, id)`
+  )
+
+  // ---- v2：标签分面与置信度 ----
+  ensureColumn(database, 'tags', 'facet', 'TEXT')
+  ensureColumn(database, 'post_tags', 'confidence', 'REAL')
+
+  // ---- v2：语音转写提供方、结构化分析结果、字幕、章节 ----
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS asr_providers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      protocol TEXT NOT NULL,
+      base_url TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT '',
+      credential TEXT,
+      max_clip_seconds INTEGER NOT NULL DEFAULT 600,
+      extra_form TEXT NOT NULL DEFAULT '{}',
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER DEFAULT (strftime('%s', 'now')),
+      updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+    )
+  `)
+
+  // 每条作品保留最新一次的结构化结果；result 是 VideoAnalysis JSON，meta 是 AnalysisRunMeta JSON
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS post_analysis (
+      post_id INTEGER PRIMARY KEY,
+      schema_version INTEGER NOT NULL,
+      prompt_version TEXT NOT NULL DEFAULT '',
+      model TEXT,
+      asr_engine TEXT,
+      result TEXT NOT NULL,
+      meta TEXT NOT NULL DEFAULT '{}',
+      created_at INTEGER DEFAULT (strftime('%s', 'now')),
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    )
+  `)
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS post_transcripts (
+      post_id INTEGER PRIMARY KEY,
+      engine TEXT NOT NULL,
+      language TEXT,
+      partial INTEGER NOT NULL DEFAULT 0,
+      coverage TEXT NOT NULL DEFAULT '[]',
+      segments TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at INTEGER DEFAULT (strftime('%s', 'now')),
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    )
+  `)
+  // 字幕全文检索：能搜「视频里说过的话」。外部内容表模式，靠触发器同步
+  database.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS post_transcripts_fts
+      USING fts5(text, content='post_transcripts', content_rowid='post_id', tokenize='unicode61')
+  `)
+  database.exec(`
+    CREATE TRIGGER IF NOT EXISTS post_transcripts_ai AFTER INSERT ON post_transcripts BEGIN
+      INSERT INTO post_transcripts_fts(rowid, text) VALUES (new.post_id, new.text);
+    END
+  `)
+  database.exec(`
+    CREATE TRIGGER IF NOT EXISTS post_transcripts_ad AFTER DELETE ON post_transcripts BEGIN
+      INSERT INTO post_transcripts_fts(post_transcripts_fts, rowid, text) VALUES ('delete', old.post_id, old.text);
+    END
+  `)
+  database.exec(`
+    CREATE TRIGGER IF NOT EXISTS post_transcripts_au AFTER UPDATE ON post_transcripts BEGIN
+      INSERT INTO post_transcripts_fts(post_transcripts_fts, rowid, text) VALUES ('delete', old.post_id, old.text);
+      INSERT INTO post_transcripts_fts(rowid, text) VALUES (new.post_id, new.text);
+    END
+  `)
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS post_chapters (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      post_id INTEGER NOT NULL,
+      start_sec REAL NOT NULL,
+      end_sec REAL NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      summary TEXT NOT NULL DEFAULT '',
+      tags TEXT NOT NULL DEFAULT '[]',
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    )
+  `)
+  database.exec(
+    `CREATE INDEX IF NOT EXISTS idx_post_chapters_post ON post_chapters(post_id, start_sec)`
   )
 }
