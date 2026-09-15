@@ -34,7 +34,10 @@ export class GeminiClient implements AiClient {
   }
 
   private headers(): Record<string, string> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...this.provider.extraHeaders
+    }
     if (this.provider.credential.trim()) headers['x-goog-api-key'] = this.provider.credential.trim()
     return headers
   }

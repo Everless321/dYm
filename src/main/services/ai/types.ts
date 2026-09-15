@@ -10,6 +10,8 @@ export interface ResolvedProvider {
   /** API Key；codex 协议下为 JSON 序列化的 OAuth 凭据 */
   credential: string
   reasoningEffort: AiReasoningEffort | null
+  /** 网关要求的附加请求头（如 OpenCode 的 User-Agent / x-opencode-session），所有协议客户端都会带上 */
+  extraHeaders?: Record<string, string>
 }
 
 export interface VisionImage {

@@ -28,7 +28,8 @@ export class AnthropicClient implements AiClient {
   private headers(): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'anthropic-version': '2023-06-01'
+      'anthropic-version': '2023-06-01',
+      ...this.provider.extraHeaders
     }
     if (this.provider.credential.trim()) headers['x-api-key'] = this.provider.credential.trim()
     return headers

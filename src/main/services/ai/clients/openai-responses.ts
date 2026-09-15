@@ -110,7 +110,7 @@ export class OpenAiResponsesClient implements AiClient {
 
   private async headers(): Promise<Record<string, string>> {
     const extra = this.options.headers ? await this.options.headers() : {}
-    return bearerHeaders(this.provider.credential, extra)
+    return bearerHeaders(this.provider.credential, { ...this.provider.extraHeaders, ...extra })
   }
 
   private buildBody(request: VisionRequest, stream: boolean): Record<string, unknown> {

@@ -91,7 +91,7 @@ export const AI_PROVIDER_TEMPLATES: AiProviderTemplate[] = [
     protocol: 'opencode',
     baseUrl: 'https://opencode.ai/zen/go/v1',
     model: 'gpt-5.6-luna',
-    hint: 'Go 是 OpenCode 的包月订阅，API Key 同样在 opencode.ai/auth 获取'
+    hint: 'Go 是 $10/月 的包月订阅（仅开源模型），Key 同样在 opencode.ai/auth 获取；官方定位是编码 Agent 流量，批量打标签建议优先用 Zen'
   },
   {
     id: 'anthropic',
