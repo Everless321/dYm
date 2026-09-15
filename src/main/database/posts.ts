@@ -1,6 +1,7 @@
 import { join, sep } from 'path'
 import { existsSync, readFileSync } from 'fs'
 import { getDatabase } from './connection'
+import { replacePostTags, tagKeywordSql, tagMatchSql } from './tags'
 
 // Post CRUD
 export interface DbPost {
@@ -27,6 +28,9 @@ export interface DbPost {
   analyzed_at: number | null
   // 手动添加的标签（JSON 字符串数组，与 analysis_tags 同格式）
   manual_tags: string | null
+  // 模型原始输出（JSON 文本）与所用模型
+  analysis_raw: string | null
+  analysis_model: string | null
 }
 
 export interface CreatePostInput {
@@ -244,12 +248,8 @@ export function getAllPosts(
   }
 
   if (filters?.tags && filters.tags.length > 0) {
-    // 标签命中 AI 或手动任一来源
-    const tagConditions = filters.tags
-      .map(() => '(analysis_tags LIKE ? OR manual_tags LIKE ?)')
-      .join(' OR ')
-    conditions.push(`(${tagConditions})`)
-    filters.tags.forEach((tag) => params.push(`%"${tag}"%`, `%"${tag}"%`))
+    // 标签命中 AI 或手动任一来源（走 post_tags 索引）
+    conditions.push(`(${tagMatchSql(filters.tags, 'any', params)})`)
   }
 
   if (filters?.minContentLevel !== undefined) {
@@ -269,14 +269,14 @@ export function getAllPosts(
   if (filters?.keyword?.trim()) {
     // posts.nickname 存的是净化过的文件夹名（emoji/特殊字符被转义成下划线），
     // 故按真实作者名搜索时还需匹配 users.nickname。
-    // 标签是 JSON 数组字符串，直接对整串模糊匹配即可命中其中任一标签。
+    const keyword = `%${filters.keyword.trim()}%`
+    params.push(keyword, keyword, keyword)
+    const tagClause = tagKeywordSql(params, keyword)
+    params.push(keyword)
     conditions.push(
-      '(caption LIKE ? OR desc LIKE ? OR nickname LIKE ?' +
-        ' OR analysis_tags LIKE ? OR manual_tags LIKE ?' +
+      `(caption LIKE ? OR desc LIKE ? OR nickname LIKE ? OR ${tagClause}` +
         ' OR sec_uid IN (SELECT sec_uid FROM users WHERE nickname LIKE ?))'
     )
-    const keyword = `%${filters.keyword.trim()}%`
-    params.push(keyword, keyword, keyword, keyword, keyword, keyword)
   }
 
   const whereClause = `WHERE ${conditions.join(' AND ')}`
@@ -318,6 +318,9 @@ export interface AnalysisResult {
   summary: string
   scene: string
   content_level: number
+  /** 模型原始输出（JSON 文本） */
+  raw?: string
+  model?: string
 }
 
 export function getUnanalyzedPostsCount(secUid?: string): number {
@@ -418,30 +421,56 @@ export function getUnanalyzedPosts(secUid?: string, limit?: number): DbPost[] {
   return database.prepare(sql).all(...params) as DbPost[]
 }
 
-export function updatePostAnalysis(id: number, result: AnalysisResult): void {
+/**
+ * 写入一次分析结果：标签进 post_tags（并回写 JSON 列），其余字段进 posts。
+ * tagMode=closed 时只保留标签库里已有的标签。返回实际保留的标签。
+ */
+export function savePostAnalysis(
+  id: number,
+  result: AnalysisResult,
+  tagMode: 'open' | 'closed' = 'open'
+): string[] {
   const database = getDatabase()
-  database
-    .prepare(
-      `
-    UPDATE posts SET
-      analysis_tags = ?,
-      analysis_category = ?,
-      analysis_summary = ?,
-      analysis_scene = ?,
-      analysis_content_level = ?,
-      analyzed_at = strftime('%s', 'now')
-    WHERE id = ?
-  `
-    )
-    .run(
-      JSON.stringify(result.tags),
-      result.category,
-      result.summary,
-      result.scene,
-      result.content_level,
-      id
-    )
+  return database.transaction(() => {
+    const kept = replacePostTags(id, 'ai', result.tags, tagMode)
+    database
+      .prepare(
+        `UPDATE posts SET
+           analysis_category = ?, analysis_summary = ?, analysis_scene = ?, analysis_content_level = ?,
+           analysis_raw = ?, analysis_model = ?, analyzed_at = strftime('%s', 'now')
+         WHERE id = ?`
+      )
+      .run(
+        result.category,
+        result.summary,
+        result.scene,
+        result.content_level,
+        result.raw ?? null,
+        result.model ?? null,
+        id
+      )
+    return kept
+  })()
 }
+
+/**
+ * 封闭模式专用：先在事务里试写标签，一个都没匹配上则回滚，不改动 analyzed_at，返回 null。
+ */
+export function savePostAnalysisIfMatched(id: number, result: AnalysisResult): string[] | null {
+  const database = getDatabase()
+  try {
+    return database.transaction(() => {
+      const kept = savePostAnalysis(id, result, 'closed')
+      if (kept.length === 0) throw new NoTagMatched()
+      return kept
+    })()
+  } catch (error) {
+    if (error instanceof NoTagMatched) return null
+    throw error
+  }
+}
+
+class NoTagMatched extends Error {}
 
 // 标准化路径前缀（确保尾部有平台分隔符）。
 // 库里的路径由 join() 生成，Windows 上是反斜杠；只补 '/' 会让 LIKE 永远不匹配，迁移变成静默空操作

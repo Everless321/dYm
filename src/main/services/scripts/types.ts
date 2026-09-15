@@ -345,10 +345,10 @@ export interface ScriptApi {
       downloaded: number
       error?: string
     }>
-    /** 发起分析，secUid 为空则分析全部未分析作品 */
-    analyze: (secUid?: string) => Promise<void>
-    /** 重新分析指定的多个作品 */
-    reanalyzePosts: (postIds: number[]) => Promise<void>
+    /** 把未分析作品排进分析队列（secUid 为空则全部），立即返回，不等分析完成 */
+    analyze: (secUid?: string) => Promise<{ jobId: number; total: number }>
+    /** 把指定作品插队重新分析，立即返回 */
+    reanalyzePosts: (postIds: number[]) => Promise<{ jobId: number; total: number }>
   }
 
   fs: {

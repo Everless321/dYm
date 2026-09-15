@@ -35,7 +35,7 @@ import { getDownloadPath } from '../media'
 import { addUserByUrl } from '../user-add'
 import { startUserSync } from '../syncer'
 import { startDownloadTask } from '../downloader'
-import { startAnalysis, reanalyzePosts } from '../analyzer'
+import { enqueueUnanalyzed, enqueueReanalyze } from '../ai'
 import { createDouyinApi } from './douyin-api'
 import { createShellApi } from './shell-api'
 import type { Row, ScriptApi } from './types'
@@ -170,8 +170,15 @@ export function createScriptApi(
       addVideo: (urlOrAwemeId: string) => addUserByUrl(toVideoUrl(urlOrAwemeId)),
       syncUser: (userId: number) => startUserSync(userId, { source: 'manual' }),
       runTask: (taskId: number) => startDownloadTask(taskId, { source: 'manual' }),
-      analyze: (secUid?: string) => startAnalysis(secUid),
-      reanalyzePosts: (postIds: number[]) => reanalyzePosts(postIds)
+      // 入队即返回，不等分析完成；返回作业 id 与条数
+      analyze: async (secUid?: string) => {
+        const job = enqueueUnanalyzed(secUid)
+        return { jobId: job.id, total: job.total }
+      },
+      reanalyzePosts: async (postIds: number[]) => {
+        const job = enqueueReanalyze(postIds)
+        return { jobId: job.id, total: job.total }
+      }
     },
 
     fs: {

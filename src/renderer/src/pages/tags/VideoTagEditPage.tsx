@@ -29,7 +29,9 @@ export default function VideoTagEditPage() {
   const [viewerOpen, setViewerOpen] = useState(false)
   const [input, setInput] = useState('')
   const [suggestions, setSuggestions] = useState<string[]>([])
-  const [reanalyzing, setReanalyzing] = useState(false)
+  // 记录哪条作品正在等待重新分析结果；切换作品后自然不再显示「分析中」
+  const [reanalyzingId, setReanalyzingId] = useState<number | null>(null)
+  const reanalyzing = reanalyzingId === id
   const [siblings, setSiblings] = useState<number[]>([])
   const [status, setStatus] = useState<'loading' | 'ready' | 'notFound' | 'error'>('loading')
   const [errorMessage, setErrorMessage] = useState('')
@@ -78,15 +80,32 @@ export default function VideoTagEditPage() {
       })
   }, [load])
 
+  // 本页发起的重新分析在队列里跑；等到这条作品完成再刷新（别的页面发起的也会命中）。
+  // 作业被取消 / 整体失败时不会有 itemDone，所以还要盯着作业本身的状态收尾。
+  const reanalyzeJobRef = useRef<number | null>(null)
   useEffect(() => {
-    const unsub = window.api.analysis.onProgress((p) => {
-      if (p.status === 'completed' || p.status === 'failed' || p.status === 'stopped') {
-        setReanalyzing(false)
-        load()
+    const unsub = window.api.analysis.onQueue((event) => {
+      const done = event.itemDone
+      if (done && done.postId === id) {
+        reanalyzeJobRef.current = null
+        setReanalyzingId((prev) => (prev === id ? null : prev))
+        if (done.ok) load()
+        else toast.error(`重新分析失败: ${done.error || '未知错误'}`)
+        return
       }
+      const jobId = reanalyzeJobRef.current
+      if (jobId === null) return
+      const job = event.jobs.find((j) => j.id === jobId)
+      const active =
+        job && (job.status === 'queued' || job.status === 'running' || job.status === 'paused')
+      if (active) return
+      reanalyzeJobRef.current = null
+      setReanalyzingId((prev) => (prev === id ? null : prev))
+      if (job?.error) toast.error(`重新分析未完成: ${job.error}`)
+      else if (job?.status === 'cancelled') toast.info('重新分析已取消')
     })
     return unsub
-  }, [load])
+  }, [id, load])
 
   // 上/下一条沿工作台传来的队列走：带 query 就用同一套筛选条件解析
   //（无筛选时只有 FROM_LIST 标记，解析出来是默认值，即全库）。
@@ -193,16 +212,17 @@ export default function VideoTagEditPage() {
   }
 
   const handleReanalyze = async () => {
+    setReanalyzingId(id)
     try {
-      const running = await window.api.analysis.isRunning()
-      if (running) {
-        toast.error('已有分析任务在进行中')
-        return
-      }
-      setReanalyzing(true)
-      await window.api.analysis.reanalyzePost(id)
+      const job = await window.api.analysis.createJob({
+        kind: 'reanalyze',
+        postIds: [id],
+        priority: true
+      })
+      reanalyzeJobRef.current = job.id
+      toast.info('已加入分析队列，完成后自动刷新')
     } catch (error) {
-      setReanalyzing(false)
+      setReanalyzingId((prev) => (prev === id ? null : prev))
       toast.error(`重新分析失败: ${(error as Error).message}`)
     }
   }

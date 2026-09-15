@@ -68,19 +68,12 @@ export interface TagStatItem {
 
 export function getTopTags(limit = 20): TagStatItem[] {
   const database = getDatabase()
-  // 合并 AI 与手动标签来源；每个 post 内对同名标签去重计 1 次
+  // AI 与手动来源合并；同一作品上的同名标签只计 1 次
   return database
     .prepare(
-      `SELECT tag, COUNT(*) as count FROM (
-         SELECT DISTINCT posts.id as pid, j.value as tag
-         FROM posts, json_each(posts.analysis_tags) j
-         WHERE posts.analysis_tags IS NOT NULL AND posts.analysis_tags != '[]'
-         UNION
-         SELECT DISTINCT posts.id as pid, j.value as tag
-         FROM posts, json_each(posts.manual_tags) j
-         WHERE posts.manual_tags IS NOT NULL AND posts.manual_tags != '[]'
-       )
-       GROUP BY tag
+      `SELECT t.name AS tag, COUNT(DISTINCT pt.post_id) AS count
+       FROM post_tags pt JOIN tags t ON t.id = pt.tag_id
+       GROUP BY t.id
        ORDER BY count DESC
        LIMIT ?`
     )
