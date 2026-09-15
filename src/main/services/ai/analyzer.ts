@@ -1,4 +1,9 @@
-import { getPostById, savePostAnalysis, type DbPost } from '../../database'
+import {
+  getPostById,
+  savePostAnalysis,
+  savePostAnalysisIfMatched,
+  type DbPost
+} from '../../database'
 import { emitPostAnalyzed } from '../scripts/emit'
 import type { AiClient } from './types'
 import { AiHttpError } from './types'
@@ -58,6 +63,18 @@ export async function analyzeOnePost(post: DbPost, options: AnalyzeOptions): Pro
 
   const result = parseAnalysisOutput(response.text, response.model ?? options.model)
   options.signal.throwIfAborted()
+  if (options.tagMode === 'closed') {
+    // 封闭模式下一个都没对上就别把作品标成「已分析」，让用户扩标签库后重试
+    const kept = savePostAnalysisIfMatched(post.id, result)
+    if (kept === null) {
+      throw new Error(
+        `封闭模式：模型输出的标签都不在标签库中（${result.tags.slice(0, 5).join('、')}）`
+      )
+    }
+    const updated = getPostById(post.id)
+    if (updated) emitPostAnalyzed(updated)
+    return kept
+  }
   const kept = savePostAnalysis(post.id, result, options.tagMode)
   const updated = getPostById(post.id)
   if (updated) emitPostAnalyzed(updated)

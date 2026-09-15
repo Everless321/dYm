@@ -90,15 +90,23 @@ export function saveAnalysisSettings(patch: Partial<AnalysisSettings>): Analysis
 
 // ==================== 队列状态 ====================
 
+/** 打断当前作业的意图：shutdown 与 pause 的区别是收尾后回到 queued，下次启动自动续跑 */
+type RunIntent = 'pause' | 'cancel' | 'shutdown' | null
+
 interface ActiveRun {
   jobId: number
   controller: AbortController
-  intent: 'pause' | 'cancel' | null
+  intent: RunIntent
   current: Map<number, string>
 }
 
 let loopRunning = false
 let active: ActiveRun | null = null
+/** 应用退出中：不再起新作业、不再向窗口推送（库随时会关） */
+let stopping = false
+/** 自动分析合批缓冲 */
+let autoPending = new Set<number>()
+let autoTimer: NodeJS.Timeout | null = null
 /** 一个提供方一个限流器：两个作业先后用同一个 Key 时，RPM 窗口应该连续 */
 const limiters = new Map<string, RateLimiter>()
 
@@ -126,6 +134,7 @@ function sendToWindows(payload: AnalysisQueueEvent): void {
 
 function flushBroadcast(): void {
   broadcastTimer = null
+  if (stopping) return
   const payload: AnalysisQueueEvent = { jobs: listJobs() }
   if (pendingItemDone) {
     payload.itemDone = pendingItemDone
@@ -136,6 +145,7 @@ function flushBroadcast(): void {
 
 /** 作业列表快照节流推送；带 itemDone 的事件立即发（对话框要逐条更新） */
 function broadcast(itemDone?: AnalysisQueueEvent['itemDone']): void {
+  if (stopping) return
   if (itemDone) {
     if (broadcastTimer) {
       clearTimeout(broadcastTimer)
@@ -243,7 +253,8 @@ export function pauseJob(id: number): void {
   const row = getAnalysisJob(id)
   if (!row) throw new Error('作业不存在')
   if (active?.jobId === id) {
-    active.intent = 'pause'
+    // 已经在取消 / 退出收尾的作业不能被降级成暂停
+    if (active.intent === null) active.intent = 'pause'
     active.controller.abort(new Error('paused'))
     return
   }
@@ -311,9 +322,18 @@ function waitForActiveToEnd(jobId: number): Promise<void> {
 
 /** 停掉一切并等待退出，应用退出前调用；未完成的作业留在库里，下次启动续跑 */
 export async function shutdownQueue(): Promise<void> {
+  stopping = true
+  if (broadcastTimer) {
+    clearTimeout(broadcastTimer)
+    broadcastTimer = null
+  }
+  if (autoTimer) {
+    clearTimeout(autoTimer)
+    autoTimer = null
+  }
   if (!active) return
   const jobId = active.jobId
-  active.intent = 'pause'
+  if (active.intent !== 'cancel') active.intent = 'shutdown'
   active.controller.abort(new Error('shutdown'))
   // 抽帧的 ffmpeg 不响应 abort，最多等 10 秒；等不到也照常退出，启动时会把 running 条目放回 pending
   await Promise.race([
@@ -330,7 +350,7 @@ function kick(): void {
   void (async () => {
     try {
       let job: AnalysisJobRow | undefined
-      while ((job = nextQueuedJob())) {
+      while (!stopping && (job = nextQueuedJob())) {
         await runJob(job)
       }
     } catch (error) {
@@ -350,33 +370,41 @@ async function runJob(job: AnalysisJobRow): Promise<void> {
     current: new Map()
   }
   active = run
-  updateJobStatus(job.id, 'running', { started: true, error: null })
-  broadcast()
-
   const options = parseJobOptions(job)
   let workersFailed: string | null = null
   try {
+    updateJobStatus(job.id, 'running', { started: true, error: null })
+    broadcast()
     const provider = resolveProvider(job.provider_id)
     const client = createClientFor(provider.id)
     const limiter = limiterFor(provider.id, options.rpm)
     const systemPrompt = buildSystemPrompt(job.prompt)
 
     const worker = async (): Promise<void> => {
-      while (!run.controller.signal.aborted) {
-        const [postId] = claimPendingItems(job.id, 1)
-        if (postId === undefined) return
-        await processItem(job.id, postId, run, {
-          client,
-          limiter,
-          systemPrompt,
-          slices: options.slices,
-          tagMode: options.tagMode,
-          signal: run.controller.signal,
-          model: provider.model
-        })
+      try {
+        while (!run.controller.signal.aborted) {
+          const [postId] = claimPendingItems(job.id, 1)
+          if (postId === undefined) return
+          await processItem(job.id, postId, run, {
+            client,
+            limiter,
+            systemPrompt,
+            slices: options.slices,
+            tagMode: options.tagMode,
+            signal: run.controller.signal,
+            model: provider.model
+          })
+        }
+      } catch (error) {
+        // 一个 worker 因数据库等非分析错误崩了，其它 worker 不能继续往「已失败」的作业里写
+        run.controller.abort(error instanceof Error ? error : new Error(String(error)))
+        throw error
       }
     }
-    await Promise.all(Array.from({ length: options.concurrency }, worker))
+    // 等所有 worker 都退出再收尾，否则收尾把条目放回 pending 后还会被幸存的 worker 重新领走
+    const results = await Promise.allSettled(Array.from({ length: options.concurrency }, worker))
+    const failure = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
+    if (failure && run.intent === null) throw failure.reason
   } catch (error) {
     workersFailed = (error as Error).message
     console.error(`[AI] 作业 #${job.id} 无法执行:`, error)
@@ -389,6 +417,11 @@ async function runJob(job: AnalysisJobRow): Promise<void> {
     releaseRunningItems(job.id)
     recountJob(job.id)
     updateJobStatus(job.id, 'paused')
+  } else if (run.intent === 'shutdown') {
+    // 退出打断的回到 queued，下次启动自动续跑
+    releaseRunningItems(job.id)
+    recountJob(job.id)
+    updateJobStatus(job.id, 'queued')
   } else if (run.intent === 'cancel') {
     releaseRunningItems(job.id)
     recountJob(job.id)
@@ -458,6 +491,7 @@ function describeError(error: unknown): string {
 /** 应用启动时调用：把上次没跑完的作业接着排队；订阅下载完成事件实现自动分析 */
 export function initAnalysisQueue(): void {
   const db = getDatabase()
+  stopping = false
   releaseRunningItems()
   const interrupted = db
     .prepare(`UPDATE analysis_jobs SET status = 'queued' WHERE status = 'running'`)
@@ -482,8 +516,6 @@ export function initAnalysisQueue(): void {
 }
 
 /** 下载是成批到达的，攒 30 秒合成一个作业，而不是一条作品一个作业 */
-let autoPending = new Set<number>()
-let autoTimer: NodeJS.Timeout | null = null
 
 function scheduleAutoJob(postId: number): void {
   autoPending.add(postId)

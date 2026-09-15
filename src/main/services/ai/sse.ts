@@ -11,7 +11,8 @@ export async function* readSseJson(response: Response): AsyncGenerator<unknown> 
     while (true) {
       const { value, done } = await reader.read()
       if (done) break
-      buffer += decoder.decode(value, { stream: true })
+      // 网关可能用 CRLF 结尾；统一成 LF 后再按空行切事件（与 parseSseText 保持一致）
+      buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, '\n')
       let idx: number
       // SSE 事件以空行分隔；一个事件可能有多行 data:
       while ((idx = buffer.indexOf('\n\n')) !== -1) {

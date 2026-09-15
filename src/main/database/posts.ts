@@ -453,6 +453,25 @@ export function savePostAnalysis(
   })()
 }
 
+/**
+ * 封闭模式专用：先在事务里试写标签，一个都没匹配上则回滚，不改动 analyzed_at，返回 null。
+ */
+export function savePostAnalysisIfMatched(id: number, result: AnalysisResult): string[] | null {
+  const database = getDatabase()
+  try {
+    return database.transaction(() => {
+      const kept = savePostAnalysis(id, result, 'closed')
+      if (kept.length === 0) throw new NoTagMatched()
+      return kept
+    })()
+  } catch (error) {
+    if (error instanceof NoTagMatched) return null
+    throw error
+  }
+}
+
+class NoTagMatched extends Error {}
+
 // 标准化路径前缀（确保尾部有平台分隔符）。
 // 库里的路径由 join() 生成，Windows 上是反斜杠；只补 '/' 会让 LIKE 永远不匹配，迁移变成静默空操作
 function normalizeDirPrefix(p: string): string {
