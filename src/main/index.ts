@@ -19,7 +19,8 @@ import {
   initDatabase,
   resetStaleLiveStatus,
   resetStaleSyncStatus,
-  resetStaleTaskStatus
+  resetStaleTaskStatus,
+  migrateTagsFromJsonColumns
 } from './database'
 import { initDouyinHandler } from './services/douyin'
 import {
@@ -33,6 +34,12 @@ import { initTelemetry, track } from './services/telemetry'
 import { initScheduler, stopScheduler } from './services/scheduler'
 import { closePage } from './services/douyin-page'
 import { hasRunningLiveRecordings, stopAllLiveRecordings } from './services/live-recorder'
+import {
+  initAnalysisQueue,
+  isQueueBusy,
+  migrateLegacyProviderSettings,
+  shutdownQueue
+} from './services/ai'
 import { sweepUnconverted } from './services/live-convert'
 import { fromUrlPath } from './services/media'
 import { startScriptHooks } from './services/scripts/hooks'
@@ -360,6 +367,11 @@ async function bootstrap(): Promise<void> {
   resetStaleSyncStatus()
   resetStaleTaskStatus()
 
+  // AI 分析：旧 JSON 标签列灌进 tags/post_tags，旧 grok_* 设置收成提供方，恢复未跑完的分析作业
+  migrateTagsFromJsonColumns()
+  migrateLegacyProviderSettings()
+  initAnalysisQueue()
+
   // 初始化抖音客户端
   initDouyinHandler()
 
@@ -441,17 +453,19 @@ app.on('before-quit', (event) => {
   isQuitting = true
   if (quitCleanupDone) return
 
-  if (hasRunningLiveRecordings()) {
+  // 分析队列同理：在途的模型请求要掐掉、running 条目要放回 pending，等它退出循环再关库
+  if (hasRunningLiveRecordings() || isQueueBusy()) {
     event.preventDefault()
     stopScheduler()
     closePage()
-    void stopAllLiveRecordings()
-      .catch((error) => console.error('[Live] 退出时停止录制失败:', error))
-      .finally(() => {
-        quitCleanupDone = true
-        finishQuitCleanup()
-        app.quit()
-      })
+    void Promise.all([
+      stopAllLiveRecordings().catch((error) => console.error('[Live] 退出时停止录制失败:', error)),
+      shutdownQueue().catch((error) => console.error('[AI] 退出时停止分析队列失败:', error))
+    ]).finally(() => {
+      quitCleanupDone = true
+      finishQuitCleanup()
+      app.quit()
+    })
     return
   }
 

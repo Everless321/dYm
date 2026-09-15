@@ -1,38 +1,7 @@
 import type Database from 'better-sqlite3'
 import { getDatabase } from './connection'
-
-const DEFAULT_ANALYSIS_PROMPT = `你是视频内容分析助手。分析视频帧截图，输出标准化JSON。
-
-## 标签规则：
-1. 标签必须原子化，先输出基础标签再输出组合标签
-2. 只输出标签词本身，禁止带前缀
-3. 使用中文标签
-4. 标签内禁止有空格
-
-## 常用标签参考：
-
-【内容类型】舞蹈、唱歌、教程、Vlog、开箱、测评、美食、旅行、运动、游戏、穿搭、美妆、剧情、搞笑、知识分享
-
-【场景】室内、室外、街拍、海边、山景、城市、乡村、咖啡厅、健身房、办公室、家居
-
-【风格】清新、复古、简约、时尚、可爱、酷炫、文艺、治愈、搞怪
-
-【人物】单人、双人、多人、无人
-
-【拍摄】特写、全身、半身、航拍、延时、慢动作
-
-## 内容等级评判（content_level 1-10）：
-根据内容质量、创意程度、制作水平综合评分
-
-## 输出字段：
-- tags: 标签数组（5-15个）
-- category: 主分类
-- summary: 一句话描述（15字内）
-- scene: 场景
-- content_level: 内容等级1-10
-
-## 输出格式（严格JSON，无其他文字）：
-{"tags":["标签1","标签2"],"category":"分类","summary":"描述","scene":"场景","content_level":5}`
+import { initAiSchema } from './ai-schema'
+import { ANALYSIS_DEFAULTS } from '../../shared/ai'
 
 /**
  * 给已存在的表补列。用 table_info 判断列是否存在，而不是 try/catch 吞掉 ALTER 的所有错误，
@@ -159,6 +128,9 @@ export function initDatabase(): void {
   ensureColumn(database, 'posts', 'analyzed_at', 'INTEGER')
   // 手动标签：与 analysis_tags 同为 JSON 字符串数组格式，默认 NULL
   ensureColumn(database, 'posts', 'manual_tags', 'TEXT')
+  // 模型原始输出（JSON 文本）与所用模型：换提示词 / 换模型后可以离线重新解析、对比
+  ensureColumn(database, 'posts', 'analysis_raw', 'TEXT')
+  ensureColumn(database, 'posts', 'analysis_model', 'TEXT')
 
   // posts 表索引
   database.exec(`CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id)`)
@@ -228,20 +200,21 @@ export function initDatabase(): void {
     )
   `)
 
+  initAiSchema(database)
+
   // 初始化默认设置
   const defaultSettings = [
     { key: 'douyin_cookie', value: '' },
-    { key: 'grok_api_key', value: '' },
-    { key: 'grok_api_url', value: 'https://api.x.ai/v1' },
     { key: 'download_path', value: '' },
     { key: 'max_download_count', value: '50' },
     { key: 'web_server_port', value: '38595' },
-    // 分析相关设置
-    { key: 'analysis_concurrency', value: '2' },
-    { key: 'analysis_rpm', value: '10' },
-    { key: 'analysis_model', value: 'grok-4-fast' },
-    { key: 'analysis_slices', value: '4' },
-    { key: 'analysis_prompt', value: DEFAULT_ANALYSIS_PROMPT },
+    // 分析相关设置（提供方 / 模型在 ai_providers 表里）
+    { key: 'analysis_concurrency', value: String(ANALYSIS_DEFAULTS.concurrency) },
+    { key: 'analysis_rpm', value: String(ANALYSIS_DEFAULTS.rpm) },
+    { key: 'analysis_slices', value: String(ANALYSIS_DEFAULTS.slices) },
+    { key: 'analysis_prompt', value: ANALYSIS_DEFAULTS.prompt },
+    { key: 'analysis_tag_mode', value: ANALYSIS_DEFAULTS.tagMode },
+    { key: 'analysis_auto', value: ANALYSIS_DEFAULTS.autoAnalyze ? 'true' : 'false' },
     // 收藏同步（Surge 拦截收藏 → 暂存服务 → 定时拉取添加用户）
     { key: 'collect_sync_enabled', value: 'false' },
     { key: 'collect_sync_base_url', value: 'https://dymserver.everless.app' },

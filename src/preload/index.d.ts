@@ -1,4 +1,16 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
+import type {
+  AiModelInfo,
+  AiProviderInput,
+  AiProviderView,
+  AnalysisJobItemStatus,
+  AnalysisJobItemView,
+  AnalysisJobView,
+  AnalysisQueueEvent,
+  AnalysisSettings,
+  CodexAuthStatus,
+  CreateAnalysisJobInput
+} from '../shared/ai'
 
 declare global {
   interface DatabaseAPI {
@@ -398,6 +410,8 @@ declare global {
     analysis_content_level: number | null
     analyzed_at: number | null
     manual_tags: string | null
+    analysis_raw: string | null
+    analysis_model: string | null
   }
 
   interface MediaFiles {
@@ -458,17 +472,6 @@ declare global {
     batchRedownload: (awemeIds: string[]) => Promise<{ success: number; failed: number }>
   }
 
-  interface AnalysisProgress {
-    status: 'running' | 'completed' | 'failed' | 'stopped'
-    currentPost: string | null
-    currentIndex: number
-    totalPosts: number
-    analyzedCount: number
-    failedCount: number
-    message: string
-    lastResult?: { postId: number; ok: boolean; title: string }
-  }
-
   interface UnanalyzedUserCount {
     sec_uid: string
     nickname: string
@@ -489,21 +492,50 @@ declare global {
     unanalyzed: number
   }
 
-  interface GrokAPI {
-    verify: (apiKey: string, apiUrl: string, model: string) => Promise<boolean>
+  interface AiAPI {
+    listProviders: () => Promise<AiProviderView[]>
+    /** apiKey 为 undefined 表示不改动已存密钥；空串表示清空 */
+    saveProvider: (input: AiProviderInput) => Promise<AiProviderView>
+    deleteProvider: (id: string) => Promise<void>
+    setDefaultProvider: (id: string) => Promise<void>
+    /** 用表单草稿验证连通性（未保存也可） */
+    verifyProvider: (input: AiProviderInput) => Promise<{ ok: true; message: string }>
+    /** 拉模型列表；协议不支持时为 null */
+    listModels: (input: AiProviderInput) => Promise<AiModelInfo[] | null>
+    codexStatus: (providerId: string) => Promise<CodexAuthStatus>
+    /** 打开浏览器完成 ChatGPT 授权；resolve 时已登录 */
+    codexLogin: (providerId: string) => Promise<CodexAuthStatus>
+    codexCancelLogin: () => Promise<void>
+    codexImportFromCli: (providerId: string) => Promise<CodexAuthStatus>
+    codexLogout: (providerId: string) => Promise<CodexAuthStatus>
   }
 
   interface AnalysisAPI {
-    start: (secUid?: string) => Promise<void>
-    stop: () => Promise<void>
-    isRunning: () => Promise<boolean>
+    getSettings: () => Promise<AnalysisSettings>
+    createJob: (input: CreateAnalysisJobInput) => Promise<AnalysisJobView>
+    listJobs: () => Promise<AnalysisJobView[]>
+    getJob: (id: number) => Promise<AnalysisJobView | null>
+    getJobItems: (
+      id: number,
+      filter?: { status?: AnalysisJobItemStatus; page?: number; pageSize?: number }
+    ) => Promise<{ items: AnalysisJobItemView[]; total: number }>
+    pauseJob: (id: number) => Promise<void>
+    resumeJob: (id: number) => Promise<void>
+    cancelJob: (id: number) => Promise<void>
+    /** 失败条目重新排队，返回条数 */
+    retryFailed: (id: number) => Promise<number>
+    deleteJob: (id: number) => Promise<void>
     getUnanalyzedCount: (secUid?: string) => Promise<number>
     getUnanalyzedCountByUser: () => Promise<UnanalyzedUserCount[]>
     getUserStats: () => Promise<UserAnalysisStats[]>
     getTotalStats: () => Promise<TotalAnalysisStats>
-    reanalyzePost: (postId: number) => Promise<void>
-    reanalyzePosts: (postIds: number[]) => Promise<void>
-    onProgress: (callback: (progress: AnalysisProgress) => void) => () => void
+    /** 队列快照推送（节流）；itemDone 存在时表示刚有一条完成 */
+    onQueue: (callback: (event: AnalysisQueueEvent) => void) => () => void
+  }
+
+  interface TagAliasItem {
+    alias: string
+    tag: string
   }
 
   interface TagOverviewStats {
@@ -592,6 +624,10 @@ declare global {
     merge: (names: string[], into: string) => Promise<number>
     deleteTag: (names: string[]) => Promise<number>
     addCustomTag: (name: string) => Promise<void>
+    getAliases: () => Promise<TagAliasItem[]>
+    /** 登记别名：以后模型输出 alias 会并到 tag；alias 已是独立标签时等同合并 */
+    addAlias: (alias: string, tag: string) => Promise<void>
+    removeAlias: (alias: string) => Promise<void>
   }
 
   interface VideoInfo {
@@ -734,7 +770,7 @@ declare global {
     collect: CollectAPI
     live: LiveAPI
     post: PostAPI
-    grok: GrokAPI
+    ai: AiAPI
     analysis: AnalysisAPI
     tag: TagAPI
     video: VideoAPI

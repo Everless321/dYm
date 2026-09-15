@@ -2,6 +2,14 @@ import { getDatabase } from './connection'
 import { getSetting, setSetting } from './settings'
 import type { DbPost } from './posts'
 
+/**
+ * 标签存储：tags / post_tags / tag_aliases 三张表是事实来源。
+ * posts.analysis_tags / manual_tags 两个 JSON 列保留为冗余缓存（渲染端、网页端、脚本 API 都在读），
+ * 任何 post_tags 写入后都通过 syncPostTagColumns 回写，保证两边一致。
+ */
+
+export type TagSource = 'ai' | 'manual'
+
 export function parseTagJSON(s: string | null): string[] {
   if (!s) return []
   try {
@@ -12,60 +20,150 @@ export function parseTagJSON(s: string | null): string[] {
   }
 }
 
-// 合并某 post 的 AI 标签与手动标签，去重保序
-function mergedTagsOf(post: {
-  analysis_tags: string | null
-  manual_tags: string | null
-}): string[] {
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const t of [...parseTagJSON(post.analysis_tags), ...parseTagJSON(post.manual_tags)]) {
-    if (!seen.has(t)) {
-      seen.add(t)
-      out.push(t)
+// ==================== 归一化 ====================
+
+const MAX_TAG_LENGTH = 30
+
+/**
+ * 清洗模型 / 用户输入的标签：去首尾空白与 # 前缀、全角转半角（NFKC）、去掉内部空白、
+ * 去掉首尾标点。返回展示名与归一化键（英文小写），空或过长返回 null。
+ */
+export function normalizeTagName(raw: string): { name: string; norm: string } | null {
+  if (typeof raw !== 'string') return null
+  let name = raw.normalize('NFKC').trim()
+  name = name.replace(/^[#＃\s]+/, '')
+  name = name.replace(/\s+/g, '')
+  name = name.replace(/^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu, '')
+  if (!name || name.length > MAX_TAG_LENGTH) return null
+  return { name, norm: name.toLowerCase() }
+}
+
+interface TagRow {
+  id: number
+  name: string
+  norm: string
+  is_custom: number
+}
+
+function findTagByNorm(norm: string): TagRow | undefined {
+  return getDatabase().prepare('SELECT * FROM tags WHERE norm = ?').get(norm) as TagRow | undefined
+}
+
+function findTagByAlias(norm: string): TagRow | undefined {
+  return getDatabase()
+    .prepare('SELECT t.* FROM tag_aliases a JOIN tags t ON t.id = a.tag_id WHERE a.alias = ?')
+    .get(norm) as TagRow | undefined
+}
+
+/** 按名字找标签：先查别名再查归一化键。找不到返回 undefined */
+export function resolveTag(raw: string): TagRow | undefined {
+  const normalized = normalizeTagName(raw)
+  if (!normalized) return undefined
+  return findTagByAlias(normalized.norm) ?? findTagByNorm(normalized.norm)
+}
+
+/** 找不到就建。返回标签 id */
+export function ensureTag(raw: string, options: { custom?: boolean } = {}): number | null {
+  const normalized = normalizeTagName(raw)
+  if (!normalized) return null
+  const existing = findTagByAlias(normalized.norm) ?? findTagByNorm(normalized.norm)
+  if (existing) {
+    if (options.custom && !existing.is_custom) {
+      getDatabase().prepare('UPDATE tags SET is_custom = 1 WHERE id = ?').run(existing.id)
     }
+    return existing.id
   }
-  return out
+  const result = getDatabase()
+    .prepare('INSERT INTO tags (name, norm, is_custom) VALUES (?, ?, ?)')
+    .run(normalized.name, normalized.norm, options.custom ? 1 : 0)
+  return Number(result.lastInsertRowid)
 }
 
-export function getAllTags(): string[] {
+// ==================== post_tags 写入 ====================
+
+/** 把 post_tags 的现状回写到 posts.analysis_tags / manual_tags（JSON 数组，空则 NULL） */
+export function syncPostTagColumns(postIds: number[]): void {
+  if (!postIds.length) return
   const database = getDatabase()
-
-  // 可见用户的帖子中的所有标签。子查询代替展开 IN (?,?,…)，可见用户上千时会顶变量上限
-  const rows = database
-    .prepare(
-      `SELECT analysis_tags, manual_tags FROM posts
-       WHERE sec_uid IN (SELECT sec_uid FROM users WHERE show_in_home = 1)
-         AND (analysis_tags IS NOT NULL OR manual_tags IS NOT NULL)`
+  const select = database.prepare(
+    `SELECT pt.source, t.name FROM post_tags pt JOIN tags t ON t.id = pt.tag_id
+     WHERE pt.post_id = ? ORDER BY pt.created_at, pt.rowid`
+  )
+  const update = database.prepare(
+    'UPDATE posts SET analysis_tags = ?, manual_tags = ? WHERE id = ?'
+  )
+  for (const postId of postIds) {
+    const rows = select.all(postId) as { source: TagSource; name: string }[]
+    const ai = rows.filter((r) => r.source === 'ai').map((r) => r.name)
+    const manual = rows.filter((r) => r.source === 'manual').map((r) => r.name)
+    update.run(
+      ai.length ? JSON.stringify(ai) : null,
+      manual.length ? JSON.stringify(manual) : null,
+      postId
     )
-    .all() as { analysis_tags: string | null; manual_tags: string | null }[]
-
-  const tagSet = new Set<string>()
-  for (const row of rows) {
-    mergedTagsOf(row).forEach((tag) => tagSet.add(tag))
   }
-
-  return Array.from(tagSet).sort()
 }
 
-// ==================== 标签管理 ====================
+/**
+ * 用一组名字整体替换某作品某来源的标签。
+ * mode=closed 时只接受标签库里已有（含别名）的标签，用于约束模型输出。返回实际写入的展示名。
+ */
+export function replacePostTags(
+  postId: number,
+  source: TagSource,
+  names: string[],
+  mode: 'open' | 'closed' = 'open'
+): string[] {
+  const database = getDatabase()
+  const ids: number[] = []
+  const kept: string[] = []
+  const seen = new Set<number>()
+  for (const raw of names) {
+    const id = mode === 'closed' ? (resolveTag(raw)?.id ?? null) : ensureTag(raw)
+    if (id === null || seen.has(id)) continue
+    seen.add(id)
+    ids.push(id)
+  }
+  database.prepare('DELETE FROM post_tags WHERE post_id = ? AND source = ?').run(postId, source)
+  const insert = database.prepare(
+    'INSERT OR IGNORE INTO post_tags (post_id, tag_id, source, created_at) VALUES (?, ?, ?, ?)'
+  )
+  const nameOf = database.prepare('SELECT name FROM tags WHERE id = ?')
+  // created_at 递增保证回写 JSON 时保持模型输出顺序（基础标签在前、组合标签在后）
+  const base = Math.floor(Date.now() / 1000)
+  ids.forEach((id, index) => {
+    insert.run(postId, id, source, base + index)
+    kept.push((nameOf.get(id) as { name: string }).name)
+  })
+  syncPostTagColumns([postId])
+  return kept
+}
 
 // 写入单个 post 的标签（按需更新 AI / 手动来源）。不改 analyzed_at。
 export function setPostTags(id: number, input: { aiTags?: string[]; manualTags?: string[] }): void {
   const database = getDatabase()
-  const fields: string[] = []
-  const values: unknown[] = []
-  if (input.aiTags !== undefined) {
-    fields.push('analysis_tags = ?')
-    values.push(input.aiTags.length ? JSON.stringify(input.aiTags) : null)
-  }
-  if (input.manualTags !== undefined) {
-    fields.push('manual_tags = ?')
-    values.push(input.manualTags.length ? JSON.stringify(input.manualTags) : null)
-  }
-  if (!fields.length) return
-  values.push(id)
-  database.prepare(`UPDATE posts SET ${fields.join(', ')} WHERE id = ?`).run(...values)
+  database.transaction(() => {
+    if (input.aiTags !== undefined) replacePostTags(id, 'ai', input.aiTags)
+    if (input.manualTags !== undefined) replacePostTags(id, 'manual', input.manualTags)
+  })()
+}
+
+// 批量给视频追加手动标签（不动 AI 标签）
+export function addTagsToPosts(postIds: number[], tags: string[]): number {
+  if (!postIds.length) return 0
+  const database = getDatabase()
+  const tagIds = Array.from(
+    new Set(tags.map((t) => ensureTag(t)).filter((id): id is number => id !== null))
+  )
+  if (!tagIds.length) return 0
+  const insert = database.prepare(
+    "INSERT OR IGNORE INTO post_tags (post_id, tag_id, source) VALUES (?, ?, 'manual')"
+  )
+  database.transaction(() => {
+    for (const postId of postIds) for (const tagId of tagIds) insert.run(postId, tagId)
+    syncPostTagColumns(postIds)
+  })()
+  return postIds.length
 }
 
 export type ClearTagScope = 'all' | 'ai' | 'manual'
@@ -75,112 +173,236 @@ export function clearTags(postIds: number[], scope: ClearTagScope): number {
   if (!postIds.length) return 0
   const database = getDatabase()
   const placeholders = postIds.map(() => '?').join(',')
-  const tx = database.transaction((ids: number[]) => {
-    if (scope === 'manual' || scope === 'all') {
+  database.transaction(() => {
+    if (scope === 'all') {
+      database.prepare(`DELETE FROM post_tags WHERE post_id IN (${placeholders})`).run(...postIds)
+    } else {
       database
-        .prepare(`UPDATE posts SET manual_tags = NULL WHERE id IN (${placeholders})`)
-        .run(...ids)
+        .prepare(`DELETE FROM post_tags WHERE source = ? AND post_id IN (${placeholders})`)
+        .run(scope, ...postIds)
     }
     if (scope === 'ai' || scope === 'all') {
       database
         .prepare(
-          `UPDATE posts SET analysis_tags = NULL, analysis_category = NULL, analysis_summary = NULL,
-             analysis_scene = NULL, analysis_content_level = NULL, analyzed_at = NULL
+          `UPDATE posts SET analysis_category = NULL, analysis_summary = NULL, analysis_scene = NULL,
+             analysis_content_level = NULL, analysis_raw = NULL, analysis_model = NULL, analyzed_at = NULL
            WHERE id IN (${placeholders})`
         )
-        .run(...ids)
+        .run(...postIds)
     }
-  })
-  tx(postIds)
+    syncPostTagColumns(postIds)
+  })()
   return postIds.length
 }
 
-// 按映射跨 analysis_tags + manual_tags 改写标签（parse→映射→去重→写回，整体事务）
-// value 为 null 表示删除该标签
-function rewriteTagsWithMapping(mapping: Map<string, string | null>): number {
-  const sources = Array.from(mapping.keys())
-  if (!sources.length) return 0
-  const database = getDatabase()
-  const likeClause = sources.map(() => '(analysis_tags LIKE ? OR manual_tags LIKE ?)').join(' OR ')
-  const params: unknown[] = []
-  sources.forEach((s) => params.push(`%"${s}"%`, `%"${s}"%`))
-  const rows = database
-    .prepare(`SELECT id, analysis_tags, manual_tags FROM posts WHERE ${likeClause}`)
-    .all(...params) as { id: number; analysis_tags: string | null; manual_tags: string | null }[]
+// ==================== 标签库维护 ====================
 
-  const apply = (tags: string[]): string[] => {
-    const seen = new Set<string>()
-    const out: string[] = []
-    for (const t of tags) {
-      if (mapping.get(t) === null) continue // 映射为 null 表示删除
-      const mapped = mapping.get(t) ?? t
-      if (!seen.has(mapped)) {
-        seen.add(mapped)
-        out.push(mapped)
-      }
-    }
-    return out
-  }
-
-  const update = database.prepare(
-    'UPDATE posts SET analysis_tags = ?, manual_tags = ? WHERE id = ?'
-  )
-  const tx = database.transaction((items: typeof rows) => {
-    for (const row of items) {
-      const ai = apply(parseTagJSON(row.analysis_tags))
-      const manual = apply(parseTagJSON(row.manual_tags))
-      update.run(
-        ai.length ? JSON.stringify(ai) : null,
-        manual.length ? JSON.stringify(manual) : null,
-        row.id
-      )
-    }
-  })
-  tx(rows)
-  return rows.length
+function postIdsOfTags(tagIds: number[]): number[] {
+  if (!tagIds.length) return []
+  const rows = getDatabase()
+    .prepare(
+      `SELECT DISTINCT post_id FROM post_tags WHERE tag_id IN (${tagIds.map(() => '?').join(',')})`
+    )
+    .all(...tagIds) as { post_id: number }[]
+  return rows.map((r) => r.post_id)
 }
 
+/** 把 from 的所有关联并入 into，并把 from 的名字登记为 into 的别名，最后删掉 from */
+function mergeTagInto(fromId: number, intoId: number): void {
+  if (fromId === intoId) return
+  const database = getDatabase()
+  const from = database.prepare('SELECT * FROM tags WHERE id = ?').get(fromId) as TagRow | undefined
+  if (!from) return
+  database
+    .prepare(
+      `INSERT OR IGNORE INTO post_tags (post_id, tag_id, source, created_at)
+       SELECT post_id, ?, source, created_at FROM post_tags WHERE tag_id = ?`
+    )
+    .run(intoId, fromId)
+  database.prepare('DELETE FROM post_tags WHERE tag_id = ?').run(fromId)
+  database.prepare('UPDATE tag_aliases SET tag_id = ? WHERE tag_id = ?').run(intoId, fromId)
+  database.prepare('DELETE FROM tags WHERE id = ?').run(fromId)
+  database
+    .prepare('INSERT OR REPLACE INTO tag_aliases (alias, tag_id) VALUES (?, ?)')
+    .run(from.norm, intoId)
+}
+
+/** 重命名；若新名字已存在则等同于合并。返回受影响作品数 */
 export function renameTag(oldName: string, newName: string): number {
-  if (!oldName || !newName || oldName === newName) return 0
-  return rewriteTagsWithMapping(new Map([[oldName, newName]]))
+  const target = normalizeTagName(newName)
+  const source = resolveTag(oldName)
+  if (!target || !source) return 0
+  if (source.norm === target.norm && source.name === target.name) return 0
+  const database = getDatabase()
+  return database.transaction(() => {
+    const affected = postIdsOfTags([source.id])
+    const existing = findTagByNorm(target.norm)
+    if (existing && existing.id !== source.id) {
+      mergeTagInto(source.id, existing.id)
+    } else {
+      database
+        .prepare('UPDATE tags SET name = ?, norm = ? WHERE id = ?')
+        .run(target.name, target.norm, source.id)
+      database.prepare('DELETE FROM tag_aliases WHERE alias = ?').run(target.norm)
+      if (source.norm !== target.norm) {
+        database
+          .prepare('INSERT OR REPLACE INTO tag_aliases (alias, tag_id) VALUES (?, ?)')
+          .run(source.norm, source.id)
+      }
+    }
+    syncPostTagColumns(affected)
+    return affected.length
+  })()
 }
 
 export function mergeTags(names: string[], into: string): number {
-  const mapping = new Map<string, string>()
-  for (const n of names) {
-    if (n && n !== into) mapping.set(n, into)
-  }
-  return rewriteTagsWithMapping(mapping)
+  const database = getDatabase()
+  return database.transaction(() => {
+    const intoId = ensureTag(into)
+    if (intoId === null) return 0
+    const sources = names
+      .map((n) => resolveTag(n))
+      .filter((t): t is TagRow => !!t && t.id !== intoId)
+    const affected = postIdsOfTags([...sources.map((s) => s.id), intoId])
+    for (const s of sources) mergeTagInto(s.id, intoId)
+    syncPostTagColumns(affected)
+    return affected.length
+  })()
 }
 
-// 删除标签：从所有视频的 AI/手动标签中移除，同时从自定义标签库剔除
+// 删除标签：连同所有作品上的关联与别名一起删
 export function deleteTags(names: string[]): number {
-  const targets = names.filter(Boolean)
-  if (!targets.length) return 0
-  const mapping = new Map<string, string | null>(targets.map((n) => [n, null]))
-  const affected = rewriteTagsWithMapping(mapping)
-  const set = new Set(targets)
-  const cur = getCustomTags()
-  const next = cur.filter((t) => !set.has(t))
-  if (next.length !== cur.length) setSetting('tag_library_custom', JSON.stringify(next))
-  return affected
+  const database = getDatabase()
+  return database.transaction(() => {
+    const targets = names.map((n) => resolveTag(n)).filter((t): t is TagRow => !!t)
+    if (!targets.length) return 0
+    const ids = targets.map((t) => t.id)
+    const affected = postIdsOfTags(ids)
+    database.prepare(`DELETE FROM tags WHERE id IN (${ids.map(() => '?').join(',')})`).run(...ids)
+    syncPostTagColumns(affected)
+    return affected.length
+  })()
 }
 
-// 自定义标签库（无独立 tags 表，存设置项）。承载"新建"与"未使用"标签来源。
+/** 自定义标签：用户在标签库里手动新建的（is_custom=1），可能还没用在任何作品上 */
 export function getCustomTags(): string[] {
-  return parseTagJSON(getSetting('tag_library_custom'))
+  const rows = getDatabase()
+    .prepare('SELECT name FROM tags WHERE is_custom = 1 ORDER BY name')
+    .all() as { name: string }[]
+  return rows.map((r) => r.name)
 }
 
 export function addCustomTag(name: string): void {
-  const t = name.trim()
-  if (!t) return
-  const cur = getCustomTags()
-  if (!cur.includes(t)) setSetting('tag_library_custom', JSON.stringify([...cur, t]))
+  ensureTag(name, { custom: true })
 }
 
 export function removeCustomTag(name: string): void {
-  const cur = getCustomTags()
-  setSetting('tag_library_custom', JSON.stringify(cur.filter((t) => t !== name)))
+  const tag = resolveTag(name)
+  if (tag) getDatabase().prepare('UPDATE tags SET is_custom = 0 WHERE id = ?').run(tag.id)
+}
+
+export interface TagAliasItem {
+  alias: string
+  tag: string
+}
+
+export function getTagAliases(): TagAliasItem[] {
+  return getDatabase()
+    .prepare(
+      'SELECT a.alias, t.name AS tag FROM tag_aliases a JOIN tags t ON t.id = a.tag_id ORDER BY t.name, a.alias'
+    )
+    .all() as TagAliasItem[]
+}
+
+/** 登记别名：以后模型输出 alias 会并到 tag 上。tag 不存在会创建 */
+export function addTagAlias(alias: string, tag: string): void {
+  const normalized = normalizeTagName(alias)
+  const tagId = ensureTag(tag)
+  if (!normalized || tagId === null) return
+  const database = getDatabase()
+  database.transaction(() => {
+    // 别名如果本身已经是一个独立标签，等同于把它合并进去
+    const existing = findTagByNorm(normalized.norm)
+    if (existing && existing.id !== tagId) {
+      const affected = postIdsOfTags([existing.id])
+      mergeTagInto(existing.id, tagId)
+      syncPostTagColumns(affected)
+    } else if (!existing) {
+      database
+        .prepare('INSERT OR REPLACE INTO tag_aliases (alias, tag_id) VALUES (?, ?)')
+        .run(normalized.norm, tagId)
+    }
+  })()
+}
+
+export function removeTagAlias(alias: string): void {
+  const normalized = normalizeTagName(alias)
+  if (!normalized) return
+  getDatabase().prepare('DELETE FROM tag_aliases WHERE alias = ?').run(normalized.norm)
+}
+
+// ==================== 旧数据迁移 ====================
+
+const MIGRATED_KEY = 'tags_normalized_v1'
+
+/**
+ * 首次启动新版本：把 posts.analysis_tags / manual_tags 的 JSON 数组灌进 tags / post_tags，
+ * 旧的 tag_library_custom 设置里的自定义标签也一并导入。幂等，跑过一次后记标记。
+ */
+export function migrateTagsFromJsonColumns(): void {
+  if (getSetting(MIGRATED_KEY) === '1') return
+  const database = getDatabase()
+  const rows = database
+    .prepare(
+      `SELECT id, analysis_tags, manual_tags FROM posts
+       WHERE analysis_tags IS NOT NULL OR manual_tags IS NOT NULL`
+    )
+    .all() as { id: number; analysis_tags: string | null; manual_tags: string | null }[]
+  const insert = database.prepare(
+    'INSERT OR IGNORE INTO post_tags (post_id, tag_id, source, created_at) VALUES (?, ?, ?, ?)'
+  )
+  const started = Date.now()
+  database.transaction(() => {
+    for (const row of rows) {
+      const sources: [TagSource, string[]][] = [
+        ['ai', parseTagJSON(row.analysis_tags)],
+        ['manual', parseTagJSON(row.manual_tags)]
+      ]
+      for (const [source, names] of sources) {
+        names.forEach((name, index) => {
+          const tagId = ensureTag(name)
+          if (tagId !== null) insert.run(row.id, tagId, source, index)
+        })
+      }
+    }
+    for (const name of parseTagJSON(getSetting('tag_library_custom')))
+      ensureTag(name, { custom: true })
+    // 归一化可能把「Vlog」「vlog」并成一个，回写让 JSON 列与真相一致
+    syncPostTagColumns(rows.map((r) => r.id))
+    database.prepare(`DELETE FROM settings WHERE key = 'tag_library_custom'`).run()
+    setSetting(MIGRATED_KEY, '1')
+  })()
+  if (rows.length) {
+    console.log(
+      `[Database] 标签正规化迁移完成：${rows.length} 条作品，耗时 ${Date.now() - started}ms`
+    )
+  }
+}
+
+// ==================== 查询 ====================
+
+export function getAllTags(): string[] {
+  // 可见用户的作品中的所有标签
+  const rows = getDatabase()
+    .prepare(
+      `SELECT DISTINCT t.name FROM post_tags pt
+       JOIN tags t ON t.id = pt.tag_id
+       JOIN posts p ON p.id = pt.post_id
+       WHERE p.sec_uid IN (SELECT sec_uid FROM users WHERE show_in_home = 1)
+       ORDER BY t.name`
+    )
+    .all() as { name: string }[]
+  return rows.map((r) => r.name)
 }
 
 export interface TagOverviewStats {
@@ -199,14 +421,12 @@ export function getTagOverviewStats(): TagOverviewStats {
        FROM posts`
     )
     .get() as { total: number; tagged: number }
+  const kinds = database.prepare('SELECT COUNT(DISTINCT tag_id) as c FROM post_tags').get() as {
+    c: number
+  }
   const total = row?.total || 0
   const tagged = row?.tagged || 0
-  return {
-    totalVideos: total,
-    tagged,
-    untagged: total - tagged,
-    tagKinds: getTagsWithFrequency().length
-  }
+  return { totalVideos: total, tagged, untagged: total - tagged, tagKinds: kinds.c }
 }
 
 export interface UserTagStats {
@@ -219,10 +439,8 @@ export interface UserTagStats {
   untagged: number
 }
 
-// 单条聚合查询，避免每用户一次查询（几百用户时性能差）
 export function getUserTagStats(): UserTagStats[] {
-  const database = getDatabase()
-  const rows = database
+  const rows = getDatabase()
     .prepare(
       `SELECT u.sec_uid, u.nickname, u.avatar, u.avatar_path,
          COUNT(p.id) as total,
@@ -243,44 +461,35 @@ export interface TagFrequencyItem {
   categories: string[]
 }
 
-// 标签频率（每 post 内合并去重计 1 次）+ 来源标记。不受 show_in_home 限制。
-// 传 secUid 则只统计该用户，用于用户内容画像。
+// 标签频率（每 post 计 1 次）+ 来源标记。传 secUid 则只统计该用户。
 export function getTagsWithFrequency(secUid?: string): TagFrequencyItem[] {
-  const database = getDatabase()
-  const rows = database
+  const rows = getDatabase()
     .prepare(
-      `SELECT analysis_tags, manual_tags, analysis_category FROM posts
-       WHERE (analysis_tags IS NOT NULL OR manual_tags IS NOT NULL)${secUid ? ' AND sec_uid = ?' : ''}`
+      `SELECT t.name AS tag,
+         COUNT(DISTINCT pt.post_id) AS count,
+         MAX(CASE WHEN pt.source = 'ai' THEN 1 ELSE 0 END) AS has_ai,
+         MAX(CASE WHEN pt.source = 'manual' THEN 1 ELSE 0 END) AS has_manual,
+         GROUP_CONCAT(DISTINCT NULLIF(TRIM(p.analysis_category), '')) AS cats
+       FROM post_tags pt
+       JOIN tags t ON t.id = pt.tag_id
+       JOIN posts p ON p.id = pt.post_id
+       ${secUid ? 'WHERE p.sec_uid = ?' : ''}
+       GROUP BY t.id
+       ORDER BY count DESC, t.name`
     )
     .all(...(secUid ? [secUid] : [])) as {
-    analysis_tags: string | null
-    manual_tags: string | null
-    analysis_category: string | null
+    tag: string
+    count: number
+    has_ai: number
+    has_manual: number
+    cats: string | null
   }[]
-  const map = new Map<string, { count: number; ai: boolean; manual: boolean; cats: Set<string> }>()
-  for (const row of rows) {
-    const aiSet = new Set(parseTagJSON(row.analysis_tags))
-    const manualSet = new Set(parseTagJSON(row.manual_tags))
-    const cat = row.analysis_category?.trim()
-    for (const t of new Set([...aiSet, ...manualSet])) {
-      const e = map.get(t) || { count: 0, ai: false, manual: false, cats: new Set<string>() }
-      e.count++
-      if (aiSet.has(t)) e.ai = true
-      if (manualSet.has(t)) e.manual = true
-      if (cat) e.cats.add(cat)
-      map.set(t, e)
-    }
-  }
-  return Array.from(map.entries())
-    .map(
-      ([tag, e]): TagFrequencyItem => ({
-        tag,
-        count: e.count,
-        source: e.ai && e.manual ? 'both' : e.ai ? 'ai' : 'manual',
-        categories: Array.from(e.cats)
-      })
-    )
-    .sort((a, b) => b.count - a.count)
+  return rows.map((r) => ({
+    tag: r.tag,
+    count: r.count,
+    source: r.has_ai && r.has_manual ? 'both' : r.has_ai ? 'ai' : 'manual',
+    categories: r.cats ? r.cats.split(',') : []
+  }))
 }
 
 export interface TagLibraryStats {
@@ -292,19 +501,20 @@ export interface TagLibraryStats {
 
 export function getTagLibraryStats(): TagLibraryStats {
   const database = getDatabase()
-  const freq = getTagsWithFrequency()
-  const usedSet = new Set(freq.map((t) => t.tag))
-  const unused = getCustomTags().filter((t) => !usedSet.has(t))
-  const catRow = database
+  const counts = database
     .prepare(
-      `SELECT COUNT(DISTINCT analysis_category) as c FROM posts WHERE analysis_category IS NOT NULL AND analysis_category != ''`
+      `SELECT
+         (SELECT COUNT(*) FROM tags) AS total,
+         (SELECT COUNT(DISTINCT tag_id) FROM post_tags) AS used,
+         (SELECT COUNT(DISTINCT analysis_category) FROM posts
+            WHERE analysis_category IS NOT NULL AND analysis_category != '') AS categories`
     )
-    .get() as { c: number }
+    .get() as { total: number; used: number; categories: number }
   return {
-    totalTags: usedSet.size + unused.length,
-    categories: catRow?.c || 0,
-    usedTags: usedSet.size,
-    unusedTags: unused.length
+    totalTags: counts.total,
+    categories: counts.categories,
+    usedTags: counts.used,
+    unusedTags: counts.total - counts.used
   }
 }
 
@@ -314,8 +524,7 @@ export interface TagCategoryItem {
 }
 
 export function getTagCategories(): TagCategoryItem[] {
-  const database = getDatabase()
-  return database
+  return getDatabase()
     .prepare(
       `SELECT COALESCE(NULLIF(analysis_category, ''), '未分类') as category, COUNT(*) as count
        FROM posts WHERE analysis_tags IS NOT NULL OR manual_tags IS NOT NULL
@@ -324,7 +533,7 @@ export function getTagCategories(): TagCategoryItem[] {
     .all() as TagCategoryItem[]
 }
 
-/** 标注状态：按 analysis_tags / manual_tags 的有无组合 */
+/** 标注状态：按 analysis_tags / manual_tags 的有无组合（两列是 post_tags 的同步缓存） */
 export type TagStatusFilter = 'all' | 'untagged' | 'tagged' | 'ai' | 'manual' | 'both'
 
 const TAG_STATUS_SQL: Record<Exclude<TagStatusFilter, 'all'>, string> = {
@@ -358,10 +567,36 @@ export interface TagPostFilters {
   sort?: TagPostSort
 }
 
-/** 可从 WHERE 中排除的筛选维度，用于分面计数（统计某维度时不能被它自己约束） */
 type TagFilterDimension = 'user' | 'tags' | 'status' | 'categories' | 'scenes' | 'level'
 
-// 把筛选条件编译成 WHERE 子句。omit 里的维度会被跳过。
+/** 「作品带有指定标签」的 SQL 片段：走 post_tags 索引而不是对 JSON 文本 LIKE */
+export function tagMatchSql(tagNames: string[], mode: 'any' | 'all', params: unknown[]): string {
+  // 先把名字（含别名）解析成 id；库里没有的标签不可能命中任何作品
+  const ids = tagNames.map((t) => resolveTag(t)?.id ?? null)
+  if (mode === 'all') {
+    return ids
+      .map((id) => {
+        if (id === null) return '0'
+        params.push(id)
+        return `EXISTS (SELECT 1 FROM post_tags pt WHERE pt.post_id = posts.id AND pt.tag_id = ?)`
+      })
+      .join(' AND ')
+  }
+  const known = ids.filter((id): id is number => id !== null)
+  if (!known.length) return '0'
+  params.push(...known)
+  return `EXISTS (SELECT 1 FROM post_tags pt
+            WHERE pt.post_id = posts.id AND pt.tag_id IN (${known.map(() => '?').join(',')}))`
+}
+
+/** 「作品的某个标签名包含关键词」 */
+export function tagKeywordSql(params: unknown[], keywordLike: string): string {
+  params.push(keywordLike)
+  return `EXISTS (SELECT 1 FROM post_tags pt JOIN tags t ON t.id = pt.tag_id
+            WHERE pt.post_id = posts.id AND t.name LIKE ?)`
+}
+
+// 把筛选条件编译成 WHERE 子句。omit 里的维度会被跳过（分面计数时不能被自己约束）。
 function buildTagWhere(
   filters: TagPostFilters | undefined,
   omit: TagFilterDimension[] = []
@@ -371,18 +606,14 @@ function buildTagWhere(
   const params: unknown[] = []
 
   if (filters?.secUid && !skip.has('user')) {
-    conditions.push('sec_uid = ?')
+    conditions.push('posts.sec_uid = ?')
     params.push(filters.secUid)
   }
 
   if (filters?.tags?.length && !skip.has('tags')) {
-    // 每个标签一个「AI 或手动命中」子条件，再按 tagMode 用 AND / OR 串起来
-    const joiner = filters.tagMode === 'all' ? ' AND ' : ' OR '
-    const tagConditions = filters.tags
-      .map(() => '(analysis_tags LIKE ? OR manual_tags LIKE ?)')
-      .join(joiner)
-    conditions.push(`(${tagConditions})`)
-    filters.tags.forEach((tag) => params.push(`%"${tag}"%`, `%"${tag}"%`))
+    conditions.push(
+      `(${tagMatchSql(filters.tags, filters.tagMode === 'all' ? 'all' : 'any', params)})`
+    )
   }
 
   if (filters?.status && filters.status !== 'all' && !skip.has('status')) {
@@ -390,7 +621,6 @@ function buildTagWhere(
   }
 
   if (filters?.categories?.length && !skip.has('categories')) {
-    // '未分类' 代表 analysis_category 为空
     const hasUncategorized = filters.categories.includes('未分类')
     const named = filters.categories.filter((c) => c !== '未分类')
     const parts: string[] = []
@@ -420,9 +650,9 @@ function buildTagWhere(
 
   // 关键词是自由文本，任何分面统计都应受它约束，故不参与 omit
   if (filters?.keyword?.trim()) {
-    conditions.push('(caption LIKE ? OR desc LIKE ? OR analysis_tags LIKE ? OR manual_tags LIKE ?)')
     const kw = `%${filters.keyword.trim()}%`
-    params.push(kw, kw, kw, kw)
+    params.push(kw, kw)
+    conditions.push(`(caption LIKE ? OR desc LIKE ? OR ${tagKeywordSql(params, kw)})`)
   }
 
   return {
@@ -450,11 +680,7 @@ export function queryPostsForTags(
   return { posts, total: countRow.count }
 }
 
-/**
- * 同筛选条件下的全部作品 id，顺序与 queryPostsForTags 一致。
- * 详情页的上/下一条队列用它 —— 只取 id 是因为整行有 desc/summary 等长文本，
- * 全库上万条时按行拉会有几 MB 走 IPC。
- */
+/** 同筛选条件下的全部作品 id，顺序与 queryPostsForTags 一致（详情页上/下一条用） */
 export function queryPostIdsForTags(filters?: TagPostFilters): number[] {
   const { clause, params } = buildTagWhere(filters)
   const orderBy = TAG_SORT_SQL[filters?.sort || 'downloaded']
@@ -470,42 +696,32 @@ export interface TagFilterFacets {
   categories: TagCategoryItem[]
   scenes: { scene: string; count: number }[]
   statusCounts: Record<Exclude<TagStatusFilter, 'all'>, number>
-  /** 「全部状态」那一行的计数 */
   total: number
 }
 
-// 筛选栏的可选项 + 计数，一次 IPC 查完。
-// 每个维度的计数都排除自身条件（标准分面语义），否则选中一项后其他项会全变 0。
+// 筛选栏的可选项 + 计数，一次 IPC 查完。每个维度的计数都排除自身条件（标准分面语义）。
 export function getTagFilterFacets(filters?: TagPostFilters): TagFilterFacets {
   const database = getDatabase()
 
   const userScope = buildTagWhere(filters, ['user'])
   const users = database
     .prepare(
-      `SELECT p.sec_uid, COALESCE(u.nickname, p.nickname) as nickname, COUNT(*) as count
-       FROM posts p LEFT JOIN users u ON u.sec_uid = p.sec_uid
+      `SELECT posts.sec_uid, COALESCE(u.nickname, posts.nickname) as nickname, COUNT(*) as count
+       FROM posts LEFT JOIN users u ON u.sec_uid = posts.sec_uid
        ${userScope.clause}
-       GROUP BY p.sec_uid ORDER BY count DESC`
+       GROUP BY posts.sec_uid ORDER BY count DESC`
     )
     .all(...userScope.params) as TagFilterFacets['users']
 
   const tagScope = buildTagWhere(filters, ['tags'])
-  const tagRows = database
-    .prepare(`SELECT analysis_tags, manual_tags FROM posts ${tagScope.clause}`)
-    .all(...tagScope.params) as { analysis_tags: string | null; manual_tags: string | null }[]
-  const tagCount = new Map<string, number>()
-  for (const row of tagRows) {
-    // 同一 post 内 AI + 手动重复的标签只计 1 次
-    for (const t of new Set([
-      ...parseTagJSON(row.analysis_tags),
-      ...parseTagJSON(row.manual_tags)
-    ])) {
-      tagCount.set(t, (tagCount.get(t) || 0) + 1)
-    }
-  }
-  const tags = Array.from(tagCount, ([tag, count]) => ({ tag, count })).sort(
-    (a, b) => b.count - a.count
-  )
+  const tags = database
+    .prepare(
+      `SELECT t.name AS tag, COUNT(DISTINCT pt.post_id) AS count
+       FROM post_tags pt JOIN tags t ON t.id = pt.tag_id
+       WHERE pt.post_id IN (SELECT posts.id FROM posts ${tagScope.clause})
+       GROUP BY t.id ORDER BY count DESC, t.name`
+    )
+    .all(...tagScope.params) as TagFilterFacets['tags']
 
   const catScope = buildTagWhere(filters, ['categories'])
   const categories = database
@@ -558,24 +774,4 @@ export function getTagFilterFacets(filters?: TagPostFilters): TagFilterFacets {
     },
     total: statusRow.total || 0
   }
-}
-
-// 批量给视频追加手动标签（与已有 manual_tags 合并去重，不动 AI 标签）
-export function addTagsToPosts(postIds: number[], tags: string[]): number {
-  const clean = tags.map((t) => t.trim()).filter(Boolean)
-  if (!postIds.length || !clean.length) return 0
-  const database = getDatabase()
-  const placeholders = postIds.map(() => '?').join(',')
-  const rows = database
-    .prepare(`SELECT id, manual_tags FROM posts WHERE id IN (${placeholders})`)
-    .all(...postIds) as { id: number; manual_tags: string | null }[]
-  const update = database.prepare(`UPDATE posts SET manual_tags = ? WHERE id = ?`)
-  const tx = database.transaction(() => {
-    for (const row of rows) {
-      const merged = Array.from(new Set([...parseTagJSON(row.manual_tags), ...clean]))
-      update.run(JSON.stringify(merged), row.id)
-    }
-  })
-  tx()
-  return rows.length
 }

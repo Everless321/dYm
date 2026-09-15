@@ -162,8 +162,8 @@ await api.actions.addUser(url)            // 主页/作品链接添加用户
 await api.actions.addVideo(urlOrAwemeId)  // 添加单个作品，可直接传 aweme_id
 await api.actions.syncUser(userId)        // 同步作品列表
 await api.actions.runTask(taskId)         // 执行下载任务
-await api.actions.analyze(secUid?)        // 分析未分析作品
-await api.actions.reanalyzePosts(postIds) // 重新分析
+await api.actions.analyze(secUid?)        // 未分析作品排进分析队列，返回 { jobId, total }，不等分析完成
+await api.actions.reanalyzePosts(postIds) // 指定作品插队重新分析，返回 { jobId, total }
 \`\`\`
 
 ## api.douyin — 抖音只读接口
