@@ -108,6 +108,13 @@ interface WindowResult {
   window: AnalysisWindow
   frames: FrameSet
   transcript: WindowTranscript | null
+  /** 这一段转写失败（已降级为只看画面）的原因 */
+  asrError: string | null
+}
+
+/** 密钥错误 / 无权限是配置问题，继续跑下去每条都会失败，直接让条目失败提醒用户 */
+function isAsrConfigError(error: unknown): boolean {
+  return error instanceof AiHttpError && (error.status === 401 || error.status === 403)
 }
 
 /** 一段的素材：转写（可复用上次结果）+ 抽帧 */
@@ -124,6 +131,7 @@ async function gatherWindow(
   progress: string
 ): Promise<WindowResult> {
   let transcript: WindowTranscript | null = null
+  let asrError: string | null = null
   if (options.asr) {
     options.onStage?.('transcribe', progress)
     if (
@@ -136,12 +144,19 @@ async function gatherWindow(
       )
       transcript = { window, segments, silent: false, language: null }
     } else {
-      transcript = await transcribeWindow(videoPath, window, {
-        client: options.asr.client,
-        provider: options.asr.provider,
-        limiter: options.asr.limiter,
-        signal: options.signal
-      })
+      try {
+        transcript = await transcribeWindow(videoPath, window, {
+          client: options.asr.client,
+          provider: options.asr.provider,
+          limiter: options.asr.limiter,
+          signal: options.signal
+        })
+      } catch (error) {
+        if (options.signal.aborted || isAsrConfigError(error)) throw error
+        // 转写是锦上添花：服务抖动 / 音频格式不支持时退化为只看画面，不让整条分析失败
+        asrError = (error as Error).message || String(error)
+        console.warn(`[ASR] 第 ${window.index + 1} 段转写失败，改为仅画面分析：${asrError}`)
+      }
     }
   }
   options.onStage?.('frames', progress)
@@ -150,7 +165,7 @@ async function gatherWindow(
     mosaic: plan.mosaic,
     signal: options.signal
   })
-  return { window, frames, transcript }
+  return { window, frames, transcript, asrError }
 }
 
 export async function analyzePost(post: DbPost, options: PipelineOptions): Promise<PipelineResult> {
@@ -195,6 +210,7 @@ export async function analyzePost(post: DbPost, options: PipelineOptions): Promi
     analysis.flags.noSpeech = true
     return persist(post, analysis, options, {
       asrEngine: null,
+      asrError: null,
       duration: 0,
       analyzedSeconds: 0,
       segmentCount: 1,
@@ -245,7 +261,7 @@ export async function analyzePost(post: DbPost, options: PipelineOptions): Promi
           mosaic: result.frames.mosaic,
           imageCount: result.frames.images.length,
           transcript: result.transcript?.segments ?? [],
-          transcribed: !!asrActive,
+          transcribed: !!result.transcript,
           silent: result.transcript?.silent ?? false
         }),
         images: result.frames.images,
@@ -264,15 +280,18 @@ export async function analyzePost(post: DbPost, options: PipelineOptions): Promi
     .flatMap((r) => r.transcript?.segments ?? [])
     .sort((a, b) => a.start - b.start)
   const anySpeech = allSegments.length > 0
-  const allSilent = results.every((r) => r.transcript?.silent ?? true)
-  if (asrActive) {
-    const language = results.find((r) => r.transcript?.language)?.transcript?.language ?? null
+  const transcribedResults = results.filter((r) => r.transcript)
+  const allSilent = transcribedResults.every((r) => r.transcript!.silent)
+  const asrErrors = results.map((r) => r.asrError).filter((e): e is string => !!e)
+  // 转写只在至少一段成功时落库；coverage 只记成功的段，失败的段重试时会再转
+  if (asrActive && transcribedResults.length) {
+    const language = transcribedResults.find((r) => r.transcript!.language)?.transcript!.language
     savePostTranscript({
       postId: post.id,
       engine: engineOf(asrActive.provider),
       language: language ?? existing?.language ?? null,
-      partial: plan.partial,
-      coverage: plan.windows.map((w) => ({ start: w.start, end: w.end })),
+      partial: plan.partial || transcribedResults.length < results.length,
+      coverage: transcribedResults.map((r) => ({ start: r.window.start, end: r.window.end })),
       segments: allSegments,
       text: transcriptText(allSegments)
     })
@@ -292,7 +311,7 @@ export async function analyzePost(post: DbPost, options: PipelineOptions): Promi
           mosaic: only.frames.mosaic,
           imageCount: only.frames.images.length,
           transcript: allSegments,
-          transcribed: !!asrActive,
+          transcribed: !!only.transcript,
           silent: only.transcript?.silent ?? false
         }),
         images: only.frames.images,
@@ -336,11 +355,15 @@ export async function analyzePost(post: DbPost, options: PipelineOptions): Promi
       }))
     }
   }
-  if (asrActive && (allSilent || !anySpeech)) analysis.flags.noSpeech = true
+  // 转写过且没听到人声才敢说「无口播」；全部段都转写失败时不下结论
+  if (transcribedResults.length && (allSilent || !anySpeech)) analysis.flags.noSpeech = true
   if (!info.hasAudio) analysis.flags.noSpeech = true
 
   return persist(post, analysis, options, {
     asrEngine: asrActive ? engineOf(asrActive.provider) : null,
+    asrError: asrErrors.length
+      ? `${asrErrors.length}/${results.length} 段转写失败：${asrErrors[0]}`
+      : null,
     duration: info.duration,
     analyzedSeconds: plan.analyzedSeconds,
     segmentCount: plan.windows.length,
@@ -356,6 +379,7 @@ function persist(
   options: PipelineOptions,
   info: {
     asrEngine: string | null
+    asrError: string | null
     duration: number
     analyzedSeconds: number
     segmentCount: number
@@ -369,6 +393,7 @@ function persist(
   const meta: AnalysisRunMeta = {
     model: options.model,
     asrEngine: info.asrEngine,
+    asrError: info.asrError,
     promptVersion: PROMPT_VERSION,
     duration: info.duration,
     analyzedSeconds: info.analyzedSeconds,

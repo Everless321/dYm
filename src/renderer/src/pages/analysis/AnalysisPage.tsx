@@ -3,20 +3,22 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Sparkles, ListChecks, SlidersHorizontal, Cpu } from 'lucide-react'
-import type { AiProviderView, AnalysisJobView } from '@shared/ai'
+import { Sparkles, ListChecks, SlidersHorizontal, Cpu, Mic } from 'lucide-react'
+import type { AiProviderView, AnalysisJobView, AsrProviderView } from '@shared/ai'
 import { JobsPanel } from './JobsPanel'
 import { SettingsPanel } from './SettingsPanel'
 import { ProvidersPanel } from './ProvidersPanel'
+import { AsrProvidersPanel } from './AsrProvidersPanel'
 import { NewJobDialog } from './NewJobDialog'
 import { isJobActive } from './shared'
 
-type Tab = 'queue' | 'settings' | 'providers'
+type Tab = 'queue' | 'settings' | 'providers' | 'asr'
 
 const TABS: { value: Tab; label: string; icon: typeof ListChecks }[] = [
   { value: 'queue', label: '分析队列', icon: ListChecks },
   { value: 'settings', label: '分析设置', icon: SlidersHorizontal },
-  { value: 'providers', label: 'AI 提供方', icon: Cpu }
+  { value: 'providers', label: 'AI 提供方', icon: Cpu },
+  { value: 'asr', label: '语音转写', icon: Mic }
 ]
 
 const STATS_REFRESH_MS = 2000
@@ -24,7 +26,8 @@ const STATS_REFRESH_MS = 2000
 export default function AnalysisPage(): React.JSX.Element {
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get('tab')
-  const tab: Tab = tabParam === 'settings' || tabParam === 'providers' ? tabParam : 'queue'
+  const tab: Tab =
+    tabParam === 'settings' || tabParam === 'providers' || tabParam === 'asr' ? tabParam : 'queue'
   const setTab = (next: Tab): void => {
     const params = new URLSearchParams(searchParams)
     if (next === 'queue') params.delete('tab')
@@ -35,6 +38,7 @@ export default function AnalysisPage(): React.JSX.Element {
   const [jobs, setJobs] = useState<AnalysisJobView[] | null>(null)
   const [totals, setTotals] = useState<TotalAnalysisStats | null>(null)
   const [providers, setProviders] = useState<AiProviderView[]>([])
+  const [asrProviders, setAsrProviders] = useState<AsrProviderView[]>([])
   const [newJobOpen, setNewJobOpen] = useState(false)
 
   const refreshTotals = useCallback((): void => {
@@ -49,6 +53,10 @@ export default function AnalysisPage(): React.JSX.Element {
       .listProviders()
       .then(setProviders)
       .catch((error) => console.error('[AnalysisPage] 获取提供方失败:', error))
+    window.api.asr
+      .listProviders()
+      .then(setAsrProviders)
+      .catch((error) => console.error('[AnalysisPage] 获取转写服务失败:', error))
   }, [])
 
   useEffect(() => {
@@ -87,7 +95,7 @@ export default function AnalysisPage(): React.JSX.Element {
     <Page>
       <PageHeader
         title="AI 视频分析"
-        description="按作业排队分析，自动打标签；支持多个 AI 服务切换"
+        description="结合画面、语音转写和文案理解整条视频，输出总结、章节与结构化标签"
         actions={
           <button
             onClick={() => setNewJobOpen(true)}
@@ -136,6 +144,7 @@ export default function AnalysisPage(): React.JSX.Element {
             <SettingsPanel />
           </div>
           {tab === 'providers' && <ProvidersPanel onChanged={setProviders} />}
+          {tab === 'asr' && <AsrProvidersPanel onChanged={setAsrProviders} />}
         </div>
       </PageBody>
 
@@ -143,6 +152,7 @@ export default function AnalysisPage(): React.JSX.Element {
         open={newJobOpen}
         onOpenChange={setNewJobOpen}
         providers={providers}
+        asrProviders={asrProviders}
         onCreated={() => refreshTotals()}
         onNeedProvider={() => {
           setNewJobOpen(false)

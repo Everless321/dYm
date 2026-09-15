@@ -144,11 +144,26 @@ export function initAiSchema(database: Database.Database): void {
       FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
     )
   `)
-  // 字幕全文检索：能搜「视频里说过的话」。外部内容表模式，靠触发器同步
+  // 字幕全文检索：能搜「视频里说过的话」。外部内容表模式，靠触发器同步。
+  // 中文没有空格分词，unicode61 会把整句当一个词导致搜不到子串；trigram 按三字滑窗建索引，
+  // 中英文都能做子串匹配（查询词需 ≥3 字，更短的走 LIKE 兜底，见 searchTranscripts）
+  const ftsSql = (
+    database
+      .prepare(
+        `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'post_transcripts_fts'`
+      )
+      .get() as { sql: string } | undefined
+  )?.sql
+  if (ftsSql && !/trigram/i.test(ftsSql)) {
+    database.exec('DROP TABLE post_transcripts_fts')
+  }
   database.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS post_transcripts_fts
-      USING fts5(text, content='post_transcripts', content_rowid='post_id', tokenize='unicode61')
+      USING fts5(text, content='post_transcripts', content_rowid='post_id', tokenize='trigram')
   `)
+  if (ftsSql && !/trigram/i.test(ftsSql)) {
+    database.exec(`INSERT INTO post_transcripts_fts(post_transcripts_fts) VALUES ('rebuild')`)
+  }
   database.exec(`
     CREATE TRIGGER IF NOT EXISTS post_transcripts_ai AFTER INSERT ON post_transcripts BEGIN
       INSERT INTO post_transcripts_fts(rowid, text) VALUES (new.post_id, new.text);

@@ -188,11 +188,22 @@ export function searchTranscripts(
 ): { postId: number; snippet: string }[] {
   const q = keyword.trim()
   if (!q) return []
+  const database = getDatabase()
+  // trigram 分词要求查询词至少 3 个字符，更短的直接 LIKE
+  if ([...q].length < 3) {
+    const like = `%${q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`
+    return database
+      .prepare(
+        `SELECT post_id AS postId, substr(text, max(1, instr(text, ?) - 12), 40) AS snippet
+         FROM post_transcripts WHERE text LIKE ? ESCAPE '\\' LIMIT ?`
+      )
+      .all(q, like, limit) as { postId: number; snippet: string }[]
+  }
   // 用短语查询避免用户输入里的 fts 语法字符（* " -）被当成操作符
   const phrase = `"${q.replace(/"/g, '""')}"`
   try {
     return (
-      getDatabase()
+      database
         .prepare(
           `SELECT rowid AS postId, snippet(post_transcripts_fts, 0, '[', ']', '…', 12) AS snippet
            FROM post_transcripts_fts WHERE post_transcripts_fts MATCH ? ORDER BY rank LIMIT ?`

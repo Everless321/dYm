@@ -87,6 +87,8 @@ export interface PostTranscript {
 export interface AnalysisRunMeta {
   model: string
   asrEngine: string | null
+  /** 部分 / 全部段转写失败时的说明（分析已降级为仅画面），成功为 null */
+  asrError: string | null
   promptVersion: string
   /** 视频时长（秒）与实际分析覆盖的秒数 */
   duration: number
