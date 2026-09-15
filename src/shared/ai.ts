@@ -10,6 +10,7 @@ export type AiProtocol =
   | 'anthropic' // Anthropic Messages API（Claude 官方、OpenCode Zen 的 Claude）
   | 'gemini' // Google Gemini generateContent
   | 'codex' // ChatGPT Plus/Pro 订阅（Codex 后端，OAuth 登录，Responses 协议）
+  | 'opencode' // OpenCode Zen / Go 订阅：一个 Key，按模型自动走 responses / messages / gemini / chat
 
 export const AI_PROTOCOLS: { value: AiProtocol; label: string; description: string }[] = [
   {
@@ -28,6 +29,11 @@ export const AI_PROTOCOLS: { value: AiProtocol; label: string; description: stri
     description: 'Claude 官方或 OpenCode Zen 的 Claude'
   },
   { value: 'gemini', label: 'Google Gemini', description: 'Gemini 官方 generateContent 接口' },
+  {
+    value: 'opencode',
+    label: 'OpenCode（Zen / Go 订阅）',
+    description: '一个 API Key 用全部模型；GPT / Claude / Gemini / 其它按模型自动选择接口'
+  },
   {
     value: 'codex',
     label: 'ChatGPT 订阅（Codex）',
@@ -74,18 +80,18 @@ export const AI_PROVIDER_TEMPLATES: AiProviderTemplate[] = [
   {
     id: 'opencode-zen',
     name: 'OpenCode Zen',
-    protocol: 'openai-chat',
+    protocol: 'opencode',
     baseUrl: 'https://opencode.ai/zen/v1',
-    model: '',
-    hint: 'opencode.ai/zen 创建 API Key；GPT 系列请把协议改为 OpenAI Responses，Claude 改为 Anthropic'
+    model: 'gpt-5.6-luna',
+    hint: 'opencode.ai/auth 复制 API Key，或从本机 OpenCode CLI 导入；点「获取列表」查看全部模型'
   },
   {
     id: 'opencode-go',
-    name: 'OpenCode Go',
-    protocol: 'openai-chat',
-    baseUrl: 'https://opencode.ai/go/v1',
-    model: '',
-    hint: 'Go 订阅与 Zen 共用同一个 API Key，仅地址不同'
+    name: 'OpenCode Go（订阅）',
+    protocol: 'opencode',
+    baseUrl: 'https://opencode.ai/zen/go/v1',
+    model: 'gpt-5.6-luna',
+    hint: 'Go 是 OpenCode 的包月订阅，API Key 同样在 opencode.ai/auth 获取'
   },
   {
     id: 'anthropic',
@@ -154,6 +160,13 @@ export interface AiProviderInput {
 export interface AiModelInfo {
   id: string
   label?: string
+}
+
+/** 本机 OpenCode CLI（~/.local/share/opencode/auth.json）里可导入的 Key */
+export interface OpenCodeCliKey {
+  /** models.dev 提供方 id：opencode（Zen）或 opencode-go */
+  entry: 'opencode' | 'opencode-go'
+  key: string
 }
 
 /** Codex 登录状态 */

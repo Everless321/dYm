@@ -9,6 +9,7 @@ import type {
   AnalysisQueueEvent,
   AnalysisSettings,
   CodexAuthStatus,
+  OpenCodeCliKey,
   CreateAnalysisJobInput
 } from '../shared/ai'
 
@@ -508,6 +509,8 @@ declare global {
     codexCancelLogin: () => Promise<void>
     codexImportFromCli: (providerId: string) => Promise<CodexAuthStatus>
     codexLogout: (providerId: string) => Promise<CodexAuthStatus>
+    /** 本机 OpenCode CLI（/connect 保存的）里与地址匹配的 Zen/Go API Key；没有为 null */
+    opencodeCliKey: (baseUrl: string) => Promise<OpenCodeCliKey | null>
   }
 
   interface AnalysisAPI {

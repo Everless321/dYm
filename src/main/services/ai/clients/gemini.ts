@@ -16,10 +16,21 @@ interface GeminiResponse {
 /** Google Gemini generateContent。baseUrl 填到主机即可（默认 https://generativelanguage.googleapis.com） */
 export class GeminiClient implements AiClient {
   private readonly baseUrl: string
+  /** 官方是 /v1beta；OpenCode Zen 等网关把 Gemini 挂在自己的 /v1 下，传空串表示 baseUrl 已含版本 */
+  private readonly versionPath: string
 
-  constructor(private readonly provider: ResolvedProvider) {
+  constructor(
+    private readonly provider: ResolvedProvider,
+    options: { versionPath?: string } = {}
+  ) {
     const base = normalizeBaseUrl(provider.baseUrl)
-    this.baseUrl = base.replace(/\/v1(beta)?$/, '')
+    if (options.versionPath === undefined) {
+      this.baseUrl = base.replace(/\/v1(beta)?$/, '')
+      this.versionPath = '/v1beta'
+    } else {
+      this.baseUrl = base
+      this.versionPath = options.versionPath
+    }
   }
 
   private headers(): Record<string, string> {
@@ -29,7 +40,7 @@ export class GeminiClient implements AiClient {
   }
 
   private modelUrl(action: string): string {
-    return `${this.baseUrl}/v1beta/models/${encodeURIComponent(this.provider.model)}:${action}`
+    return `${this.baseUrl}${this.versionPath}/models/${encodeURIComponent(this.provider.model)}:${action}`
   }
 
   async complete(request: VisionRequest): Promise<VisionResponse> {
@@ -86,7 +97,7 @@ export class GeminiClient implements AiClient {
 
   async listModels(): Promise<AiModelInfo[] | null> {
     try {
-      const response = await fetchJson(`${this.baseUrl}/v1beta/models?pageSize=200`, {
+      const response = await fetchJson(`${this.baseUrl}${this.versionPath}/models?pageSize=200`, {
         method: 'GET',
         headers: this.headers(),
         timeoutMs: 20_000

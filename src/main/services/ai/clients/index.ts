@@ -4,6 +4,7 @@ import { OpenAiResponsesClient } from './openai-responses'
 import { AnthropicClient } from './anthropic'
 import { GeminiClient } from './gemini'
 import { CodexClient } from './codex'
+import { OpenCodeClient } from './opencode'
 
 export interface CreateClientOptions {
   /** Codex 刷新令牌后的回写；不传则刷新结果只保留在内存 */
@@ -23,6 +24,8 @@ export function createAiClient(
       return new AnthropicClient(provider)
     case 'gemini':
       return new GeminiClient(provider)
+    case 'opencode':
+      return new OpenCodeClient(provider)
     case 'codex':
       return new CodexClient(provider, (json) => options.persistCredential?.(provider.id, json))
     default: {
@@ -33,3 +36,4 @@ export function createAiClient(
 }
 
 export { CODEX_KNOWN_MODELS, CODEX_BASE_URL } from './codex'
+export { OPENCODE_ZEN_BASE_URL, OPENCODE_GO_BASE_URL, opencodeRouteOf } from './opencode'

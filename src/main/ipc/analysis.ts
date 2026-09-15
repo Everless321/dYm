@@ -38,6 +38,7 @@ import {
   codexCancelLogin,
   codexImportFromCli,
   codexLogout,
+  opencodeCliKey,
   createJob,
   listJobs,
   getJob,
@@ -73,6 +74,7 @@ export function registerAnalysisIpc(): void {
     codexImportFromCli(providerId)
   )
   ipcMain.handle('ai:codexLogout', (_event, providerId: string) => codexLogout(providerId))
+  ipcMain.handle('ai:opencodeCliKey', (_event, baseUrl: string) => opencodeCliKey(baseUrl))
 
   // ---- 分析队列 ----
   ipcMain.handle('analysis:getSettings', () => getAnalysisSettings())

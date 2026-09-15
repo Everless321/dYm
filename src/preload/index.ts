@@ -11,6 +11,7 @@ import type {
   AnalysisQueueEvent,
   AnalysisSettings,
   CodexAuthStatus,
+  OpenCodeCliKey,
   CreateAnalysisJobInput
 } from '../shared/ai'
 
@@ -209,7 +210,9 @@ const aiAPI = {
   codexImportFromCli: (providerId: string): Promise<CodexAuthStatus> =>
     ipcRenderer.invoke('ai:codexImportFromCli', providerId),
   codexLogout: (providerId: string): Promise<CodexAuthStatus> =>
-    ipcRenderer.invoke('ai:codexLogout', providerId)
+    ipcRenderer.invoke('ai:codexLogout', providerId),
+  opencodeCliKey: (baseUrl: string): Promise<OpenCodeCliKey | null> =>
+    ipcRenderer.invoke('ai:opencodeCliKey', baseUrl)
 }
 
 const analysisAPI = {

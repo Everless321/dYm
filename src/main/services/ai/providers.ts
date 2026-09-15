@@ -6,11 +6,13 @@ import {
   type AiProviderInput,
   type AiProviderView,
   type AiReasoningEffort,
-  type CodexAuthStatus
+  type CodexAuthStatus,
+  type OpenCodeCliKey
 } from '../../../shared/ai'
 import type { AiClient, AiModelInfo, ResolvedProvider } from './types'
 import { createAiClient, CODEX_BASE_URL } from './clients'
 import { openSecret, sealSecret } from './secret'
+import { pickOpenCodeCliKey } from './opencode-auth'
 import {
   cancelCodexLogin,
   hasCliAuth,
@@ -311,6 +313,13 @@ export function codexLogout(providerId: string): CodexAuthStatus {
     )
     .run(providerId)
   return getCodexStatus(providerId)
+}
+
+// ==================== OpenCode CLI 导入 ====================
+
+/** 本机 OpenCode CLI 里与该地址匹配的 API Key；没有返回 null */
+export function opencodeCliKey(baseUrl: string): OpenCodeCliKey | null {
+  return pickOpenCodeCliKey(baseUrl || '')
 }
 
 // ==================== 旧设置迁移 ====================

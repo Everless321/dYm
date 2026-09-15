@@ -26,7 +26,8 @@ import {
   type AiProviderTemplate,
   type AiProviderView,
   type AiReasoningEffort,
-  type CodexAuthStatus
+  type CodexAuthStatus,
+  type OpenCodeCliKey
 } from '@shared/ai'
 
 interface ProviderDialogProps {
@@ -87,7 +88,7 @@ const EMPTY_FORM: FormState = {
 }
 
 const supportsReasoning = (protocol: AiProtocol): boolean =>
-  protocol === 'openai-responses' || protocol === 'codex'
+  protocol === 'openai-responses' || protocol === 'codex' || protocol === 'opencode'
 
 export function ProviderDialog({
   open,
@@ -105,6 +106,7 @@ export function ProviderDialog({
   const [loadingModels, setLoadingModels] = useState(false)
   const [models, setModels] = useState<AiModelInfo[] | null>(null)
   const [codexStatus, setCodexStatus] = useState<CodexAuthStatus | null>(null)
+  const [cliKey, setCliKey] = useState<OpenCodeCliKey | null>(null)
   const [codexBusy, setCodexBusy] = useState<'login' | 'import' | 'logout' | null>(null)
 
   // 只在打开或换了另一条提供方时重置表单；同一条保存后父级回传新对象不应打断正在编辑的状态
@@ -129,6 +131,23 @@ export function ProviderDialog({
   }, [open, providerId])
 
   const isCodex = form.protocol === 'codex'
+  const isOpenCode = form.protocol === 'opencode'
+
+  // OpenCode 协议下探测本机 CLI 是否已 /connect，有就给个一键填入
+  useEffect(() => {
+    if (!open || !isOpenCode) {
+      setCliKey(null)
+      return
+    }
+    let cancelled = false
+    window.api.ai
+      .opencodeCliKey(form.baseUrl)
+      .then((k) => !cancelled && setCliKey(k))
+      .catch(() => !cancelled && setCliKey(null))
+    return () => {
+      cancelled = true
+    }
+  }, [open, isOpenCode, form.baseUrl])
 
   useEffect(() => {
     if (!open || !isCodex || !savedId) return
@@ -435,14 +454,32 @@ export function ProviderDialog({
                     : '本地服务（Ollama / LM Studio）可留空'
                 }
               >
-                <Input
-                  type="password"
-                  value={form.apiKey}
-                  onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
-                  placeholder={savedId && provider?.hasCredential ? '••••••••' : 'sk-...'}
-                  className="font-mono"
-                  autoComplete="off"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    type="password"
+                    value={form.apiKey}
+                    onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
+                    placeholder={savedId && provider?.hasCredential ? '••••••••' : 'sk-...'}
+                    className="font-mono"
+                    autoComplete="off"
+                  />
+                  {isOpenCode && cliKey && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() => {
+                        setForm({ ...form, apiKey: cliKey.key })
+                        toast.success(
+                          `已填入 OpenCode CLI 的 ${cliKey.entry === 'opencode-go' ? 'Go' : 'Zen'} Key，保存后生效`
+                        )
+                      }}
+                    >
+                      从 OpenCode CLI 导入
+                    </Button>
+                  )}
+                </div>
               </Field>
             )}
 
