@@ -1,2 +1,10 @@
 @import 'tailwindcss';
-@import './base.css';
+@import './theme.css';
+/*
+ * base.css 必须放进 base 层：未分层的样式在级联里永远压过 @layer utilities，
+ * 之前这里的 `* { margin: 0 }` 直接让全站 mt-* / mb-* / space-y-* 全部失效。
+ */
+@import './base.css' layer(base);
+
+/* shadcn 组件里的 animate-in / fade-in 等类来自这个插件，Tailwind v4 需要在 CSS 里显式挂载 */
+@plugin 'tailwindcss-animate';
