@@ -1,6 +1,6 @@
 import { ANALYSIS_DEFAULTS } from '../../../shared/ai'
 import type { TranscriptSegment } from '../../../shared/analysis'
-import { getSetting } from '../../database'
+import { getSetting, setSetting } from '../../database'
 import type { SegmentUnderstanding } from './schema'
 
 /**
@@ -19,6 +19,62 @@ export const PROMPT_VERSION = 'v2.0'
 export function getAnalysisPrompt(): string {
   return (getSetting('analysis_prompt') || '').trim() || ANALYSIS_DEFAULTS.prompt
 }
+
+const PROMPT_MIGRATED_KEY = 'analysis_prompt_v2_migrated'
+
+/**
+ * v1 的默认提示词末尾有一段「## 其它字段」，教模型输出 category / scene / summary / content_level 这几个扁平字段。
+ * v2 输出格式由程序固定拼接，这段留着会和新格式打架（模型可能回退成旧的扁平 JSON）。
+ * 启动时迁移一次：没改过默认的直接换成新默认；改过的只把「其它字段」那一节剪掉，其余保留。
+ */
+export function migrateAnalysisPromptV2(): void {
+  if (getSetting(PROMPT_MIGRATED_KEY) === '1') return
+  const current = (getSetting('analysis_prompt') || '').trim()
+  if (current) {
+    const stripped = stripLegacyFieldsSection(current)
+    const untouched =
+      normalizePrompt(stripped) === normalizePrompt(stripLegacyFieldsSection(LEGACY_V1_PROMPT))
+    const next = untouched ? ANALYSIS_DEFAULTS.prompt : stripped
+    if (next !== current) {
+      setSetting('analysis_prompt', next)
+      console.log(
+        `[AI] 分析提示词已迁移到 v2（${untouched ? '替换为新默认' : '移除旧的「其它字段」说明'}）`
+      )
+    }
+  }
+  setSetting(PROMPT_MIGRATED_KEY, '1')
+}
+
+function normalizePrompt(text: string): string {
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+/** 去掉「## 其它字段」这一节（到下一个二级标题或结尾） */
+function stripLegacyFieldsSection(text: string): string {
+  const match = /^##\s*其它字段[^\n]*\n(?:(?!^##\s)[^\n]*\n?)*/m.exec(text)
+  if (!match || !/content_level/.test(match[0])) return text
+  return (text.slice(0, match.index) + text.slice(match.index + match[0].length)).trim()
+}
+
+const LEGACY_V1_PROMPT = `你是短视频内容分析助手，根据视频截帧（或图集图片）判断内容并打标签。
+
+## 标签规则
+1. 标签必须原子化：一个标签只表达一个概念，先给基础标签再给组合标签
+2. 只输出标签词本身，使用中文，禁止带前缀、禁止包含空格
+3. 每条作品 5-15 个标签，优先从下面的参考体系中选，确实没有合适的再新增
+
+## 参考标签体系
+【内容类型】舞蹈、唱歌、教程、Vlog、开箱、测评、美食、旅行、运动、游戏、穿搭、美妆、剧情、搞笑、知识分享
+【场景】室内、室外、街拍、海边、山景、城市、乡村、咖啡厅、健身房、办公室、家居
+【风格】清新、复古、简约、时尚、可爱、酷炫、文艺、治愈、搞怪
+【人物】单人、双人、多人、无人
+【拍摄】特写、全身、半身、航拍、延时、慢动作
+
+## 其它字段
+- category：从【内容类型】里选一个主分类
+- scene：从【场景】里选一个
+- summary：一句话描述画面内容，15 字以内
+- content_level：1-10 的综合质量分（画面质量、创意、制作水平）`
 
 const FULL_OUTPUT_BLOCK = `## 输出格式（必须遵守）
 只输出一个 JSON 对象，不要输出任何解释、前后缀或 Markdown 代码块。结构如下（字段名固定，值按实际内容填）：

@@ -41,7 +41,8 @@ import {
   buildReducePrompt,
   buildSegmentPrompt,
   buildSinglePrompt,
-  getAnalysisPrompt
+  getAnalysisPrompt,
+  migrateAnalysisPromptV2
 } from './prompt'
 import { createAsrClient, getDefaultAsrProviderId, resolveAsrProvider } from './asr'
 import { ANALYSIS_STAGE_LABELS, type AnalysisStage } from '../../../shared/analysis'
@@ -565,6 +566,7 @@ function describeError(error: unknown): string {
 export function initAnalysisQueue(): void {
   const db = getDatabase()
   stopping = false
+  migrateAnalysisPromptV2()
   releaseRunningItems()
   const interrupted = db
     .prepare(`UPDATE analysis_jobs SET status = 'queued' WHERE status = 'running'`)
