@@ -12,10 +12,10 @@ files:
   - '!src/*'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
-  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{.env,.env.*,.npmrc}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
-  # 文档站源码与产物、Cloudflare 部署配置都不属于桌面端运行时
-  - '!{docs,wrangler.jsonc}'
+  # 文档站源码、产物与 Cloudflare 部署配置都不属于桌面端运行时
+  - '!docs'
   # ffmpeg 已通过 extraResources 单独打包，排除出 asar 避免重复打一份（省 ~130MB）
   - '!resources/ffmpeg'
 asarUnpack:
