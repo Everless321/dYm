@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
+import { Link } from 'react-router-dom'
 import {
   Loader2,
   Chrome,
-  CheckCircle,
   Download,
   RefreshCw,
   FolderSync,
   FolderOpen,
   Database,
-  X
+  X,
+  Sparkles
 } from 'lucide-react'
 import { emitDeveloperModeChange } from '@/lib/developer-mode'
 
@@ -17,11 +18,6 @@ export default function SystemPage() {
   // Cookie
   const [cookie, setCookie] = useState('')
   const [fetchingCookie, setFetchingCookie] = useState(false)
-
-  // API
-  const [apiKey, setApiKey] = useState('')
-  const [apiUrl, setApiUrl] = useState('https://api.x.ai/v1')
-  const [verifyingApi, setVerifyingApi] = useState(false)
 
   // 下载
   const [downloadPath, setDownloadPath] = useState('')
@@ -37,13 +33,6 @@ export default function SystemPage() {
   const [pendingNewPath, setPendingNewPath] = useState('')
   const [pendingOldPath, setPendingOldPath] = useState('')
   const [migrating, setMigrating] = useState(false)
-
-  // 分析
-  const [analysisConcurrency, setAnalysisConcurrency] = useState('2')
-  const [analysisRpm, setAnalysisRpm] = useState('10')
-  const [analysisModel, setAnalysisModel] = useState('grok-4-fast')
-  const [analysisSlices, setAnalysisSlices] = useState('4')
-  const [analysisPrompt, setAnalysisPrompt] = useState('')
 
   // 收藏同步
   const [collectEnabled, setCollectEnabled] = useState(false)
@@ -64,6 +53,9 @@ export default function SystemPage() {
 
   // 允许脚本执行本地命令（默认关闭）
   const [allowShell, setAllowShell] = useState(false)
+
+  // 设置加载完成前禁用保存，避免用默认值覆盖真实配置
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
 
   // 更新
   const [currentVersion, setCurrentVersion] = useState('')
@@ -96,52 +88,62 @@ export default function SystemPage() {
   }
 
   const loadSettings = async () => {
-    const settings = await window.api.settings.getAll()
-    setCookie(settings.douyin_cookie || '')
-    setApiKey(settings.grok_api_key || '')
-    setApiUrl(settings.grok_api_url || 'https://api.x.ai/v1')
-    const savedPath = settings.download_path || ''
-    setDownloadPath(savedPath)
-    originalDownloadPath.current = savedPath
-    setMaxDownloadCount(settings.max_download_count || '0')
-    setVideoDownloadConcurrency(settings.video_download_concurrency || '3')
-    setConvertToJpg(settings.convert_images_to_jpg === 'true')
-    setDownloadPostOnAddUser(settings.download_post_on_add_user !== 'false')
-    setAnalysisConcurrency(settings.analysis_concurrency || '2')
-    setAnalysisRpm(settings.analysis_rpm || '10')
-    setAnalysisModel(settings.analysis_model || 'grok-4-fast')
-    setAnalysisSlices(settings.analysis_slices || '4')
-    setAnalysisPrompt(settings.analysis_prompt || '')
-    setCollectEnabled(settings.collect_sync_enabled === 'true')
-    setCollectBaseUrl(settings.collect_sync_base_url || 'https://dymserver.everless.app')
-    setCollectToken(settings.collect_sync_token || '')
-    setCollectCron(settings.collect_sync_cron || '*/30 * * * *')
-    setLiveOutputPath(settings.live_output_path || '')
-    setLiveMaxDuration(settings.live_max_duration || '0')
-    setTelemetryEnabled(settings.telemetry_enabled !== 'false')
-    setDeveloperMode(settings.developer_mode === 'true')
-    setAllowShell(settings.scripts_allow_shell === 'true')
+    try {
+      const settings = await window.api.settings.getAll()
+      setCookie(settings.douyin_cookie || '')
+      const savedPath = settings.download_path || ''
+      setDownloadPath(savedPath)
+      originalDownloadPath.current = savedPath
+      setMaxDownloadCount(settings.max_download_count || '0')
+      setVideoDownloadConcurrency(settings.video_download_concurrency || '3')
+      setConvertToJpg(settings.convert_images_to_jpg === 'true')
+      setDownloadPostOnAddUser(settings.download_post_on_add_user !== 'false')
+      setCollectEnabled(settings.collect_sync_enabled === 'true')
+      setCollectBaseUrl(settings.collect_sync_base_url || 'https://dymserver.everless.app')
+      setCollectToken(settings.collect_sync_token || '')
+      setCollectCron(settings.collect_sync_cron || '*/30 * * * *')
+      setLiveOutputPath(settings.live_output_path || '')
+      setLiveMaxDuration(settings.live_max_duration || '0')
+      setTelemetryEnabled(settings.telemetry_enabled !== 'false')
+      setDeveloperMode(settings.developer_mode === 'true')
+      setAllowShell(settings.scripts_allow_shell === 'true')
+      setSettingsLoaded(true)
+    } catch (error) {
+      toast.error(`加载设置失败: ${(error as Error).message}`)
+    }
   }
 
   const handleToggleTelemetry = async () => {
     const next = !telemetryEnabled
-    setTelemetryEnabled(next)
-    await window.api.settings.set('telemetry_enabled', next ? 'true' : 'false')
+    try {
+      await window.api.settings.set('telemetry_enabled', next ? 'true' : 'false')
+      setTelemetryEnabled(next)
+    } catch {
+      toast.error('保存失败')
+    }
   }
 
   const handleToggleDeveloperMode = async (): Promise<void> => {
     const next = !developerMode
-    setDeveloperMode(next)
-    await window.api.settings.set('developer_mode', next ? 'true' : 'false')
-    emitDeveloperModeChange(next)
-    toast.success(next ? '开发者模式已开启' : '开发者模式已关闭')
+    try {
+      await window.api.settings.set('developer_mode', next ? 'true' : 'false')
+      setDeveloperMode(next)
+      emitDeveloperModeChange(next)
+      toast.success(next ? '开发者模式已开启' : '开发者模式已关闭')
+    } catch {
+      toast.error('保存失败')
+    }
   }
 
   const handleToggleAllowShell = async (): Promise<void> => {
     const next = !allowShell
-    setAllowShell(next)
-    await window.api.settings.set('scripts_allow_shell', next ? 'true' : 'false')
-    toast.success(next ? '脚本已可执行本地命令' : '已禁止脚本执行本地命令')
+    try {
+      await window.api.settings.set('scripts_allow_shell', next ? 'true' : 'false')
+      setAllowShell(next)
+      toast.success(next ? '脚本已可执行本地命令' : '已禁止脚本执行本地命令')
+    } catch {
+      toast.error('保存失败')
+    }
   }
 
   // Cookie handlers
@@ -149,11 +151,12 @@ export default function SystemPage() {
     setFetchingCookie(true)
     try {
       const result = await window.api.cookie.fetchDouyin()
-      setCookie(result)
       if (result) {
+        setCookie(result)
         toast.success('Cookie 获取成功')
       } else {
-        toast.warning('未获取到 Cookie，请确保已登录')
+        // 没登录就关窗：保留输入框里原来的 Cookie，别让接下来的「保存」把它清空
+        toast.warning('未检测到登录会话，Cookie 未更新，请在窗口中完成登录')
       }
     } catch {
       toast.error('获取 Cookie 失败')
@@ -168,30 +171,6 @@ export default function SystemPage() {
       toast.success('Cookie 已保存')
     } catch {
       toast.error('保存失败')
-    }
-  }
-
-  // API handlers
-  const handleSaveApi = async () => {
-    try {
-      await window.api.settings.set('grok_api_key', apiKey)
-      await window.api.settings.set('grok_api_url', apiUrl)
-      toast.success('API 设置已保存')
-    } catch {
-      toast.error('保存失败')
-    }
-  }
-
-  const handleVerifyApi = async () => {
-    // 不校验 API Key：Ollama / LM Studio 等本地服务无需鉴权
-    setVerifyingApi(true)
-    try {
-      await window.api.grok.verify(apiKey, apiUrl, analysisModel)
-      toast.success('连接验证成功')
-    } catch (error) {
-      toast.error(`验证失败: ${(error as Error).message}`)
-    } finally {
-      setVerifyingApi(false)
     }
   }
 
@@ -234,19 +213,26 @@ export default function SystemPage() {
 
   const handleMigrate = async () => {
     setMigrating(true)
+    let result: { success: number; failed: number }
     try {
-      const result = await window.api.migration.execute(pendingOldPath, pendingNewPath)
+      result = await window.api.migration.execute(pendingOldPath, pendingNewPath)
+    } catch (error) {
+      toast.error(`迁移失败: ${(error as Error).message}`)
+      setMigrating(false)
+      return
+    }
 
+    // 文件已经搬走，保存路径失败也要关闭对话框并保留 downloadPath，让用户重试保存
+    setShowMigrationDialog(false)
+    try {
       await saveDownloadSettings()
-      setShowMigrationDialog(false)
-
       if (result.failed > 0) {
         toast.warning(`迁移完成: 成功 ${result.success} 个，失败 ${result.failed} 个`)
       } else {
         toast.success(`迁移完成: 已迁移 ${result.success} 个文件夹`)
       }
-    } catch (error) {
-      toast.error(`迁移失败: ${(error as Error).message}`)
+    } catch {
+      toast.error('文件已迁移，但保存下载路径失败，请重试保存')
     } finally {
       setMigrating(false)
     }
@@ -254,18 +240,8 @@ export default function SystemPage() {
 
   const handleSkipMigration = async () => {
     setShowMigrationDialog(false)
-    await saveDownloadSettings()
-  }
-
-  // Analysis handlers
-  const handleSaveAnalysis = async () => {
     try {
-      await window.api.settings.set('analysis_concurrency', analysisConcurrency)
-      await window.api.settings.set('analysis_rpm', analysisRpm)
-      await window.api.settings.set('analysis_model', analysisModel)
-      await window.api.settings.set('analysis_slices', analysisSlices)
-      await window.api.settings.set('analysis_prompt', analysisPrompt)
-      toast.success('分析设置已保存')
+      await saveDownloadSettings()
     } catch {
       toast.error('保存失败')
     }
@@ -305,12 +281,6 @@ export default function SystemPage() {
       toast.success('直播录制设置已保存')
     } catch {
       toast.error('保存失败')
-    }
-  }
-
-  const handleClearData = async () => {
-    if (window.confirm('确定要清除所有数据吗？此操作不可恢复。')) {
-      toast.success('数据已清除')
     }
   }
 
@@ -397,7 +367,8 @@ export default function SystemPage() {
                   <div className="flex justify-end">
                     <button
                       onClick={handleSaveCookie}
-                      className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors"
+                      disabled={!settingsLoaded}
+                      className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors disabled:opacity-50"
                     >
                       保存 Cookie
                     </button>
@@ -405,63 +376,21 @@ export default function SystemPage() {
                 </div>
               </div>
 
-              {/* API Settings Card */}
+              {/* AI 服务入口（配置已迁到「视频分析」页） */}
               <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-6">
-                <h2 className="text-base font-semibold text-[#1D1D1F] mb-4">API 设置</h2>
+                <h2 className="text-base font-semibold text-[#1D1D1F] mb-2">AI 服务</h2>
                 <p className="text-xs text-[#A1A1A6] mb-4">
-                  配置兼容 OpenAI 接口的服务用于视频内容分析（Grok、Ollama、LM Studio 等）
+                  AI 提供方（Grok / OpenAI / Claude / Gemini / OpenCode / ChatGPT
+                  订阅等）、分析指令与队列参数已统一到「视频分析」页管理
                 </p>
-
-                <div className="space-y-4">
-                  {/* API Key */}
-                  <div className="flex items-center justify-between">
-                    <div className="md:min-w-[120px]">
-                      <p className="text-sm text-[#1D1D1F]">API Key</p>
-                      <p className="text-xs text-[#A1A1A6] mt-0.5">本地服务可留空</p>
-                    </div>
-                    <input
-                      type="password"
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      placeholder="本地服务（Ollama / LM Studio）可留空"
-                      className="w-full md:w-[360px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
-                    />
-                  </div>
-
-                  {/* API URL */}
-                  <div className="flex items-center justify-between">
-                    <div className="md:min-w-[120px]">
-                      <p className="text-sm text-[#1D1D1F]">API URL</p>
-                    </div>
-                    <input
-                      type="text"
-                      value={apiUrl}
-                      onChange={(e) => setApiUrl(e.target.value)}
-                      placeholder="https://api.x.ai/v1"
-                      className="w-full md:w-[360px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
-                    />
-                  </div>
-
-                  <div className="flex justify-end gap-2">
-                    <button
-                      onClick={handleVerifyApi}
-                      disabled={verifyingApi}
-                      className="h-9 px-4 rounded-lg border border-[#E5E5E7] text-sm text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center gap-2 disabled:opacity-50"
-                    >
-                      {verifyingApi ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <CheckCircle className="h-4 w-4" />
-                      )}
-                      验证
-                    </button>
-                    <button
-                      onClick={handleSaveApi}
-                      className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors"
-                    >
-                      保存
-                    </button>
-                  </div>
+                <div className="flex justify-end">
+                  <Link
+                    to="/analysis?tab=providers"
+                    className="h-9 px-4 rounded-lg border border-[#E5E5E7] text-sm text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center gap-2"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    前往配置 AI 提供方
+                  </Link>
                 </div>
               </div>
             </div>
@@ -585,100 +514,10 @@ export default function SystemPage() {
                 <div className="flex justify-end pt-2">
                   <button
                     onClick={handleSaveDownload}
-                    className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors"
+                    disabled={!settingsLoaded}
+                    className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors disabled:opacity-50"
                   >
                     保存下载设置
-                  </button>
-                </div>
-              </div>
-
-              {/* Analysis Settings Card */}
-              <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-6">
-                <h2 className="text-base font-semibold text-[#1D1D1F] mb-4">分析设置</h2>
-                <p className="text-xs text-[#A1A1A6] mb-4">配置视频内容分析参数</p>
-
-                <div className="divide-y divide-[#E5E5E7]">
-                  {/* Analysis Model */}
-                  <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-sm text-[#1D1D1F]">AI 模型</p>
-                      <p className="text-xs text-[#A1A1A6] mt-1">用于视频分析的模型</p>
-                    </div>
-                    <input
-                      type="text"
-                      value={analysisModel}
-                      onChange={(e) => setAnalysisModel(e.target.value)}
-                      placeholder="grok-4-fast"
-                      className="w-48 h-9 px-3 rounded-md bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] focus:outline-none focus:border-[#0A84FF]"
-                    />
-                  </div>
-
-                  {/* Analysis Concurrency */}
-                  <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-sm text-[#1D1D1F]">分析并发数</p>
-                      <p className="text-xs text-[#A1A1A6] mt-1">同时分析的视频数量</p>
-                    </div>
-                    <input
-                      type="number"
-                      value={analysisConcurrency}
-                      onChange={(e) => setAnalysisConcurrency(e.target.value)}
-                      min="1"
-                      className="w-20 h-9 px-3 rounded-md bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono text-center focus:outline-none focus:border-[#0A84FF]"
-                    />
-                  </div>
-
-                  {/* Analysis RPM */}
-                  <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-sm text-[#1D1D1F]">RPM 限制</p>
-                      <p className="text-xs text-[#A1A1A6] mt-1">每分钟最大请求数</p>
-                    </div>
-                    <input
-                      type="number"
-                      value={analysisRpm}
-                      onChange={(e) => setAnalysisRpm(e.target.value)}
-                      className="w-full md:w-[140px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20 text-center"
-                    />
-                  </div>
-
-                  {/* Analysis Slices */}
-                  <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-sm text-[#1D1D1F]">视频切片数</p>
-                      <p className="text-xs text-[#A1A1A6] mt-1">每个视频分析的帧数</p>
-                    </div>
-                    <input
-                      type="number"
-                      value={analysisSlices}
-                      onChange={(e) => setAnalysisSlices(e.target.value)}
-                      min="1"
-                      className="w-20 h-9 px-3 rounded-md bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono text-center focus:outline-none focus:border-[#0A84FF]"
-                    />
-                  </div>
-
-                  {/* Analysis Prompt */}
-                  <div className="py-4">
-                    <div className="mb-2">
-                      <p className="text-sm text-[#1D1D1F]">自定义 Prompt</p>
-                      <p className="text-xs text-[#A1A1A6] mt-1">留空使用默认 Prompt</p>
-                    </div>
-                    <textarea
-                      value={analysisPrompt}
-                      onChange={(e) => setAnalysisPrompt(e.target.value)}
-                      placeholder="自定义分析提示词..."
-                      rows={4}
-                      className="w-full px-3 py-2 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] resize-none transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end pt-2">
-                  <button
-                    onClick={handleSaveAnalysis}
-                    className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors"
-                  >
-                    保存分析设置
                   </button>
                 </div>
               </div>
@@ -804,7 +643,8 @@ export default function SystemPage() {
                 </button>
                 <button
                   onClick={handleSaveCollect}
-                  className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors"
+                  disabled={!settingsLoaded}
+                  className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors disabled:opacity-50"
                 >
                   保存收藏同步设置
                 </button>
@@ -873,7 +713,8 @@ export default function SystemPage() {
               <div className="flex justify-end pt-2">
                 <button
                   onClick={handleSaveLive}
-                  className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors"
+                  disabled={!settingsLoaded}
+                  className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors disabled:opacity-50"
                 >
                   保存直播录制设置
                 </button>
@@ -1041,24 +882,6 @@ export default function SystemPage() {
                       </button>
                     </div>
                   )}
-                </div>
-              </div>
-
-              {/* Danger Zone Card */}
-              <div className="bg-white rounded-2xl border border-[#FF3B30]/30 shadow-sm p-6">
-                <h2 className="text-base font-semibold text-[#FF3B30] mb-4">危险区域</h2>
-
-                <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <p className="text-sm text-[#1D1D1F]">清除所有数据</p>
-                    <p className="text-xs text-[#A1A1A6] mt-1">删除所有下载的视频和用户数据</p>
-                  </div>
-                  <button
-                    onClick={handleClearData}
-                    className="h-9 px-4 rounded-lg border border-[#0A84FF] text-sm font-medium text-[#0A84FF] hover:bg-[#E8F0FE] transition-colors"
-                  >
-                    清除数据
-                  </button>
                 </div>
               </div>
             </div>

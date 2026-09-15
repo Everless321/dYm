@@ -1,6 +1,12 @@
 import { existsSync, renameSync, rmSync, writeFileSync } from 'fs'
 import { dirname, resolve } from 'path'
-import { describeExternal, ensureScriptsDir, getScriptPath, getScriptsDir } from './loader'
+import {
+  describeExternal,
+  ensureScriptsDir,
+  forgetScriptMeta,
+  getScriptPath,
+  getScriptsDir
+} from './loader'
 import { forgetScriptRuntime, isScriptRunning } from './runner'
 import type { ScriptDescriptor, ScriptHookName } from './types'
 
@@ -76,7 +82,7 @@ exports.run = async (api) => {
 }
 
 exports.run = async (api, event) => {
-  // 手动点「运行」或 cron 时没有 event，不要往下读
+  // cron 定时执行时没有 event；手动点「运行」会带上上次触发的入参（若有），不要假定它一定存在
   if (!event || event.hook !== 'post.downloaded') {
     api.log('这是「作品下载完成」钩子脚本，请等作品下完后自动触发。')
     return
@@ -187,6 +193,8 @@ export function createScript(fileName: string, source: string): ScriptDescriptor
   const filePath = getScriptPath(name)
   if (existsSync(filePath)) throw new Error(`已存在同名脚本：${name}`)
   writeFileSync(filePath, source, 'utf-8')
+  // 缓存键是 mtime+size，等长改动在 mtime 粒度粗的文件系统上会命中旧 meta
+  forgetScriptMeta(`external:${name}`)
   return describeExternal(name)
 }
 
@@ -211,6 +219,7 @@ export function renameScript(fromFileName: string, toFileName: string): ScriptDe
   if (!existsSync(getScriptPath(from))) throw new Error(`脚本文件不存在：${from}`)
   if (existsSync(getScriptPath(to))) throw new Error(`已存在同名脚本：${to}`)
   renameSync(getScriptPath(from), getScriptPath(to))
+  forgetScriptMeta(`external:${from}`)
   return describeExternal(to)
 }
 
@@ -219,5 +228,6 @@ export function deleteScript(fileName: string): void {
   const name = assertValidFileName(fileName)
   assertNotRunning(name)
   rmSync(getScriptPath(name), { force: true })
+  forgetScriptMeta(`external:${name}`)
   forgetScriptRuntime(`external:${name}`)
 }

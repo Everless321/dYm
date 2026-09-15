@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   Code2,
@@ -38,6 +38,7 @@ import { groupLogsIntoRuns, type ScriptRun } from '@/lib/script-runs'
 import { HookParamHelp } from './HookParamHelp'
 import { ScriptNameDialog } from './ScriptNameDialog'
 import { ScriptScheduleDialog } from './ScriptScheduleDialog'
+import { formatClock } from '@/lib/format'
 
 /** 界面上最多渲染的日志条数。磁盘留存由每个脚本自己的 logLimit 决定 */
 const MAX_VISIBLE_LOGS = 500
@@ -48,12 +49,6 @@ const LOG_LIMIT_PRESETS = [200, 500, 1000, 5000, 10000]
 interface SourceEntry {
   saved: string
   draft: string
-}
-
-function formatTime(time: number): string {
-  const d = new Date(time)
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 /** 按 seq 去重合并两批日志——历史拉取与实时推送可能重叠 */
@@ -170,6 +165,8 @@ export default function ScriptsPage(): React.JSX.Element {
       setLogs([])
       return
     }
+    // 先清掉上一个脚本的日志，避免在历史拉取期间短暂显示错误的内容
+    setLogs([])
     let cancelled = false
     window.api.scripts
       .getLogs(selectedId)
@@ -180,7 +177,7 @@ export default function ScriptsPage(): React.JSX.Element {
           mergeLogs(
             history,
             prev.filter((e) => e.scriptId === selectedId)
-          )
+          ).slice(-MAX_VISIBLE_LOGS)
         )
       })
       .catch(() => {
@@ -195,7 +192,12 @@ export default function ScriptsPage(): React.JSX.Element {
   useEffect(() => {
     return window.api.scripts.onLog((entry) => {
       if (entry.scriptId !== selectedId) return
-      setLogs((prev) => mergeLogs(prev, [entry]))
+      setLogs((prev) => {
+        // 绝大多数实时日志都是顺序到达的，直接追加；只有乱序/重叠才走去重合并
+        const last = prev[prev.length - 1]
+        const next = !last || entry.seq > last.seq ? [...prev, entry] : mergeLogs(prev, [entry])
+        return next.length > MAX_VISIBLE_LOGS ? next.slice(-MAX_VISIBLE_LOGS) : next
+      })
       if (entry.message.startsWith('⚡ 钩子')) {
         setScripts((prev) =>
           prev.map((item) =>
@@ -213,7 +215,7 @@ export default function ScriptsPage(): React.JSX.Element {
 
   const selected = scripts.find((s) => s.id === selectedId) ?? null
   const isRunning = selected ? runningIds.includes(selected.id) : false
-  const runs = groupLogsIntoRuns(logs, isRunning)
+  const runs = useMemo(() => groupLogsIntoRuns(logs, isRunning), [logs, isRunning])
   const latestRunId = runs[0]?.runId ?? null
   const selectedRun = runs.find((run) => run.runId === selectedRunId) ?? runs[0] ?? null
 
@@ -307,6 +309,8 @@ export default function ScriptsPage(): React.JSX.Element {
     setStopping(true)
     try {
       await window.api.scripts.stop(selected.id)
+    } catch (error) {
+      toast.error(`停止失败: ${(error as Error).message}`)
     } finally {
       setStopping(false)
     }
@@ -314,10 +318,14 @@ export default function ScriptsPage(): React.JSX.Element {
 
   const handleClearLogs = async (): Promise<void> => {
     if (!selectedId) return
-    await window.api.scripts.clearLogs(selectedId)
-    setLogs([])
-    setSelectedRunId(null)
-    setFollowLatestRun(true)
+    try {
+      await window.api.scripts.clearLogs(selectedId)
+      setLogs([])
+      setSelectedRunId(null)
+      setFollowLatestRun(true)
+    } catch (error) {
+      toast.error(`清空日志失败: ${(error as Error).message}`)
+    }
   }
 
   const handleLogLimit = async (limit: number): Promise<void> => {
@@ -841,7 +849,7 @@ export default function ScriptsPage(): React.JSX.Element {
                                       active ? 'text-[#0A84FF]' : 'text-[#A1A1A6]'
                                     )}
                                   >
-                                    {formatTime(run.startedAt)}
+                                    {formatClock(run.startedAt)}
                                   </span>
                                   <RunStatusIcon status={run.status} />
                                 </div>
@@ -877,7 +885,7 @@ export default function ScriptsPage(): React.JSX.Element {
                                   )}
                                 >
                                   <span className="text-[#C7C7CC] select-none flex-shrink-0 tabular-nums">
-                                    {formatTime(log.time)}
+                                    {formatClock(log.time)}
                                   </span>
                                   <span className="min-w-0">{log.message}</span>
                                 </div>

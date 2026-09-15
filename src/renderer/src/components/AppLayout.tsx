@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Download,
@@ -219,7 +219,9 @@ export function AppLayout(): React.JSX.Element {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        <Outlet />
+        <Suspense fallback={<div className="flex-1" />}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   )

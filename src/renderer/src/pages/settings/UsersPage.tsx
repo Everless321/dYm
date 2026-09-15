@@ -36,6 +36,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { getAvatarUrl } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { formatCompactNumber } from '@/lib/format'
 
 // 同步计划常用预设，点一下直接填入，省得每次手写 cron
 const SYNC_CRON_PRESETS: { label: string; value: string }[] = [
@@ -148,7 +149,12 @@ export default function UsersPage() {
 
   useEffect(() => {
     loadUsers()
-    window.api.sync.getAllSyncing().then((ids) => setSyncingUserIds(new Set(ids)))
+    window.api.sync
+      .getAllSyncing()
+      .then((ids) => setSyncingUserIds(new Set(ids)))
+      .catch((error) => {
+        console.error('[UsersPage] 获取同步状态失败:', error)
+      })
   }, [])
 
   useEffect(() => {
@@ -171,6 +177,8 @@ export default function UsersPage() {
         })
         loadUsers()
       } else {
+        // 定时任务触发的同步不会经过 handleStartSync，这里补上 syncing 标记
+        setSyncingUserIds((prev) => (prev.has(uid) ? prev : new Set(prev).add(uid)))
         setSyncProgressMap((prev) => new Map(prev).set(uid, progress))
       }
     })
@@ -233,14 +241,20 @@ export default function UsersPage() {
   }, [users, searchTerm, sortBy, showInHomeFilter, autoSyncFilter, downloadStatusFilter])
 
   const totalPages = Math.ceil(filteredUsers.length / pageSize)
+  // 删除用户后列表变短，当前页可能越界
+  const safePage = Math.min(currentPage, Math.max(1, totalPages))
   const paginatedUsers = useMemo(() => {
-    const start = (currentPage - 1) * pageSize
+    const start = (safePage - 1) * pageSize
     return filteredUsers.slice(start, start + pageSize)
-  }, [filteredUsers, currentPage, pageSize])
+  }, [filteredUsers, safePage, pageSize])
 
   useEffect(() => {
     setCurrentPage(1)
   }, [searchTerm, pageSize, sortBy, showInHomeFilter, autoSyncFilter, downloadStatusFilter])
+
+  useEffect(() => {
+    if (currentPage !== safePage) setCurrentPage(safePage)
+  }, [currentPage, safePage])
 
   const checkClipboard = useCallback(async () => {
     try {
@@ -274,8 +288,12 @@ export default function UsersPage() {
   }, [open, checkClipboard])
 
   const loadUsers = async () => {
-    const data = await window.api.user.getAll()
-    setUsers(data)
+    try {
+      const data = await window.api.user.getAll()
+      setUsers(data)
+    } catch (error) {
+      toast.error(`加载用户列表失败: ${(error as Error).message}`)
+    }
   }
 
   const handleAddUser = async () => {
@@ -369,13 +387,6 @@ export default function UsersPage() {
     }
   }
 
-  const formatNumber = (num: number) => {
-    if (num >= 10000) {
-      return (num / 10000).toFixed(1) + 'w'
-    }
-    return num.toString()
-  }
-
   const handleToggleShowInHome = async (user: DbUser) => {
     try {
       await window.api.user.setShowInHome(user.id, !user.show_in_home)
@@ -404,24 +415,24 @@ export default function UsersPage() {
 
   const handleSaveEdit = async () => {
     if (!editingUser) return
-    if (editForm.auto_sync && editForm.sync_cron) {
-      const valid = await window.api.sync.validateCron(editForm.sync_cron)
-      if (!valid) {
-        setCronValid(false)
-        toast.error('Cron 表达式无效')
-        return
-      }
-    }
-    if (editForm.live_record && editForm.live_check_cron) {
-      const valid = await window.api.sync.validateCron(editForm.live_check_cron)
-      if (!valid) {
-        setLiveCronValid(false)
-        toast.error('直播检测 Cron 表达式无效')
-        return
-      }
-    }
     setEditLoading(true)
     try {
+      if (editForm.auto_sync && editForm.sync_cron) {
+        const valid = await window.api.sync.validateCron(editForm.sync_cron)
+        if (!valid) {
+          setCronValid(false)
+          toast.error('Cron 表达式无效')
+          return
+        }
+      }
+      if (editForm.live_record && editForm.live_check_cron) {
+        const valid = await window.api.sync.validateCron(editForm.live_check_cron)
+        if (!valid) {
+          setLiveCronValid(false)
+          toast.error('直播检测 Cron 表达式无效')
+          return
+        }
+      }
       await window.api.user.updateSettings(editingUser.id, {
         remark: editForm.remark,
         max_download_count: editForm.max_download_count,
@@ -431,8 +442,6 @@ export default function UsersPage() {
         live_record: editForm.live_record,
         live_check_cron: editForm.live_check_cron
       })
-      await window.api.sync.updateUserSchedule(editingUser.id)
-      await window.api.live.updateUserSchedule(editingUser.id)
       toast.success('保存成功')
       setEditingUser(null)
       loadUsers()
@@ -491,32 +500,24 @@ export default function UsersPage() {
       toast.error('请至少勾选一个要修改的设置项')
       return
     }
-    if (
-      batchEnabled.auto_sync &&
-      batchForm.auto_sync &&
-      batchEnabled.sync_cron &&
-      batchForm.sync_cron
-    ) {
-      const valid = await window.api.sync.validateCron(batchForm.sync_cron)
-      if (!valid) {
-        setBatchCronValid(false)
-        toast.error('Cron 表达式无效')
-        return
-      }
-    }
+    // sync_cron 的勾选框只在开启自动同步时可见，关掉后残留的勾选不应写入
+    const applySyncCron = batchEnabled.auto_sync && batchForm.auto_sync && batchEnabled.sync_cron
     setBatchLoading(true)
     try {
+      if (applySyncCron && batchForm.sync_cron) {
+        const valid = await window.api.sync.validateCron(batchForm.sync_cron)
+        if (!valid) {
+          setBatchCronValid(false)
+          toast.error('Cron 表达式无效')
+          return
+        }
+      }
       const input: Record<string, unknown> = {}
       if (batchEnabled.max_download_count) input.max_download_count = batchForm.max_download_count
       if (batchEnabled.show_in_home) input.show_in_home = batchForm.show_in_home
       if (batchEnabled.auto_sync) input.auto_sync = batchForm.auto_sync
-      if (batchEnabled.sync_cron) input.sync_cron = batchForm.sync_cron
+      if (applySyncCron) input.sync_cron = batchForm.sync_cron
       await window.api.user.batchUpdateSettings(Array.from(selectedIds), input)
-      if (batchEnabled.auto_sync || batchEnabled.sync_cron) {
-        for (const id of selectedIds) {
-          await window.api.sync.updateUserSchedule(id)
-        }
-      }
       toast.success(`已更新 ${selectedIds.size} 个用户`)
       setBatchEditOpen(false)
       setSelectedIds(new Set())
@@ -767,7 +768,7 @@ export default function UsersPage() {
                       variant="outline"
                       className="font-medium border-[#E5E5E7] text-[#6E6E73]"
                     >
-                      {formatNumber(user.follower_count)}
+                      {formatCompactNumber(user.follower_count)}
                     </Badge>
                   </div>
                   <div className="w-32 flex flex-col items-center gap-1">
@@ -885,7 +886,7 @@ export default function UsersPage() {
               <div className="h-14 flex items-center justify-between px-5 border-t border-[#E5E5E7]">
                 <div className="flex items-center gap-4">
                   <span className="text-sm text-[#6E6E73]">
-                    第 {currentPage} / {totalPages || 1} 页
+                    第 {safePage} / {totalPages || 1} 页
                   </span>
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-[#6E6E73]">每页</span>
@@ -906,8 +907,8 @@ export default function UsersPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage(Math.max(1, safePage - 1))}
+                    disabled={safePage === 1}
                     className="border-[#E5E5E7]"
                   >
                     <ChevronLeft className="h-4 w-4" />
@@ -916,8 +917,8 @@ export default function UsersPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages || totalPages === 0}
+                    onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
+                    disabled={safePage >= totalPages || totalPages === 0}
                     className="border-[#E5E5E7]"
                   >
                     下一页

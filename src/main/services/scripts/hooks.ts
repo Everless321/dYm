@@ -2,7 +2,7 @@ import { isScriptHookEnabled } from '../../database'
 import { appEvents } from '../app-events'
 import { listScripts } from './loader'
 import { saveLastHookEvent } from './log-store'
-import { appendScriptLog, isScriptRunning, runScriptHook } from './runner'
+import { appendScriptLog, isScriptRunning, runScriptHook, ScriptBusyError } from './runner'
 import type { ScriptDescriptor, ScriptHookEvent, ScriptHookName } from './types'
 
 const QUEUE_LIMIT = 50
@@ -94,7 +94,9 @@ function enqueue(scriptId: string, event: ScriptHookEvent): void {
   }
   queue.push(cloneEvent(event))
   queues.set(scriptId, queue)
-  void drain(scriptId)
+  drain(scriptId).catch((error) => {
+    console.error(`[scripts] 钩子队列 ${scriptId} 处理失败:`, error)
+  })
 }
 
 async function drain(scriptId: string): Promise<void> {
@@ -114,32 +116,41 @@ async function drain(scriptId: string): Promise<void> {
       if (!event) return
       if (queue.length === 0) queues.delete(scriptId)
 
-      if (!isScriptHookEnabled(scriptId) || scriptHookOf.get(scriptId) !== event.hook) {
-        continue
-      }
-
+      // 一条事件出错只影响这一条；数据库 / 日志文件短暂不可用不能让整条队列静默丢掉
       try {
+        if (!isScriptHookEnabled(scriptId) || scriptHookOf.get(scriptId) !== event.hook) {
+          continue
+        }
+
         try {
           saveLastHookEvent(scriptId, event)
         } catch (error) {
           console.error('[scripts] 保存上次钩子入参失败:', error)
         }
-        await runScriptHook(scriptId, event)
-      } catch (error) {
-        if ((error as Error).message === '该脚本正在运行中') {
-          const rest = queues.get(scriptId)
-          if (!rest) continue
-          rest.unshift(event)
-          await new Promise<void>((resolve) => setTimeout(resolve, 250))
-          continue
+
+        try {
+          await runScriptHook(scriptId, event)
+        } catch (error) {
+          if (error instanceof ScriptBusyError) {
+            // 与手动运行撞上：放回队首，稍后再试
+            const rest = queues.get(scriptId) ?? []
+            rest.unshift(event)
+            queues.set(scriptId, rest)
+            await new Promise<void>((resolve) => setTimeout(resolve, 250))
+            continue
+          }
+          appendScriptLog(scriptId, 'error', `钩子调度失败：${(error as Error).message}`)
         }
-        appendScriptLog(scriptId, 'error', `钩子调度失败：${(error as Error).message}`)
+      } catch (error) {
+        console.error(`[scripts] 处理钩子 ${event.hook} → ${scriptId} 失败:`, error)
       }
     }
   } finally {
     draining.delete(scriptId)
     if ((queues.get(scriptId)?.length ?? 0) > 0 && !draining.has(scriptId)) {
-      void drain(scriptId)
+      drain(scriptId).catch((error) => {
+        console.error(`[scripts] 钩子队列 ${scriptId} 处理失败:`, error)
+      })
     }
   }
 }

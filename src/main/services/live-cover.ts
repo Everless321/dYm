@@ -15,7 +15,7 @@ export async function downloadLiveCover(
   if (!coverUrl || !/^https?:\/\//i.test(coverUrl)) return null
 
   try {
-    const res = await net.fetch(coverUrl)
+    const res = await net.fetch(coverUrl, { signal: AbortSignal.timeout(15_000) })
     if (!res.ok) {
       console.warn(`[LiveCover] download failed ${res.status}`)
       return null

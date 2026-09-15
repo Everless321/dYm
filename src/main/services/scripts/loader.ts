@@ -1,8 +1,8 @@
 import { app } from 'electron'
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import vm from 'vm'
-import { getScriptLogLimit, isScriptHookEnabled } from '../../database'
+import { DEFAULT_SCRIPT_LOG_LIMIT, getScriptLogLimit, isScriptHookEnabled } from '../../database'
 import { builtinSources } from './builtin'
 import { hasLastHookEvent } from './log-store'
 import { SCRIPTS_README } from './readme'
@@ -24,8 +24,15 @@ export function ensureScriptsDir(): string {
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
   }
-  // README 随版本更新，每次都覆盖写入（只扫描 .js，不会被当成脚本）
-  writeFileSync(join(dir, 'README.md'), SCRIPTS_README, 'utf-8')
+  // README 随版本更新，内容不一致时才覆盖写入（只扫描 .js，不会被当成脚本）
+  const readmePath = join(dir, 'README.md')
+  let current: string | null = null
+  try {
+    current = existsSync(readmePath) ? readFileSync(readmePath, 'utf-8') : null
+  } catch {
+    current = null
+  }
+  if (current !== SCRIPTS_README) writeFileSync(readmePath, SCRIPTS_README, 'utf-8')
   return dir
 }
 
@@ -101,36 +108,105 @@ export function loadScript(id: string): ScriptModule {
   return evaluateScript(getScriptSource(id), id)
 }
 
-/** 生成一条列表条目，求值失败时保留条目并附带错误原因 */
-function describe(id: string, fileName: string | null): ScriptDescriptor {
-  const base = {
-    id,
-    source: (fileName === null ? 'builtin' : 'external') as ScriptDescriptor['source'],
-    fileName,
-    filePath: fileName === null ? null : getScriptPath(fileName),
-    hook: null as ScriptDescriptor['hook'],
-    hookEnabled: isScriptHookEnabled(id),
-    hookWarning: null as string | null,
-    logLimit: getScriptLogLimit(id),
-    hasLastHookEvent: hasLastHookEvent(id)
+/** 脚本 meta 求值结果的缓存项；外部脚本按文件 mtime+size 判断是否失效 */
+interface MetaCacheEntry {
+  key: string
+  name: string
+  description: string
+  hook: ScriptDescriptor['hook']
+  hookWarning: string | null
+  error: string | null
+}
+
+/**
+ * 求 meta 要在 vm 里跑整段脚本（最长 5 s 且阻塞主进程），列表刷新和每次定时触发都会调。
+ * 按内容版本缓存，只有文件变了才重新求值。
+ */
+const metaCache = new Map<string, MetaCacheEntry>()
+
+function metaCacheKey(fileName: string | null): string {
+  if (fileName === null) return 'builtin'
+  try {
+    const stat = statSync(getScriptPath(fileName))
+    return `${stat.mtimeMs}:${stat.size}`
+  } catch {
+    return `missing:${Date.now()}`
   }
+}
+
+function describeMeta(id: string, fileName: string | null): MetaCacheEntry {
+  const key = metaCacheKey(fileName)
+  const cached = metaCache.get(id)
+  if (cached && cached.key === key) return cached
+
+  let entry: MetaCacheEntry
   try {
     const { meta, hookWarning } = loadScript(id)
-    return {
-      ...base,
+    entry = {
+      key,
       name: meta.name,
       description: meta.description ?? '',
-      error: null,
       hook: meta.hook ?? null,
-      hookWarning: hookWarning ?? null
+      hookWarning: hookWarning ?? null,
+      error: null
     }
   } catch (error) {
-    return {
-      ...base,
+    entry = {
+      key,
       name: fileName ?? id,
       description: '',
+      hook: null,
+      hookWarning: null,
       error: (error as Error).message
     }
+  }
+  metaCache.set(id, entry)
+  return entry
+}
+
+/** 脚本改名 / 删除后把缓存一起清掉 */
+export function forgetScriptMeta(id: string): void {
+  metaCache.delete(id)
+}
+
+/** 只取脚本展示名，供调度日志用；不触碰其他脚本 */
+export function getScriptName(id: string): string {
+  const fileName = id.startsWith('external:') ? id.slice('external:'.length) : null
+  return describeMeta(id, fileName).name
+}
+
+/** 生成一条列表条目，求值失败时保留条目并附带错误原因 */
+function describe(id: string, fileName: string | null): ScriptDescriptor {
+  const base: ScriptDescriptor = {
+    id,
+    source: fileName === null ? 'builtin' : 'external',
+    fileName,
+    filePath: fileName === null ? null : getScriptPath(fileName),
+    name: fileName ?? id,
+    description: '',
+    error: null,
+    hook: null,
+    hookEnabled: false,
+    hookWarning: null,
+    logLimit: DEFAULT_SCRIPT_LOG_LIMIT,
+    hasLastHookEvent: false
+  }
+  // 某个脚本的设置读取出错只标记那一条，不让整个列表消失
+  try {
+    base.hookEnabled = isScriptHookEnabled(id)
+    base.logLimit = getScriptLogLimit(id)
+    base.hasLastHookEvent = hasLastHookEvent(id)
+  } catch (error) {
+    base.error = `读取脚本设置失败：${(error as Error).message}`
+  }
+  const meta = describeMeta(id, fileName)
+  return {
+    ...base,
+    name: meta.name,
+    description: meta.description,
+    hook: meta.hook,
+    hookWarning: meta.hookWarning,
+    error: meta.error ?? base.error
   }
 }
 

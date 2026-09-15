@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
@@ -34,9 +34,158 @@ import { SortSelect } from '@/components/SortSelect'
 import { getInitialSort } from '@/lib/post-sort'
 import { getMergedTags } from '@/lib/utils'
 import { AddTagsDialog } from '@/pages/tags/AddTagsDialog'
+import { formatPostDate } from '@/lib/format'
 
 const IMAGE_AWEME_TYPE = 68
 const PAGE_SIZE = 50
+
+const isImagePost = (post: DbPost): boolean => post.aweme_type === IMAGE_AWEME_TYPE
+
+interface PostCardProps {
+  post: DbPost
+  coverUrl: string | null
+  onOpen: (post: DbPost) => void
+  onAuthorClick: (secUid: string) => void
+  onAddTags: (post: DbPost) => void
+  onEditTags: (postId: number) => void
+  onAuthorTags: (secUid: string) => void
+}
+
+// 卡片单独 memo：滚动加载 / 打开弹窗等父级状态变化时，未变的卡片不重渲染
+const PostCard = memo(function PostCard({
+  post,
+  coverUrl,
+  onOpen,
+  onAuthorClick,
+  onAddTags,
+  onEditTags,
+  onAuthorTags
+}: PostCardProps): React.JSX.Element {
+  const tags = useMemo(() => getMergedTags(post), [post])
+
+  const handleRedownload = async (): Promise<void> => {
+    try {
+      await window.api.post.redownload(post.aweme_id)
+      toast.success('已标记重新下载，下次同步时将重新下载此作品')
+    } catch (e) {
+      toast.error('重新下载标记失败: ' + (e as Error).message)
+    }
+  }
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <Card
+          className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow group border-[#E5E5E7] bg-white"
+          onClick={() => onOpen(post)}
+        >
+          <div className="aspect-[9/16] bg-[#F2F2F4] relative">
+            {coverUrl ? (
+              <img
+                src={coverUrl}
+                alt={post.desc}
+                loading="lazy"
+                decoding="async"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                {isImagePost(post) ? (
+                  <Images className="h-12 w-12 text-[#A1A1A6]" />
+                ) : (
+                  <Video className="h-12 w-12 text-[#A1A1A6]" />
+                )}
+              </div>
+            )}
+            {/* Play/View overlay */}
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+              {isImagePost(post) ? (
+                <Images className="h-12 w-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              ) : (
+                <Play className="h-12 w-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              )}
+            </div>
+            {/* Type badge */}
+            <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
+              {isImagePost(post) ? '图集' : '视频'}
+            </div>
+            {/* Date badge */}
+            {post.create_time && (
+              <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
+                {formatPostDate(post.create_time)}
+              </div>
+            )}
+          </div>
+          <div className="p-3">
+            <p className="text-sm font-medium text-[#1D1D1F] line-clamp-2">
+              {post.desc || post.caption || '无标题'}
+            </p>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onAuthorClick(post.sec_uid)
+              }}
+              title={`查看 @${post.nickname} 的全部作品`}
+              className="block text-left text-xs text-[#6E6E73] mt-1 hover:text-[#0A84FF] hover:underline transition-colors"
+            >
+              @{post.nickname}
+            </button>
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-2">
+                {tags.slice(0, 3).map((tag) => (
+                  <Badge
+                    key={tag}
+                    variant="secondary"
+                    className="text-xs px-1.5 py-0 bg-[#F2F2F4] text-[#6E6E73]"
+                  >
+                    {tag}
+                  </Badge>
+                ))}
+                {tags.length > 3 && (
+                  <Badge
+                    variant="outline"
+                    className="text-xs px-1.5 py-0 border-[#E5E5E7] text-[#A1A1A6]"
+                  >
+                    +{tags.length - 3}
+                  </Badge>
+                )}
+              </div>
+            )}
+            {post.analysis_content_level !== null && post.analysis_content_level > 0 && (
+              <div className="flex items-center gap-1 mt-1.5">
+                <Flame className="h-3 w-3 text-orange-500" />
+                <span className="text-xs text-orange-500">{post.analysis_content_level}</span>
+              </div>
+            )}
+          </div>
+        </Card>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onClick={() => onAddTags(post)}>
+          <TagIcon className="h-4 w-4 mr-2" />
+          添加标签
+        </ContextMenuItem>
+        <ContextMenuItem onClick={() => onEditTags(post.id)}>
+          <Tags className="h-4 w-4 mr-2" />
+          在标签管理中编辑
+        </ContextMenuItem>
+        <ContextMenuItem onClick={() => onAuthorTags(post.sec_uid)}>
+          <UserSearch className="h-4 w-4 mr-2" />
+          该作者的标签管理
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onClick={() => window.api.post.openFolder(post.sec_uid, post.folder_name)}>
+          <FolderOpen className="h-4 w-4 mr-2" />
+          在文件管理器中打开
+        </ContextMenuItem>
+        <ContextMenuItem onClick={handleRedownload}>
+          <RefreshCw className="h-4 w-4 mr-2" />
+          重新下载
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  )
+})
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -62,6 +211,8 @@ export default function HomePage() {
   const [tagSearch, setTagSearch] = useState('')
   const [downloadDialogOpen, setDownloadDialogOpen] = useState(false)
   const [searchKeyword, setSearchKeyword] = useState('')
+  // 搜索词防抖后的副本：filters 只跟它走，避免每敲一个字就打一次全库 LIKE 查询
+  const [debouncedKeyword, setDebouncedKeyword] = useState('')
   const [showAuthorDropdown, setShowAuthorDropdown] = useState(false)
   const [authorSearch, setAuthorSearch] = useState('')
   const [sort, setSort] = useState<PostSortConfig>(() => getInitialSort('home_post_sort'))
@@ -69,6 +220,13 @@ export default function HomePage() {
   const gridScrollRef = useRef<HTMLDivElement>(null)
   const authorDropdownRef = useRef<HTMLDivElement>(null)
   const authorSearchInputRef = useRef<HTMLInputElement>(null)
+  // 列表请求序号。筛选切换很快时，慢的旧请求可能晚于新请求返回，用它丢弃过期结果
+  const postsRequestSeq = useRef(0)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedKeyword(searchKeyword.trim()), 300)
+    return () => clearTimeout(timer)
+  }, [searchKeyword])
 
   const filters = useMemo<PostFilters>(
     () => ({
@@ -77,9 +235,9 @@ export default function HomePage() {
       minContentLevel: sexyLevelRange[0] > 0 ? sexyLevelRange[0] : undefined,
       maxContentLevel: sexyLevelRange[1] < 10 ? sexyLevelRange[1] : undefined,
       analyzedOnly: analyzedOnly || undefined,
-      keyword: searchKeyword.trim() || undefined
+      keyword: debouncedKeyword || undefined
     }),
-    [selectedSecUid, selectedTags, sexyLevelRange, analyzedOnly, searchKeyword]
+    [selectedSecUid, selectedTags, sexyLevelRange, analyzedOnly, debouncedKeyword]
   )
 
   useEffect(() => {
@@ -117,20 +275,32 @@ export default function HomePage() {
     return () => observer.disconnect()
   }, [hasMore, loading, loadingMore, page])
 
+  // 只补缺失的封面路径并合并进现有 map；翻页时 posts 是累积数组，
+  // 原先每次都对全部作品重新逐个 await，一页页往下翻 IPC 次数会线性膨胀
   const loadCoverPaths = async (postList: DbPost[]) => {
-    const paths: Record<string, string> = {}
-    for (const post of postList) {
-      if (post.folder_name) {
-        const coverPath = await window.api.post.getCoverPath(post.sec_uid, post.folder_name)
-        if (coverPath) {
-          paths[post.aweme_id] = coverPath
+    const missing = postList.filter((p) => p.folder_name && !coverPaths[p.aweme_id])
+    if (missing.length === 0) return
+    const entries = await Promise.all(
+      missing.map(async (post) => {
+        try {
+          const path = await window.api.post.getCoverPath(post.sec_uid, post.folder_name)
+          return [post.aweme_id, path] as const
+        } catch {
+          return [post.aweme_id, null] as const
         }
+      })
+    )
+    setCoverPaths((prev) => {
+      const next = { ...prev }
+      for (const [awemeId, path] of entries) {
+        if (path) next[awemeId] = path
       }
-    }
-    setCoverPaths(paths)
+      return next
+    })
   }
 
   const loadPosts = async (pageNum: number, reset = false) => {
+    const seq = ++postsRequestSeq.current
     if (reset) {
       setLoading(true)
     } else {
@@ -138,6 +308,8 @@ export default function HomePage() {
     }
     try {
       const result = await window.api.post.getAll(pageNum, PAGE_SIZE, filters, sort)
+      // 期间又发出了新的请求（筛选/排序变了），这份结果已过期
+      if (seq !== postsRequestSeq.current) return
       if (reset) {
         setPosts(result.posts)
       } else {
@@ -147,10 +319,13 @@ export default function HomePage() {
       setAuthors(result.authors)
       setHasMore(result.posts.length === PAGE_SIZE)
     } catch (error) {
+      if (seq !== postsRequestSeq.current) return
       console.error('Failed to load posts:', error)
     } finally {
-      setLoading(false)
-      setLoadingMore(false)
+      if (seq === postsRequestSeq.current) {
+        setLoading(false)
+        setLoadingMore(false)
+      }
     }
   }
 
@@ -189,25 +364,25 @@ export default function HomePage() {
     analyzedOnly ||
     searchKeyword.trim()
 
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return ''
-    const cleaned = dateStr.replace(/[-:T]/g, '').substring(0, 8)
-    if (cleaned.length === 8) {
-      return `${cleaned.substring(0, 4)}-${cleaned.substring(4, 6)}-${cleaned.substring(6, 8)}`
-    }
-    return dateStr
-  }
-
   const getCoverUrl = (post: DbPost) => {
     const path = coverPaths[post.aweme_id]
     if (!path) return null
     return `local://file${path}`
   }
 
-  const handlePostClick = (post: DbPost) => {
+  const handlePostClick = useCallback((post: DbPost) => {
     setSelectedPost(post)
     setViewerOpen(true)
-  }
+  }, [])
+
+  const editPostTags = useCallback(
+    (postId: number) => navigate(`/tags/video/${postId}`),
+    [navigate]
+  )
+  const viewAuthorTags = useCallback(
+    (secUid: string) => navigate(`/tags?user=${encodeURIComponent(secUid)}`),
+    [navigate]
+  )
 
   // 加完标签只回填这一条，不重载列表 —— 否则已加载的分页和滚动位置都会丢
   const refreshPostTags = async (postId?: number): Promise<void> => {
@@ -218,15 +393,13 @@ export default function HomePage() {
     setSelectedPost((prev) => (prev?.id === postId ? fresh : prev))
   }
 
-  const isImagePost = (post: DbPost) => post.aweme_type === IMAGE_AWEME_TYPE
-
   // 点击作者名 —— 直接筛选出该作者的全部作品
-  const viewAuthorPosts = (secUid: string): void => {
+  const viewAuthorPosts = useCallback((secUid: string): void => {
     setViewerOpen(false)
     setShowAuthorDropdown(false)
     setSelectedSecUid(secUid)
     gridScrollRef.current?.scrollTo({ top: 0 })
-  }
+  }, [])
 
   const selectedAuthor = authors.find((a) => a.sec_uid === selectedSecUid)
 
@@ -313,9 +486,7 @@ export default function HomePage() {
                           type="text"
                           defaultValue=""
                           onInput={(e) => {
-                            const value = (e.target as HTMLInputElement).value
-                            console.log('[DEBUG] input onInput:', value)
-                            setAuthorSearch(value)
+                            setAuthorSearch((e.target as HTMLInputElement).value)
                           }}
                           placeholder="搜索作者..."
                           className="w-full h-8 pl-7 pr-2 rounded-md bg-[#F2F2F4] text-sm text-[#1D1D1F] placeholder:text-[#A1A1A6] focus:outline-none focus:ring-1 focus:ring-[#0A84FF]"
@@ -324,7 +495,7 @@ export default function HomePage() {
                       </div>
                     </div>
                     {/* Options */}
-                    <div key={`author-list-${authorSearch}`} className="max-h-60 overflow-y-auto">
+                    <div className="max-h-60 overflow-y-auto">
                       <button
                         onClick={() => {
                           setSelectedSecUid('')
@@ -534,133 +705,16 @@ export default function HomePage() {
               {/* 自适应列数网格：卡片最窄 220px，宽屏自动加列 */}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-5">
                 {posts.map((post) => (
-                  <ContextMenu key={post.id}>
-                    <ContextMenuTrigger asChild>
-                      <Card
-                        className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow group border-[#E5E5E7] bg-white"
-                        onClick={() => handlePostClick(post)}
-                      >
-                        <div className="aspect-[9/16] bg-[#F2F2F4] relative">
-                          {getCoverUrl(post) ? (
-                            <img
-                              src={getCoverUrl(post)!}
-                              alt={post.desc}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              {isImagePost(post) ? (
-                                <Images className="h-12 w-12 text-[#A1A1A6]" />
-                              ) : (
-                                <Video className="h-12 w-12 text-[#A1A1A6]" />
-                              )}
-                            </div>
-                          )}
-                          {/* Play/View overlay */}
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                            {isImagePost(post) ? (
-                              <Images className="h-12 w-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                            ) : (
-                              <Play className="h-12 w-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                            )}
-                          </div>
-                          {/* Type badge */}
-                          <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
-                            {isImagePost(post) ? '图集' : '视频'}
-                          </div>
-                          {/* Date badge */}
-                          {post.create_time && (
-                            <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
-                              {formatDate(post.create_time)}
-                            </div>
-                          )}
-                        </div>
-                        <div className="p-3">
-                          <p className="text-sm font-medium text-[#1D1D1F] line-clamp-2">
-                            {post.desc || post.caption || '无标题'}
-                          </p>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              viewAuthorPosts(post.sec_uid)
-                            }}
-                            title={`查看 @${post.nickname} 的全部作品`}
-                            className="block text-left text-xs text-[#6E6E73] mt-1 hover:text-[#0A84FF] hover:underline transition-colors"
-                          >
-                            @{post.nickname}
-                          </button>
-                          {getMergedTags(post).length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {getMergedTags(post)
-                                .slice(0, 3)
-                                .map((tag) => (
-                                  <Badge
-                                    key={tag}
-                                    variant="secondary"
-                                    className="text-xs px-1.5 py-0 bg-[#F2F2F4] text-[#6E6E73]"
-                                  >
-                                    {tag}
-                                  </Badge>
-                                ))}
-                              {getMergedTags(post).length > 3 && (
-                                <Badge
-                                  variant="outline"
-                                  className="text-xs px-1.5 py-0 border-[#E5E5E7] text-[#A1A1A6]"
-                                >
-                                  +{getMergedTags(post).length - 3}
-                                </Badge>
-                              )}
-                            </div>
-                          )}
-                          {post.analysis_content_level !== null &&
-                            post.analysis_content_level > 0 && (
-                              <div className="flex items-center gap-1 mt-1.5">
-                                <Flame className="h-3 w-3 text-orange-500" />
-                                <span className="text-xs text-orange-500">
-                                  {post.analysis_content_level}
-                                </span>
-                              </div>
-                            )}
-                        </div>
-                      </Card>
-                    </ContextMenuTrigger>
-                    <ContextMenuContent>
-                      <ContextMenuItem onClick={() => setTagTarget(post)}>
-                        <TagIcon className="h-4 w-4 mr-2" />
-                        添加标签
-                      </ContextMenuItem>
-                      <ContextMenuItem onClick={() => navigate(`/tags/video/${post.id}`)}>
-                        <Tags className="h-4 w-4 mr-2" />
-                        在标签管理中编辑
-                      </ContextMenuItem>
-                      <ContextMenuItem
-                        onClick={() => navigate(`/tags?user=${encodeURIComponent(post.sec_uid)}`)}
-                      >
-                        <UserSearch className="h-4 w-4 mr-2" />
-                        该作者的标签管理
-                      </ContextMenuItem>
-                      <ContextMenuSeparator />
-                      <ContextMenuItem
-                        onClick={() => window.api.post.openFolder(post.sec_uid, post.folder_name)}
-                      >
-                        <FolderOpen className="h-4 w-4 mr-2" />
-                        在文件管理器中打开
-                      </ContextMenuItem>
-                      <ContextMenuItem
-                        onClick={async () => {
-                          try {
-                            await window.api.post.redownload(post.aweme_id)
-                            toast.success('已标记重新下载，下次同步时将重新下载此作品')
-                          } catch (e) {
-                            toast.error('重新下载标记失败: ' + (e as Error).message)
-                          }
-                        }}
-                      >
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        重新下载
-                      </ContextMenuItem>
-                    </ContextMenuContent>
-                  </ContextMenu>
+                  <PostCard
+                    key={post.id}
+                    post={post}
+                    coverUrl={getCoverUrl(post)}
+                    onOpen={handlePostClick}
+                    onAuthorClick={viewAuthorPosts}
+                    onAddTags={setTagTarget}
+                    onEditTags={editPostTags}
+                    onAuthorTags={viewAuthorTags}
+                  />
                 ))}
               </div>
 

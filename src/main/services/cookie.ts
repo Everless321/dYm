@@ -2,18 +2,14 @@ import { BrowserWindow, session } from 'electron'
 import { setSetting } from '../database'
 import { refreshDouyinHandler } from './douyin'
 import { blockCustomProtocols } from '../utils/block-protocols'
+import { CHROME_UA } from '../utils/user-agent'
 
 // Cookie 刷新状态
 let isRefreshing = false
 let lastRefreshTime = 0
 const MIN_REFRESH_INTERVAL = 30000 // 最小刷新间隔 30 秒
-
-/**
- * 抹掉 UA 里的 Electron 标识。抖音页面会把 UA 解析成 browser_name / browser_version
- * 写进每个接口请求的参数里，不改的话就是在自报 browser_name=Electron。
- */
-const CHROME_UA =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
+/** 只有这些会话 cookie 之一存在才算真正登录了抖音 */
+const LOGIN_COOKIE_NAMES = new Set(['sessionid', 'sessionid_ss', 'sid_tt', 'sid_guard'])
 
 /**
  * 打开浏览器窗口让用户登录获取 Cookie（手动模式）
@@ -43,11 +39,17 @@ export async function fetchDouyinCookie(): Promise<string> {
         const cookies = await ses.cookies.get({ domain: '.douyin.com' })
         const cookieString = cookies.map((c) => `${c.name}=${c.value}`).join('; ')
 
-        if (cookieString) {
-          setSetting('douyin_cookie', cookieString)
-          refreshDouyinHandler()
-          lastRefreshTime = Date.now()
+        // 没登录就关窗时也有 ttwid / __ac_nonce 这类匿名 cookie，字符串非空；
+        // 只有带会话的才算登录成功，否则会把原本有效的 Cookie 覆盖成匿名的
+        const loggedIn = cookies.some((c) => LOGIN_COOKIE_NAMES.has(c.name))
+        if (!loggedIn) {
+          resolve('')
+          return
         }
+
+        setSetting('douyin_cookie', cookieString)
+        refreshDouyinHandler()
+        lastRefreshTime = Date.now()
 
         resolve(cookieString)
       } catch (error) {

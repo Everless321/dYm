@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { getAvatarUrl } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { formatCompactNumber, formatUnixTime } from '@/lib/format'
 
 const statusConfig = {
   pending: { label: '待执行', icon: Clock, color: '#6E6E73', bg: '#F2F2F4' },
@@ -36,6 +37,7 @@ export default function TaskDetailPage() {
   const [progress, setProgress] = useState<DownloadProgress | null>(null)
   const [activeUsers, setActiveUsers] = useState<Set<string>>(new Set())
   const lastRefreshRef = useRef<number>(0)
+  const taskRef = useRef<DbTaskWithUsers | null>(null)
 
   const handleProgress = useCallback(
     (p: DownloadProgress) => {
@@ -43,20 +45,22 @@ export default function TaskDetailPage() {
         setProgress(p)
         setIsRunning(p.status === 'running')
 
+        // 进度事件没有「某用户已完成」的结构化字段，只按 currentUser 记录活跃用户：
+        // 主进程同时最多处理 task.concurrency 个用户，超出时淘汰最久没有上报的那个
         if (p.status === 'running' && p.currentUser) {
+          const currentUser = p.currentUser
           setActiveUsers((prev) => {
-            if (prev.has(p.currentUser!)) return prev
+            const limit = Math.max(1, taskRef.current?.concurrency || 1)
+            // 同一用户连续上报进度时集合不变，返回原引用避免整页重渲染
+            if ([...prev].pop() === currentUser && prev.size <= limit) return prev
             const next = new Set(prev)
-            next.add(p.currentUser!)
-            return next
-          })
-        }
-
-        if (p.message?.includes('完成') && p.currentUser) {
-          setActiveUsers((prev) => {
-            if (!prev.has(p.currentUser!)) return prev
-            const next = new Set(prev)
-            next.delete(p.currentUser!)
+            next.delete(currentUser)
+            next.add(currentUser)
+            while (next.size > limit) {
+              const oldest = next.values().next().value
+              if (oldest === undefined) break
+              next.delete(oldest)
+            }
             return next
           })
         }
@@ -83,8 +87,14 @@ export default function TaskDetailPage() {
 
   useEffect(() => {
     if (id) {
+      taskRef.current = null
       loadTask(parseInt(id))
-      window.api.download.isRunning(parseInt(id)).then(setIsRunning)
+      window.api.download
+        .isRunning(parseInt(id))
+        .then(setIsRunning)
+        .catch((error) => {
+          console.error('[TaskDetailPage] 获取任务运行状态失败:', error)
+        })
     }
   }, [id])
 
@@ -106,38 +116,23 @@ export default function TaskDetailPage() {
   }, [task?.users, isRunning, activeUsers])
 
   const loadTask = async (taskId: number) => {
-    setLoading(true)
+    // 进度刷新时不再整页切成 spinner，只在首次加载时显示
+    if (taskRef.current === null) setLoading(true)
     try {
       const data = await window.api.task.getById(taskId)
       if (data) {
+        taskRef.current = data
         setTask(data)
       } else {
         toast.error('任务不存在')
-        navigate('/settings/download')
+        navigate('/download')
       }
     } catch {
       toast.error('加载任务失败')
-      navigate('/settings/download')
+      navigate('/download')
     } finally {
       setLoading(false)
     }
-  }
-
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp * 1000).toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
-
-  const formatNumber = (num: number) => {
-    if (num >= 10000) {
-      return (num / 10000).toFixed(1) + 'w'
-    }
-    return num.toString()
   }
 
   const handleStartDownload = async () => {
@@ -151,10 +146,14 @@ export default function TaskDetailPage() {
     }
   }
 
-  const handleStopDownload = () => {
+  const handleStopDownload = async () => {
     if (!task) return
-    window.api.download.stop(task.id)
-    toast.info('正在停止下载...')
+    try {
+      await window.api.download.stop(task.id)
+      toast.info('正在停止下载...')
+    } catch (error) {
+      toast.error(`停止下载失败: ${(error as Error).message}`)
+    }
   }
 
   if (loading) {
@@ -179,7 +178,7 @@ export default function TaskDetailPage() {
       {/* Header */}
       <header className="h-16 flex items-center gap-4 px-6 border-b border-[#E5E5E7] bg-white">
         <button
-          onClick={() => navigate('/settings/download')}
+          onClick={() => navigate('/download')}
           className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-[#F2F2F4] transition-colors"
         >
           <ArrowLeft className="h-5 w-5 text-[#6E6E73]" />
@@ -236,7 +235,9 @@ export default function TaskDetailPage() {
                   <Video className="h-6 w-6 text-[#6E6E73]" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-[#1D1D1F]">{formatNumber(totalVideos)}</p>
+                  <p className="text-2xl font-bold text-[#1D1D1F]">
+                    {formatCompactNumber(totalVideos)}
+                  </p>
                   <p className="text-sm text-[#6E6E73]">视频总数</p>
                 </div>
               </div>
@@ -261,7 +262,7 @@ export default function TaskDetailPage() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-[#1D1D1F]">
-                    {formatDate(task.created_at)}
+                    {formatUnixTime(task.created_at, { year: true })}
                   </p>
                   <p className="text-sm text-[#6E6E73]">创建时间</p>
                 </div>
@@ -386,7 +387,7 @@ export default function TaskDetailPage() {
                         variant="outline"
                         className="font-medium border-[#E5E5E7] text-[#6E6E73]"
                       >
-                        {formatNumber(user.follower_count)}
+                        {formatCompactNumber(user.follower_count)}
                       </Badge>
                     </div>
                     <div className="w-24 text-center">

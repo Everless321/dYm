@@ -140,15 +140,18 @@ export function findCoverFile(secUid: string, folderName: string): string | null
 
   const exactPath = join(basePath, folderName)
   if (existsSync(exactPath)) {
+    // 目录存在但没有封面就到此为止：再去扫整个作者目录（几千项）也找不到别的，
+    // 首页一页里几十个「无封面」作品会让主线程卡秒级
     try {
       const files = readdirSync(exactPath)
       const coverFile = files.find((f) => f.includes('_cover.'))
-      if (coverFile) return toUrlPath(join(exactPath, coverFile))
+      return coverFile ? toUrlPath(join(exactPath, coverFile)) : null
     } catch {
       return null
     }
   }
 
+  // 只有旧命名（{date}_{nick}_{id}）的目录才需要按后缀匹配
   try {
     const folders = readdirSync(basePath)
     for (const folder of folders) {

@@ -14,15 +14,8 @@ import {
   type PostFilters,
   type UpdateUserSettingsInput
 } from '../database'
-import {
-  findCoverFile,
-  findMediaFiles,
-  fromUrlPath,
-  getDownloadPath,
-  isPathInDownloadRoot
-} from './media'
+import { findMediaFiles, fromUrlPath, getDownloadPath, isPathInDownloadRoot } from './media'
 import { isUserSyncing, startUserSync } from './syncer'
-import { scheduleUser, unscheduleUser } from './scheduler'
 
 const DEFAULT_WEB_SERVER_PORT = 38595
 const DEFAULT_PAGE_SIZE = 12
@@ -114,12 +107,14 @@ function resolveWebAssetDir(): string {
 }
 
 function respondJson(response: ServerResponse, statusCode: number, payload: unknown): void {
+  // 序列化先于 writeHead：JSON.stringify 抛错时还没发头，外层还能回一个正常的 500
+  const body = JSON.stringify(payload)
   response.writeHead(statusCode, {
     'Access-Control-Allow-Origin': '*',
     'Cache-Control': 'no-store',
     'Content-Type': 'application/json; charset=utf-8'
   })
-  response.end(JSON.stringify(payload))
+  response.end(body)
 }
 
 function respondError(response: ServerResponse, statusCode: number, message: string): void {
@@ -166,8 +161,8 @@ function buildWebPost(post: DbPost) {
   const media = post.folder_name
     ? findMediaFiles(post.sec_uid, post.folder_name, post.aweme_type)
     : null
-  const coverPath =
-    media?.cover ?? (post.folder_name ? findCoverFile(post.sec_uid, post.folder_name) : null)
+  // findMediaFiles 已经读过同一个目录，再调 findCoverFile 只是把同样的扫描重跑一遍
+  const coverPath = media?.cover ?? null
 
   return {
     id: post.id,
@@ -289,16 +284,16 @@ function streamFile(
   response.setHeader('Content-Type', contentType)
 
   if (rangeHeader) {
-    const match = rangeHeader.match(/bytes=(\d*)-(\d*)/)
+    const match = rangeHeader.match(/^bytes=(\d*)-(\d*)$/)
     if (match) {
-      const start = match[1] ? Number.parseInt(match[1], 10) : 0
-      const end = match[2] ? Number.parseInt(match[2], 10) : fileSize - 1
-
-      if (Number.isNaN(start) || Number.isNaN(end) || start > end || end >= fileSize) {
-        response.writeHead(416)
+      const range = resolveByteRange(match[1], match[2], fileSize)
+      if (!range) {
+        // RFC 7233：不可满足的 Range 要带上资源总长度，播放器据此重发
+        response.writeHead(416, { 'Content-Range': `bytes */${fileSize}` })
         response.end()
         return
       }
+      const { start, end } = range
 
       response.writeHead(206, {
         'Content-Length': end - start + 1,
@@ -315,6 +310,33 @@ function streamFile(
   pipeWithCleanup(createReadStream(filePath), response)
 }
 
+/**
+ * 解析单段 Range。按 RFC 7233 §2.1：
+ * - `bytes=-N` 表示最后 N 字节，而不是 0-N；
+ * - last-byte-pos 超过文件长度按 fileSize-1 截断，而不是 416；
+ * - 只有 first-byte-pos 越界（或格式非法）才是不可满足。
+ */
+function resolveByteRange(
+  startText: string,
+  endText: string,
+  fileSize: number
+): { start: number; end: number } | null {
+  if (fileSize <= 0) return null
+  if (startText === '' && endText === '') return null
+
+  if (startText === '') {
+    const suffixLength = Number.parseInt(endText, 10)
+    if (!Number.isFinite(suffixLength) || suffixLength <= 0) return null
+    return { start: Math.max(0, fileSize - suffixLength), end: fileSize - 1 }
+  }
+
+  const start = Number.parseInt(startText, 10)
+  if (!Number.isFinite(start) || start >= fileSize) return null
+  const requestedEnd = endText === '' ? fileSize - 1 : Number.parseInt(endText, 10)
+  if (!Number.isFinite(requestedEnd) || requestedEnd < start) return null
+  return { start, end: Math.min(requestedEnd, fileSize - 1) }
+}
+
 function pipeWithCleanup(
   stream: ReturnType<typeof createReadStream>,
   response: ServerResponse
@@ -328,7 +350,9 @@ function pipeWithCleanup(
     if (error.code !== 'EPIPE' && error.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
       console.error('[Web] Stream error:', error)
     }
-    if (!response.writableEnded) response.end()
+    // 已经声明了 Content-Length，半截 body 上 end() 会让客户端收到一个「成功」的残缺文件；
+    // 直接掐断连接让客户端明确知道失败
+    if (!response.writableEnded) response.destroy(error)
   })
   stream.pipe(response)
 }
@@ -446,12 +470,7 @@ async function handleAuthorSettings(
     return
   }
 
-  // 重新注册定时同步，使配置立即生效（与桌面端 sync:updateUserSchedule 一致）
-  if (updated.auto_sync && updated.sync_cron) {
-    scheduleUser(updated)
-  } else {
-    unscheduleUser(updated.id)
-  }
+  // 定时同步的重建由 updateUserSettings 发出的变更事件驱动，这里不必再手动注册
 
   respondJson(response, 200, buildAuthorPayload(updated))
 }
@@ -623,8 +642,17 @@ export async function startWebBrowserServer(): Promise<WebServerInfo> {
   const server = createServer((request, response) => {
     void handleRequest(request, response).catch((error) => {
       console.error('[Web] Request failed:', error)
+      // 头已经发出去就没法再回 500 了，只能掐断，避免请求悬着
+      if (response.headersSent || response.writableEnded) {
+        if (!response.destroyed) response.destroy()
+        return
+      }
       respondError(response, 500, 'Internal server error')
     })
+  })
+  // listenOnPort 成功后会摘掉自己的 error 监听；之后 accept 阶段的错误（EMFILE 等）没人接就是主进程崩溃
+  server.on('error', (error) => {
+    console.error('[Web] Server error:', error)
   })
 
   const preferredPort = getPreferredPort()
@@ -645,17 +673,20 @@ export async function startWebBrowserServer(): Promise<WebServerInfo> {
 }
 
 export async function stopWebBrowserServer(): Promise<void> {
-  if (!webServer) return
+  const server = webServer
+  if (!server) return
+  // 先置空：无论关闭是否成功，都不能让后续 start 复用一个正在关闭的实例
+  webServer = null
 
   await new Promise<void>((resolvePromise, rejectPromise) => {
-    webServer?.close((error) => {
+    server.close((error) => {
       if (error) {
         rejectPromise(error)
         return
       }
       resolvePromise()
     })
+    // close() 会等所有连接自然结束；浏览器 keep-alive 和正在播放的视频流可能永远不结束
+    server.closeAllConnections()
   })
-
-  webServer = null
 }

@@ -10,40 +10,13 @@ import {
 } from '@/components/ui/context-menu'
 import { LiveCheckDialog } from '@/components/LiveCheckDialog'
 import { toast } from 'sonner'
+import { formatBytes, formatDuration, formatUnixTime } from '@/lib/format'
 
 const STATUS_CONFIG: Record<LiveRecord['status'], { label: string; bg: string; text: string }> = {
   recording: { label: '录制中', bg: 'bg-red-50', text: 'text-red-600' },
   completed: { label: '已完成', bg: 'bg-green-50', text: 'text-green-600' },
   stopped: { label: '已停止', bg: 'bg-gray-100', text: 'text-gray-600' },
   failed: { label: '失败', bg: 'bg-amber-50', text: 'text-amber-600' }
-}
-
-function formatBytes(bytes: number): string {
-  if (!bytes) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`
-}
-
-function formatTime(ts: number | null): string {
-  if (!ts) return '-'
-  return new Date(ts * 1000).toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
-
-function formatDuration(start: number, end: number | null): string {
-  if (!end) return '进行中'
-  const sec = Math.max(0, end - start)
-  const h = Math.floor(sec / 3600)
-  const m = Math.floor((sec % 3600) / 60)
-  const s = sec % 60
-  if (h > 0) return `${h}h${m}m`
-  if (m > 0) return `${m}m${s}s`
-  return `${s}s`
 }
 
 export default function LiveRecordPage() {
@@ -53,18 +26,30 @@ export default function LiveRecordPage() {
   const [checkDialogOpen, setCheckDialogOpen] = useState(false)
 
   const loadRecords = useCallback(async () => {
-    const list = await window.api.live.getRecords()
-    setRecords(list)
+    try {
+      const list = await window.api.live.getRecords()
+      setRecords(list)
+    } catch (error) {
+      toast.error(`加载录制记录失败: ${(error as Error).message}`)
+    }
   }, [])
 
   const loadRecordingIds = useCallback(async () => {
-    const ids = await window.api.live.getRecordingUsers()
-    setRecordingUserIds(ids)
+    try {
+      const ids = await window.api.live.getRecordingUsers()
+      setRecordingUserIds(ids)
+    } catch (error) {
+      toast.error(`获取录制状态失败: ${(error as Error).message}`)
+    }
   }, [])
 
   const loadConvertingIds = useCallback(async () => {
-    const ids = await window.api.live.getConvertingIds()
-    setConvertingIds(ids)
+    try {
+      const ids = await window.api.live.getConvertingIds()
+      setConvertingIds(ids)
+    } catch (error) {
+      toast.error(`获取转换状态失败: ${(error as Error).message}`)
+    }
   }, [])
 
   useEffect(() => {
@@ -114,18 +99,28 @@ export default function LiveRecordPage() {
   }
 
   const handleStop = async (userId: number) => {
-    const stopped = await window.api.live.stop(userId)
-    if (stopped) {
-      toast.info('正在停止录制，收尾中…')
-    } else {
-      toast.warning('没有正在进行的录制（状态已刷新）')
+    try {
+      const stopped = await window.api.live.stop(userId)
+      if (stopped) {
+        toast.info('正在停止录制，收尾中…')
+      } else {
+        toast.warning('没有正在进行的录制（状态已刷新）')
+      }
+    } catch (error) {
+      toast.error(`停止录制失败: ${(error as Error).message}`)
     }
     loadRecords()
     loadRecordingIds()
   }
 
   const handleDelete = async (id: number) => {
-    await window.api.live.deleteRecord(id)
+    if (!window.confirm('确定要删除这条录制记录吗？')) return
+    try {
+      await window.api.live.deleteRecord(id)
+      toast.success('录制记录已删除')
+    } catch (error) {
+      toast.error(`删除失败: ${(error as Error).message}`)
+    }
     loadRecords()
   }
 
@@ -251,7 +246,7 @@ export default function LiveRecordPage() {
                             {rec.title || '（无标题）'}
                           </p>
                           <div className="flex items-center gap-2 mt-1.5 text-xs text-[#A1A1A6]">
-                            <span>{formatTime(rec.started_at)}</span>
+                            <span>{formatUnixTime(rec.started_at)}</span>
                             <span>{formatBytes(rec.file_size)}</span>
                           </div>
                           {rec.error && (

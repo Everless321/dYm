@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import { Users, Video, Sparkles, Download, RefreshCw, ArrowRight, Wifi } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -93,9 +94,10 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
 
   const fetchData = useCallback(async () => {
-    setLoading(true)
     try {
-      const [ov, tr, ud, tt, ld, wi] = await Promise.all([
+      setLoading(true)
+      // 各项统计互不依赖，某一项失败不应让整页空白
+      const [ov, tr, ud, tt, ld, wi] = await Promise.allSettled([
         window.api.dashboard.getOverview(),
         window.api.dashboard.getDownloadTrend(30),
         window.api.dashboard.getUserDistribution(10),
@@ -103,14 +105,23 @@ export default function DashboardPage() {
         window.api.dashboard.getContentLevelDistribution(),
         window.api.system.getWebServerInfo()
       ])
-      setOverview(ov)
-      setTrend(tr)
-      setUserDist(ud)
-      setTopTags(tt)
-      setLevelDist(ld)
-      setWebInfo(wi)
-    } catch (err) {
-      console.error('Failed to fetch dashboard data:', err)
+      if (ov.status === 'fulfilled') setOverview(ov.value)
+      if (tr.status === 'fulfilled') setTrend(tr.value)
+      if (ud.status === 'fulfilled') setUserDist(ud.value)
+      if (tt.status === 'fulfilled') setTopTags(tt.value)
+      if (ld.status === 'fulfilled') setLevelDist(ld.value)
+      if (wi.status === 'fulfilled') setWebInfo(wi.value)
+
+      const failed = [ov, tr, ud, tt, ld, wi].filter(
+        (r): r is PromiseRejectedResult => r.status === 'rejected'
+      )
+      if (failed.length > 0) {
+        console.error(
+          'Failed to fetch dashboard data:',
+          failed.map((r) => r.reason)
+        )
+        toast.error(`部分数据加载失败（${failed.length} 项）`)
+      }
     } finally {
       setLoading(false)
     }
@@ -119,6 +130,25 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // 主进程先建窗口再起 Web 服务：首屏可能拿到 started=false 的占位信息（端口回退时地址会错），
+  // 服务起来后重拉一次
+  useEffect(() => {
+    if (!webInfo || webInfo.started) return
+    let cancelled = false
+    const timer = setTimeout(() => {
+      window.api.system
+        .getWebServerInfo()
+        .then((info) => {
+          if (!cancelled) setWebInfo(info)
+        })
+        .catch(() => undefined)
+    }, 1500)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [webInfo])
 
   const trendFormatted = useMemo(
     () => trend.map((p) => ({ ...p, label: p.date.slice(5) })),

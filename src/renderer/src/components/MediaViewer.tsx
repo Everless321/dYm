@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
@@ -11,7 +11,9 @@ import {
   Download
 } from 'lucide-react'
 import { getMergedTags } from '@/lib/utils'
-import { VideoPlayer } from './VideoPlayer'
+
+// xgplayer 体积大，只在真正播放视频时才加载
+const VideoPlayer = lazy(() => import('./VideoPlayer').then((m) => ({ default: m.VideoPlayer })))
 
 interface MediaViewerProps {
   post: DbPost | null
@@ -41,6 +43,8 @@ export function MediaViewer({
   const [manualOverride, setManualOverride] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const autoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // 快速切换作品时，旧请求可能晚于新请求返回，用序号丢弃过期结果
+  const mediaRequestSeq = useRef(0)
 
   useEffect(() => {
     if (open && post) {
@@ -66,7 +70,7 @@ export function MediaViewer({
 
   // 相关推荐算法：多样化推荐（同标签优先，但保证作者多样性）
   const recommendations = useMemo(() => {
-    if (!post || allPosts.length === 0) return []
+    if (!open || !post || allPosts.length === 0) return []
 
     const currentTags = getMergedTags(post)
     const currentSecUid = post.sec_uid
@@ -119,7 +123,7 @@ export function MediaViewer({
     }
 
     return result
-  }, [post, allPosts])
+  }, [open, post, allPosts])
 
   // 加载推荐视频的封面
   useEffect(() => {
@@ -129,7 +133,6 @@ export function MediaViewer({
         try {
           // 总是调用 getCoverPath 获取实际封面路径
           const coverPath = await window.api.post.getCoverPath(rec.sec_uid, rec.folder_name)
-          console.log('Cover path for', rec.id, ':', coverPath)
           if (coverPath) {
             covers.set(rec.id, coverPath)
           }
@@ -139,31 +142,29 @@ export function MediaViewer({
       }
       setRecommendCovers(covers)
     }
-    if (recommendations.length > 0) {
+    if (open && recommendations.length > 0) {
       loadCovers()
     }
-  }, [recommendations])
+  }, [open, recommendations])
 
   const loadMedia = async () => {
     if (!post) return
+    const seq = ++mediaRequestSeq.current
+    setMedia(null)
     setLoading(true)
     try {
-      console.log('Loading media for:', {
-        sec_uid: post.sec_uid,
-        folder_name: post.folder_name,
-        aweme_type: post.aweme_type
-      })
       const result = await window.api.post.getMediaFiles(
         post.sec_uid,
         post.folder_name,
         post.aweme_type
       )
-      console.log('Media result:', result)
+      if (seq !== mediaRequestSeq.current) return
       setMedia(result)
     } catch (error) {
+      if (seq !== mediaRequestSeq.current) return
       console.error('Failed to load media:', error)
     } finally {
-      setLoading(false)
+      if (seq === mediaRequestSeq.current) setLoading(false)
     }
   }
 
@@ -336,7 +337,13 @@ export function MediaViewer({
                 )}
               </>
             ) : media.video ? (
-              <VideoPlayer url={`local://file${media.video}`} className="w-full h-full" />
+              <Suspense
+                fallback={
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
+                }
+              >
+                <VideoPlayer url={`local://file${media.video}`} className="w-full h-full" />
+              </Suspense>
             ) : (
               <div className="text-white text-center">
                 <p>视频文件未找到</p>

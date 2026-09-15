@@ -26,6 +26,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
+import { formatUnixTime } from '@/lib/format'
 
 const PAGE_SIZE = 10
 
@@ -57,20 +58,34 @@ export default function DownloadPage() {
   }, [])
 
   const loadTasks = async () => {
-    const data = await window.api.task.getAll()
-    setTasks(data)
+    try {
+      const data = await window.api.task.getAll()
+      setTasks(data)
+    } catch (error) {
+      toast.error(`加载任务列表失败: ${(error as Error).message}`)
+    }
   }
 
   const loadUsers = async () => {
-    const data = await window.api.user.getAll()
-    setUsers(data)
+    try {
+      const data = await window.api.user.getAll()
+      setUsers(data)
+    } catch (error) {
+      toast.error(`加载用户列表失败: ${(error as Error).message}`)
+    }
   }
 
   const totalPages = Math.ceil(tasks.length / PAGE_SIZE)
+  // 删除任务后列表变短，当前页可能越界
+  const safePage = Math.min(currentPage, Math.max(1, totalPages))
   const paginatedTasks = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE
+    const start = (safePage - 1) * PAGE_SIZE
     return tasks.slice(start, start + PAGE_SIZE)
-  }, [tasks, currentPage])
+  }, [tasks, safePage])
+
+  useEffect(() => {
+    if (currentPage !== safePage) setCurrentPage(safePage)
+  }, [currentPage, safePage])
 
   const generateTaskName = (userIds: number[]) => {
     if (userIds.length === 0) return ''
@@ -140,18 +155,18 @@ export default function DownloadPage() {
       return
     }
 
-    if (autoSync && syncCron) {
-      const valid = await validateCron(syncCron)
-      if (!valid) {
-        setCronError('无效的 cron 表达式')
-        toast.error('无效的 cron 表达式')
-        return
-      }
-    }
-
     setLoading(true)
     const concurrencyNum = parseInt(concurrency) || 3
     try {
+      if (autoSync && syncCron) {
+        const valid = await validateCron(syncCron)
+        if (!valid) {
+          setCronError('无效的 cron 表达式')
+          toast.error('无效的 cron 表达式')
+          return
+        }
+      }
+
       if (editingTask) {
         await window.api.task.update(editingTask.id, {
           name: taskName.trim(),
@@ -160,17 +175,15 @@ export default function DownloadPage() {
           sync_cron: syncCron.trim()
         })
         await window.api.task.updateUsers(editingTask.id, selectedUserIds)
-        await window.api.task.updateSchedule(editingTask.id)
         toast.success('任务已更新')
       } else {
-        const newTask = await window.api.task.create({
+        await window.api.task.create({
           name: taskName.trim(),
           user_ids: selectedUserIds,
           concurrency: concurrencyNum,
           auto_sync: autoSync,
           sync_cron: syncCron.trim()
         })
-        await window.api.task.updateSchedule(newTask.id)
         toast.success('任务已创建')
       }
       setOpen(false)
@@ -190,15 +203,6 @@ export default function DownloadPage() {
     } catch {
       toast.error('删除失败')
     }
-  }
-
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp * 1000).toLocaleString('zh-CN', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
   }
 
   return (
@@ -298,7 +302,7 @@ export default function DownloadPage() {
                       )}
                     </div>
                     <div className="w-32 text-center text-sm text-[#6E6E73]">
-                      {formatDate(task.created_at)}
+                      {formatUnixTime(task.created_at)}
                     </div>
                     <div className="w-32 flex justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
                       <Button
@@ -338,14 +342,14 @@ export default function DownloadPage() {
             {tasks.length > PAGE_SIZE && (
               <div className="h-14 flex items-center justify-between px-5 border-t border-[#E5E5E7]">
                 <span className="text-sm text-[#6E6E73]">
-                  第 {currentPage} / {totalPages} 页，共 {tasks.length} 条
+                  第 {safePage} / {totalPages} 页，共 {tasks.length} 条
                 </span>
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage(Math.max(1, safePage - 1))}
+                    disabled={safePage === 1}
                     className="border-[#E5E5E7]"
                   >
                     <ChevronLeft className="h-4 w-4" />
@@ -354,8 +358,8 @@ export default function DownloadPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
+                    onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
+                    disabled={safePage >= totalPages}
                     className="border-[#E5E5E7]"
                   >
                     下一页

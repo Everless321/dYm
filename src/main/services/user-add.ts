@@ -62,7 +62,7 @@ export async function addUserByUrl(url: string): Promise<AddUserResult> {
   if (parseResult.type === 'user') {
     const profileRes = await fetchUserProfileBySecUid(parseResult.id)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    userData = (profileRes as any)._data?.user
+    userData = (profileRes as any)?._data?.user
   } else if (parseResult.type === 'video') {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let detail: any
@@ -100,19 +100,21 @@ export async function addUserByUrl(url: string): Promise<AddUserResult> {
     try {
       const profileRes = await fetchUserProfileBySecUid(secUid)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      userData = (profileRes as any)._data?.user
+      userData = (profileRes as any)?._data?.user
     } catch (error) {
       console.error('[User:add] Failed to fetch user profile:', error)
       throw new Error(`获取作者资料失败：${(error as Error).message}（sec_uid: ${secUid}）`)
     }
 
     homepageUrl = `https://www.douyin.com/user/${secUid}`
+  } else if (parseResult.error) {
+    throw new Error(`链接解析失败：${parseResult.error}。请检查网络后重试`)
   } else {
     throw new Error('无法识别的链接类型，请输入用户主页或作品链接')
   }
 
   if (!userData) {
-    throw new Error('获取用户信息失败')
+    throw new Error('抖音未返回该账号资料（可能是企业/广告号、账号已注销，或 Cookie 失效）')
   }
 
   console.log('[User:add] User data:', {
@@ -184,12 +186,12 @@ export async function addUserByUrl(url: string): Promise<AddUserResult> {
       // 后台下载，不阻塞返回
       const awemeData = awemeDataForDownload
       const targetUser = dbUser
+      const basePayload = {
+        awemeId: awemeData.awemeId as string,
+        nickname: targetUser.nickname
+      }
       void (async () => {
         const result = await downloadSinglePost(targetUser, awemeData)
-        const basePayload = {
-          awemeId: awemeData.awemeId as string,
-          nickname: targetUser.nickname
-        }
         if (result.status === 'success') {
           broadcastAddPostProgress({ ...basePayload, status: 'success' })
         } else if (result.status === 'already-downloaded') {
@@ -201,7 +203,19 @@ export async function addUserByUrl(url: string): Promise<AddUserResult> {
             error: result.error
           })
         }
-      })()
+      })().catch((error) => {
+        // 后台任务没有调用方兜底，reject 会直接变成主进程错误弹窗
+        console.error('[User:add] 后台下载作品失败:', error)
+        try {
+          broadcastAddPostProgress({
+            ...basePayload,
+            status: 'failed',
+            error: (error as Error).message
+          })
+        } catch {
+          // 窗口已销毁
+        }
+      })
     }
   }
 

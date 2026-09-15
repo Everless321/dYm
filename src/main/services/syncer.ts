@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { BrowserWindow } from 'electron'
 import { join } from 'path'
 import { DouyinHandler, DouyinDownloader } from 'polydl'
 import {
@@ -12,6 +12,7 @@ import { convertFolderImagesToJpg } from './downloader'
 import { validateDownloadFolder, cleanupFailedDownload, expectsMusic } from './download-validator'
 import { emitPostDownloaded } from './scripts/emit'
 import { track } from './telemetry'
+import { getDownloadPath } from './media'
 
 /** 同步触发来源：手动 / 定时调度 */
 export type SyncSource = 'manual' | 'schedule'
@@ -31,6 +32,14 @@ interface SyncState {
   abort: boolean
 }
 
+/** 一次同步的最终结果。失败不抛出而是收敛在这里，调用方（调度器 / IPC）据此记录日志 */
+export interface SyncResult {
+  status: 'completed' | 'cancelled' | 'failed'
+  downloaded: number
+  skipped: number
+  error?: string
+}
+
 const runningSyncs: Map<number, SyncState> = new Map()
 
 function sendProgress(progress: SyncProgress): void {
@@ -40,18 +49,10 @@ function sendProgress(progress: SyncProgress): void {
   }
 }
 
-function getDownloadPath(): string {
-  const customPath = getSetting('download_path')
-  if (customPath && customPath.trim()) {
-    return customPath
-  }
-  return join(app.getPath('userData'), 'Download', 'post')
-}
-
 export async function startUserSync(
   userId: number,
   options: { source?: SyncSource } = {}
-): Promise<void> {
+): Promise<SyncResult> {
   const source: SyncSource = options.source ?? 'manual'
   console.log(`[Syncer] Starting sync for user ID: ${userId}`)
 
@@ -74,14 +75,17 @@ export async function startUserSync(
   }
   console.log(`[Syncer] Cookie found, length: ${cookie.length}`)
 
-  const globalMaxDownloadCount = parseInt(getSetting('max_download_count') || '0') || 0
-  const videoConcurrency = parseInt(getSetting('video_download_concurrency') || '3') || 3
-
-  runningSyncs.set(userId, { abort: false })
-  updateUserSyncStatus(userId, 'syncing')
+  const globalMaxDownloadCount = Math.max(0, parseInt(getSetting('max_download_count') || '0') || 0)
+  const videoConcurrency = Math.max(
+    1,
+    parseInt(getSetting('video_download_concurrency') || '3') || 3
+  )
 
   const downloadPath = getDownloadPath()
   const userPath = join(downloadPath, user.sec_uid)
+
+  runningSyncs.set(userId, { abort: false })
+  updateUserSyncStatus(userId, 'syncing')
 
   const maxDownloadCount =
     user.max_download_count > 0 ? user.max_download_count : globalMaxDownloadCount
@@ -89,6 +93,7 @@ export async function startUserSync(
   let downloadedCount = 0
   let skippedCount = 0
   let finishStatus: 'completed' | 'cancelled' | 'failed' = 'failed'
+  let failureMessage: string | undefined
 
   try {
     console.log(`[Syncer] Sending initial progress for ${user.nickname}`)
@@ -138,6 +143,13 @@ export async function startUserSync(
     console.log(`[Syncer] Starting to fetch videos for ${user.nickname}`)
     for await (const postFilter of handler.fetchUserPostVideos(user.sec_uid, { maxCounts })) {
       if (syncState?.abort) break
+      // 风控 / 未登录时抖音返回 status_code≠0 且 aweme_list 为空的合法 JSON，
+      // polydl 不会抛错；不检查就会被当成「无新作品」并更新 last_sync_at
+      if (postFilter.statusCode !== null && postFilter.statusCode !== 0) {
+        throw new Error(
+          `抖音接口返回 status_code=${postFilter.statusCode}，通常是 Cookie 失效或触发风控，请重新登录后重试`
+        )
+      }
 
       const awemeList = postFilter.toAwemeDataList()
       for (const awemeData of awemeList) {
@@ -189,7 +201,7 @@ export async function startUserSync(
         skippedCount,
         message: '同步已取消'
       })
-      return
+      return { status: finishStatus, downloaded: downloadedCount, skipped: skippedCount }
     }
 
     console.log(
@@ -211,7 +223,7 @@ export async function startUserSync(
         skippedCount,
         message: `${user.nickname} 无新作品，跳过 ${skippedCount} 个已下载`
       })
-      return
+      return { status: finishStatus, downloaded: downloadedCount, skipped: skippedCount }
     }
 
     const totalToDownload = videosToDownload.length
@@ -363,6 +375,7 @@ export async function startUserSync(
     }
   } catch (error) {
     finishStatus = 'failed'
+    failureMessage = (error as Error).message
     console.error(`[Syncer] Error syncing user ${user.nickname}:`, error)
     updateUserSyncStatus(userId, 'error')
     sendProgress({
@@ -384,6 +397,12 @@ export async function startUserSync(
       videos: downloadedCount,
       status: finishStatus
     })
+  }
+  return {
+    status: finishStatus,
+    downloaded: downloadedCount,
+    skipped: skippedCount,
+    error: failureMessage
   }
 }
 

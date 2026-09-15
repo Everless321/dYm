@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, memo } from 'react'
 import { toast } from 'sonner'
 import {
   HardDrive,
@@ -36,21 +36,144 @@ import {
   ContextMenuTrigger
 } from '@/components/ui/context-menu'
 import { MediaViewer } from '@/components/MediaViewer'
+import { formatBytes, formatPostDate } from '@/lib/format'
 
 const IMAGE_AWEME_TYPE = 68
 const PAGE_SIZE = 50
+/** 同时统计文件大小的用户数；统计要遍历磁盘目录，并发太高会把主进程 IO 打满 */
+const SIZE_CONCURRENCY = 3
 
-function formatSize(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  return (bytes / Math.pow(1024, i)).toFixed(i > 1 ? 1 : 0) + ' ' + units[i]
-}
-
-interface UserWithSize extends DbUser {
+interface UserSize {
   fileSize: number
   folderCount: number
 }
+
+/** 大小字段为 undefined 表示还在统计中 */
+type UserWithSize = DbUser & Partial<UserSize>
+
+const isImagePost = (post: DbPost): boolean => post.aweme_type === IMAGE_AWEME_TYPE
+
+/** 单个用户的文件大小，失败按 0 处理（与接口返回 null 的处理一致） */
+async function fetchUserSize(secUid: string): Promise<UserSize> {
+  try {
+    const sizes = await window.api.files.getFileSizes(secUid)
+    return { fileSize: sizes?.totalSize ?? 0, folderCount: sizes?.folderCount ?? 0 }
+  } catch {
+    return { fileSize: 0, folderCount: 0 }
+  }
+}
+
+interface PostCardProps {
+  post: DbPost
+  coverUrl: string | null
+  selected: boolean
+  onOpen: (post: DbPost) => void
+  onToggleSelect: (postId: number) => void
+  onRedownload: (post: DbPost) => void
+  onDelete: (postId: number) => void
+}
+
+// 卡片单独 memo：勾选 / 翻页 / 打开弹窗时只有受影响的卡片重渲染
+const PostCard = memo(function PostCard({
+  post,
+  coverUrl,
+  selected,
+  onOpen,
+  onToggleSelect,
+  onRedownload,
+  onDelete
+}: PostCardProps): React.JSX.Element {
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <Card
+          className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow group border-[#E5E5E7] bg-white relative"
+          onClick={() => onOpen(post)}
+        >
+          {/* Select checkbox */}
+          <div
+            className="absolute top-2 right-2 z-10"
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleSelect(post.id)
+            }}
+          >
+            <div
+              className={`h-6 w-6 rounded-md border-2 flex items-center justify-center transition-colors ${selected ? 'bg-[#0A84FF] border-[#0A84FF]' : 'bg-white/80 border-white/60 group-hover:border-white'}`}
+            >
+              {selected && (
+                <svg
+                  className="h-4 w-4 text-white"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={3}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </div>
+          </div>
+
+          <div className="aspect-[9/16] bg-[#F2F2F4] relative">
+            {coverUrl ? (
+              <img
+                src={coverUrl}
+                alt={post.desc}
+                loading="lazy"
+                decoding="async"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                {isImagePost(post) ? (
+                  <Images className="h-12 w-12 text-[#A1A1A6]" />
+                ) : (
+                  <Video className="h-12 w-12 text-[#A1A1A6]" />
+                )}
+              </div>
+            )}
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+              {isImagePost(post) ? (
+                <Images className="h-12 w-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              ) : (
+                <Play className="h-12 w-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              )}
+            </div>
+            <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
+              {isImagePost(post) ? '图集' : '视频'}
+            </div>
+            {post.create_time && (
+              <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
+                {formatPostDate(post.create_time)}
+              </div>
+            )}
+          </div>
+          <div className="p-3">
+            <p className="text-sm font-medium text-[#1D1D1F] line-clamp-2">
+              {post.desc || post.caption || '无标题'}
+            </p>
+            <p className="text-xs text-[#6E6E73] mt-1">@{post.nickname}</p>
+          </div>
+        </Card>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onClick={() => window.api.post.openFolder(post.sec_uid, post.folder_name)}>
+          <FolderOpen className="h-4 w-4 mr-2" />
+          在文件管理器中打开
+        </ContextMenuItem>
+        <ContextMenuItem onClick={() => onRedownload(post)}>
+          <RefreshCw className="h-4 w-4 mr-2" />
+          重新下载
+        </ContextMenuItem>
+        <ContextMenuItem onClick={() => onDelete(post.id)} className="text-red-600">
+          <Trash2 className="h-4 w-4 mr-2" />
+          删除文件
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  )
+})
 
 export default function FilesPage() {
   const [users, setUsers] = useState<UserWithSize[]>([])
@@ -83,12 +206,24 @@ export default function FilesPage() {
   const dropdownRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
+  // 作品列表请求序号，用于丢弃切换用户/排序后才返回的旧请求
+  const postsRequestSeq = useRef(0)
+  // 用户列表加载序号 + 挂载标志：大小统计是逐个回填的，卸载或重新加载后不再 setState
+  const usersLoadSeq = useRef(0)
+  const mountedRef = useRef(true)
 
-  const totalSize = users.reduce((sum, u) => sum + u.fileSize, 0)
-  const totalFiles = users.reduce((sum, u) => sum + u.folderCount, 0)
+  const totalSize = users.reduce((sum, u) => sum + (u.fileSize ?? 0), 0)
+  const totalFiles = users.reduce((sum, u) => sum + (u.folderCount ?? 0), 0)
+  const sizing = users.some((u) => u.fileSize === undefined)
+  // 当前用户的大小以列表里的最新值为准（重算后只更新列表，不换 selectedUser 引用）
+  const selectedUserSize = users.find((u) => u.id === selectedUser?.id)?.fileSize
 
   useEffect(() => {
+    mountedRef.current = true
     loadUsers()
+    return () => {
+      mountedRef.current = false
+    }
   }, [])
 
   useEffect(() => {
@@ -128,79 +263,125 @@ export default function FilesPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showUserDropdown])
 
-  const loadUsers = async () => {
+  const loadUsers = async (): Promise<void> => {
+    const seq = ++usersLoadSeq.current
+    const alive = (): boolean => mountedRef.current && seq === usersLoadSeq.current
     setLoading(true)
     try {
       const allUsers = (await window.api.user.getAll()) ?? []
-      const withSize: UserWithSize[] = await Promise.all(
-        allUsers.map(async (u) => {
-          const sizes = await window.api.files.getFileSizes(u.sec_uid)
-          return { ...u, fileSize: sizes?.totalSize ?? 0, folderCount: sizes?.folderCount ?? 0 }
-        })
-      )
-      const sorted = withSize
-        .filter((u) => u.folderCount > 0)
-        .sort((a, b) => b.fileSize - a.fileSize)
-      setUsers(sorted)
-      if (!selectedUser && sorted.length > 0) {
-        setSelectedUser(sorted[0])
-      }
-    } catch {
-      toast.error('加载失败')
-    } finally {
+      if (!alive()) return
+      // 先把列表亮出来，大小限并发逐个回填，不让最慢的那个用户拖住整页
+      setUsers(allUsers)
       setLoading(false)
+
+      const queue = [...allUsers]
+      const sized: UserWithSize[] = []
+      const worker = async (): Promise<void> => {
+        while (alive()) {
+          const user = queue.shift()
+          if (!user) return
+          const size = await fetchUserSize(user.sec_uid)
+          if (!alive()) return
+          sized.push({ ...user, ...size })
+          // 没有文件的用户直接从列表移除（与原先的过滤一致）
+          setUsers((prev) =>
+            prev.flatMap((item) =>
+              item.id !== user.id ? [item] : size.folderCount > 0 ? [{ ...item, ...size }] : []
+            )
+          )
+        }
+      }
+      await Promise.all(Array.from({ length: SIZE_CONCURRENCY }, worker))
+      if (!alive()) return
+
+      const sorted = sized
+        .filter((u) => (u.folderCount ?? 0) > 0)
+        .sort((a, b) => (b.fileSize ?? 0) - (a.fileSize ?? 0))
+      setUsers(sorted)
+      setSelectedUser((cur) => cur ?? sorted[0] ?? null)
+    } catch {
+      if (alive()) toast.error('加载失败')
+    } finally {
+      if (alive()) setLoading(false)
     }
   }
 
-  const loadPosts = async (user: UserWithSize, pageNum: number, reset = false) => {
-    if (reset) setPostsLoading(true)
-    else setLoadingMore(true)
-    try {
-      const result = await window.api.files.getUserPosts(user.id, pageNum, PAGE_SIZE, sort)
-      const newPosts = result?.posts ?? []
-      if (reset) {
-        setPosts(newPosts)
-      } else {
-        setPosts((prev) => [...prev, ...newPosts])
+  const loadCoverPaths = useCallback(async (postList: DbPost[]): Promise<void> => {
+    const entries = await Promise.all(
+      postList
+        .filter((p) => p.folder_name)
+        .map(async (post) => {
+          try {
+            const path = await window.api.post.getCoverPath(post.sec_uid, post.folder_name)
+            return [post.aweme_id, path] as const
+          } catch {
+            return [post.aweme_id, null] as const
+          }
+        })
+    )
+    setCoverPaths((prev) => {
+      const next = { ...prev }
+      for (const [awemeId, path] of entries) {
+        if (path) next[awemeId] = path
       }
-      setPostTotal(result?.total ?? 0)
-      setHasMore(newPosts.length === PAGE_SIZE)
-      loadCoverPaths(result.posts)
-    } catch {
-      toast.error('加载作品失败')
-    } finally {
-      setPostsLoading(false)
-      setLoadingMore(false)
-    }
-  }
+      return next
+    })
+  }, [])
+
+  const loadPosts = useCallback(
+    async (user: UserWithSize, pageNum: number, reset = false): Promise<void> => {
+      const seq = ++postsRequestSeq.current
+      if (reset) setPostsLoading(true)
+      else setLoadingMore(true)
+      try {
+        const result = await window.api.files.getUserPosts(user.id, pageNum, PAGE_SIZE, sort)
+        // 期间切换了用户 / 排序，这份结果属于旧列表
+        if (seq !== postsRequestSeq.current) return
+        const newPosts = result?.posts ?? []
+        if (reset) {
+          setPosts(newPosts)
+        } else {
+          setPosts((prev) => [...prev, ...newPosts])
+        }
+        setPostTotal(result?.total ?? 0)
+        setHasMore(newPosts.length === PAGE_SIZE)
+        loadCoverPaths(newPosts)
+      } catch {
+        if (seq !== postsRequestSeq.current) return
+        toast.error('加载作品失败')
+      } finally {
+        if (seq === postsRequestSeq.current) {
+          setPostsLoading(false)
+          setLoadingMore(false)
+        }
+      }
+    },
+    [sort, loadCoverPaths]
+  )
 
   const loadMorePosts = useCallback(() => {
     if (!selectedUser) return
     const nextPage = page + 1
     setPage(nextPage)
     loadPosts(selectedUser, nextPage, false)
-  }, [page, selectedUser, sort])
+  }, [page, selectedUser, loadPosts])
 
-  const loadCoverPaths = async (postList: DbPost[]) => {
-    const paths: Record<string, string> = {}
-    for (const post of postList) {
-      if (post.folder_name) {
-        const coverPath = await window.api.post.getCoverPath(post.sec_uid, post.folder_name)
-        if (coverPath) paths[post.aweme_id] = coverPath
-      }
-    }
-    setCoverPaths((prev) => ({ ...prev, ...paths }))
-  }
+  /** 只重算当前用户的大小；原先是全量重扫所有用户 */
+  const refreshUserSize = useCallback(async (user: UserWithSize): Promise<void> => {
+    const size = await fetchUserSize(user.sec_uid)
+    if (!mountedRef.current) return
+    setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, ...size } : u)))
+  }, [])
 
-  const reloadCurrentUser = async () => {
+  const reloadCurrentUser = useCallback(async (): Promise<void> => {
     if (!selectedUser) return
     setPosts([])
     setPage(1)
     setHasMore(true)
     setCoverPaths({})
     await loadPosts(selectedUser, 1, true)
-    await loadUsers()
-  }
+    await refreshUserSize(selectedUser)
+  }, [selectedUser, loadPosts, refreshUserSize])
 
   const handleDeletePost = async (postId: number) => {
     setDeleteLoading(true)
@@ -286,14 +467,36 @@ export default function FilesPage() {
     }
   }
 
-  const toggleSelect = (id: number) => {
+  const toggleSelect = useCallback((id: number): void => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
-  }
+  }, [])
+
+  const handleOpenPost = useCallback((post: DbPost): void => {
+    setSelectedPost(post)
+    setViewerOpen(true)
+  }, [])
+
+  const requestDeletePost = useCallback((postId: number): void => {
+    setDeleteConfirm({ type: 'post', id: postId })
+  }, [])
+
+  const handleRedownloadPost = useCallback(
+    async (post: DbPost): Promise<void> => {
+      try {
+        await window.api.post.redownload(post.aweme_id)
+        toast.success('已标记重新下载，下次同步时将重新下载此作品')
+        await reloadCurrentUser()
+      } catch (e) {
+        toast.error('重新下载标记失败: ' + (e as Error).message)
+      }
+    },
+    [reloadCurrentUser]
+  )
 
   const selectAll = () => {
     if (selectedIds.size === posts.length) setSelectedIds(new Set())
@@ -338,17 +541,6 @@ export default function FilesPage() {
     }
   }
 
-  const isImagePost = (post: DbPost) => post.aweme_type === IMAGE_AWEME_TYPE
-
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return ''
-    const cleaned = dateStr.replace(/[-:T]/g, '').substring(0, 8)
-    if (cleaned.length === 8) {
-      return `${cleaned.substring(0, 4)}-${cleaned.substring(4, 6)}-${cleaned.substring(6, 8)}`
-    }
-    return dateStr
-  }
-
   const filteredUsers = (() => {
     if (!userSearch.trim()) return users
     const s = userSearch.toLowerCase()
@@ -362,7 +554,8 @@ export default function FilesPage() {
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold text-[#1D1D1F]">文件管理</h1>
           <span className="text-sm text-[#A1A1A6]">
-            {totalFiles} 个文件 / {formatSize(totalSize)}
+            {totalFiles} 个文件 / {formatBytes(totalSize)}
+            {sizing && '（计算中）'}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -421,7 +614,7 @@ export default function FilesPage() {
               <span>{selectedUser?.nickname || '选择用户'}</span>
               {selectedUser && (
                 <span className="text-xs text-[#A1A1A6]">
-                  ({formatSize(selectedUser.fileSize)})
+                  ({selectedUserSize === undefined ? '计算中' : formatBytes(selectedUserSize)})
                 </span>
               )}
               <ChevronDown
@@ -470,7 +663,9 @@ export default function FilesPage() {
                     >
                       <span className="truncate">{u.nickname}</span>
                       <span className="text-xs text-[#A1A1A6] flex-shrink-0 ml-2">
-                        {u.folderCount} 个 / {formatSize(u.fileSize)}
+                        {u.fileSize === undefined
+                          ? '计算中'
+                          : `${u.folderCount} 个 / ${formatBytes(u.fileSize)}`}
                       </span>
                     </button>
                   ))}
@@ -531,114 +726,16 @@ export default function FilesPage() {
             <>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-5 pt-4">
                 {posts.map((post) => (
-                  <ContextMenu key={post.id}>
-                    <ContextMenuTrigger asChild>
-                      <Card
-                        className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow group border-[#E5E5E7] bg-white relative"
-                        onClick={() => {
-                          setSelectedPost(post)
-                          setViewerOpen(true)
-                        }}
-                      >
-                        {/* Select checkbox */}
-                        <div
-                          className="absolute top-2 right-2 z-10"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            toggleSelect(post.id)
-                          }}
-                        >
-                          <div
-                            className={`h-6 w-6 rounded-md border-2 flex items-center justify-center transition-colors ${selectedIds.has(post.id) ? 'bg-[#0A84FF] border-[#0A84FF]' : 'bg-white/80 border-white/60 group-hover:border-white'}`}
-                          >
-                            {selectedIds.has(post.id) && (
-                              <svg
-                                className="h-4 w-4 text-white"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                                strokeWidth={3}
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  d="M5 13l4 4L19 7"
-                                />
-                              </svg>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="aspect-[9/16] bg-[#F2F2F4] relative">
-                          {getCoverUrl(post) ? (
-                            <img
-                              src={getCoverUrl(post)!}
-                              alt={post.desc}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              {isImagePost(post) ? (
-                                <Images className="h-12 w-12 text-[#A1A1A6]" />
-                              ) : (
-                                <Video className="h-12 w-12 text-[#A1A1A6]" />
-                              )}
-                            </div>
-                          )}
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                            {isImagePost(post) ? (
-                              <Images className="h-12 w-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                            ) : (
-                              <Play className="h-12 w-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                            )}
-                          </div>
-                          <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
-                            {isImagePost(post) ? '图集' : '视频'}
-                          </div>
-                          {post.create_time && (
-                            <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
-                              {formatDate(post.create_time)}
-                            </div>
-                          )}
-                        </div>
-                        <div className="p-3">
-                          <p className="text-sm font-medium text-[#1D1D1F] line-clamp-2">
-                            {post.desc || post.caption || '无标题'}
-                          </p>
-                          <p className="text-xs text-[#6E6E73] mt-1">@{post.nickname}</p>
-                        </div>
-                      </Card>
-                    </ContextMenuTrigger>
-                    <ContextMenuContent>
-                      <ContextMenuItem
-                        onClick={() => window.api.post.openFolder(post.sec_uid, post.folder_name)}
-                      >
-                        <FolderOpen className="h-4 w-4 mr-2" />
-                        在文件管理器中打开
-                      </ContextMenuItem>
-                      <ContextMenuItem
-                        onClick={async () => {
-                          try {
-                            await window.api.post.redownload(post.aweme_id)
-                            toast.success('已标记重新下载，下次同步时将重新下载此作品')
-                            await reloadCurrentUser()
-                          } catch (e) {
-                            toast.error('重新下载标记失败: ' + (e as Error).message)
-                          }
-                        }}
-                      >
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        重新下载
-                      </ContextMenuItem>
-                      <ContextMenuItem
-                        onClick={() => setDeleteConfirm({ type: 'post', id: post.id })}
-                        className="text-red-600"
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        删除文件
-                      </ContextMenuItem>
-                    </ContextMenuContent>
-                  </ContextMenu>
+                  <PostCard
+                    key={post.id}
+                    post={post}
+                    coverUrl={getCoverUrl(post)}
+                    selected={selectedIds.has(post.id)}
+                    onOpen={handleOpenPost}
+                    onToggleSelect={toggleSelect}
+                    onRedownload={handleRedownloadPost}
+                    onDelete={requestDeletePost}
+                  />
                 ))}
               </div>
 

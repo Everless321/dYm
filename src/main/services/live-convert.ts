@@ -59,13 +59,22 @@ export function enqueueConvert(recordId: number): void {
       progressOf(recordId, 'converting', '正在转换为可播放格式…')
       const convertedOk = await convertRecord(recordId)
       const converted = getLiveRecordById(recordId)
-      if (convertedOk && converted?.file_path?.toLowerCase().endsWith('.mp4')) {
+      if (!convertedOk) {
+        // 记录已被删 / 源文件不在了：没有东西可看，不能提示「可以观看了」
+        progressOf(recordId, 'convert-failed', '转换未执行：记录或源文件已不存在')
+        return
+      }
+      if (converted?.file_path?.toLowerCase().endsWith('.mp4')) {
         emitLiveConverted(converted)
       }
       progressOf(recordId, 'converted', '转换完成，可以观看了')
     } catch (err) {
       console.error(`[LiveConvert] 记录 ${recordId} 转换失败:`, err)
-      progressOf(recordId, 'convert-failed', `转换失败：${(err as Error).message}`)
+      try {
+        progressOf(recordId, 'convert-failed', `转换失败：${(err as Error).message}`)
+      } catch {
+        // 退出过程中库已关闭，广播失败无所谓
+      }
     } finally {
       convertingIds.delete(recordId)
     }
@@ -113,7 +122,7 @@ async function remuxAtomic(src: string, dest: string): Promise<void> {
 
 // 探测视频流真实编码（不能靠画质档位猜：抖音「原画」多为 H.264，个别才是 HEVC）
 function probeVideoCodec(src: string): Promise<string> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     execFile(
       ffprobePath,
       [
@@ -127,7 +136,11 @@ function probeVideoCodec(src: string): Promise<string> {
         'csv=p=0',
         src
       ],
-      (err, stdout) => resolve(err ? '' : stdout.trim().toLowerCase())
+      // 探测失败不能当成「非 HEVC」继续：HEVC 不打 hvc1 tag 转出来的 MP4 播放黑屏，而源 FLV 随后会被删
+      (err, stdout) =>
+        err
+          ? reject(new Error(`ffprobe 探测编码失败：${err.message}`))
+          : resolve(stdout.trim().toLowerCase())
     )
   })
 }
@@ -140,22 +153,49 @@ function probeVideoCodec(src: string): Promise<string> {
  *   （200s 素材约 1.5s），换来任何解码器都能吃的干净音轨。视频仍 copy，不牺牲画质与速度。
  * - 仅当真为 HEVC 时打 hvc1 tag；对 H.264 打 hvc1 会导致 ffmpeg 失败/文件损坏。
  */
+const REMUX_TIMEOUT_MS = 30 * 60_000
+
 async function remux(src: string, dest: string): Promise<void> {
   const codec = await probeVideoCodec(src)
-  const args = ['-y', '-i', src, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k']
+  // 只留错误输出：几小时的录像转封装会打出海量进度行，全攒在 stderr 字符串里白占内存
+  const args = [
+    '-y',
+    '-nostats',
+    '-loglevel',
+    'error',
+    '-i',
+    src,
+    '-c:v',
+    'copy',
+    '-c:a',
+    'aac',
+    '-b:a',
+    '128k'
+  ]
   if (codec === 'hevc' || codec === 'h265') {
     args.push('-tag:v', 'hvc1')
   }
   args.push('-movflags', '+faststart', dest)
 
   return new Promise((resolve, reject) => {
-    const proc = spawn(ffmpegPath, args)
+    const proc = spawn(ffmpegPath, args, { stdio: ['ignore', 'ignore', 'pipe'] })
     let stderr = ''
     proc.stderr?.on('data', (d) => {
-      stderr += d.toString()
+      // 只留尾部：文件损坏时 error 级别也可能每帧刷一行
+      stderr = (stderr + d.toString()).slice(-2000)
     })
-    proc.on('error', reject)
+    // 转封装是纯拷贝，正常速度几百倍于实时；卡住 30 分钟说明输入或磁盘出了问题，
+    // 别让它一直占着转换队列
+    const killTimer = setTimeout(() => {
+      stderr += '\n[timeout] ffmpeg 转封装超过 30 分钟未结束，已终止'
+      proc.kill('SIGKILL')
+    }, REMUX_TIMEOUT_MS)
+    proc.on('error', (err) => {
+      clearTimeout(killTimer)
+      reject(err)
+    })
     proc.on('close', (code) => {
+      clearTimeout(killTimer)
       if (code === 0) resolve()
       else reject(new Error(`转封装失败 (ffmpeg 退出码 ${code})：${stderr.slice(-300)}`))
     })

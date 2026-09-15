@@ -36,6 +36,8 @@ export type LinkType = 'user' | 'video' | 'unknown'
 export interface LinkParseResult {
   type: LinkType
   id: string // sec_user_id 或 aweme_id
+  /** type 为 unknown 时，最后一次解析抛出的错误（如短链跳转失败），没有则表示格式本身不匹配 */
+  error?: string
 }
 
 /**
@@ -55,6 +57,8 @@ export function extractSecUidFromUrl(url: string): string | null {
  */
 export async function parseDouyinUrl(url: string): Promise<LinkParseResult> {
   console.log('[Douyin] parseDouyinUrl:', url)
+  // 短链解析要走网络；断网时不能把「解析失败」说成「链接无法识别」
+  let lastError: string | undefined
 
   // 尝试提取用户 ID
   try {
@@ -64,7 +68,8 @@ export async function parseDouyinUrl(url: string): Promise<LinkParseResult> {
       return { type: 'user', id: secUserId }
     }
   } catch (e) {
-    console.log('[Douyin] Not a user link:', (e as Error).message)
+    lastError = (e as Error).message
+    console.log('[Douyin] Not a user link:', lastError)
   }
 
   // 尝试提取作品 ID
@@ -75,10 +80,11 @@ export async function parseDouyinUrl(url: string): Promise<LinkParseResult> {
       return { type: 'video', id: awemeId }
     }
   } catch (e) {
-    console.log('[Douyin] Not a video link:', (e as Error).message)
+    lastError = (e as Error).message
+    console.log('[Douyin] Not a video link:', lastError)
   }
 
-  return { type: 'unknown', id: '' }
+  return { type: 'unknown', id: '', error: lastError }
 }
 
 /**

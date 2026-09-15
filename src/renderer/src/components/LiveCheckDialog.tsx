@@ -23,12 +23,16 @@ export function LiveCheckDialog({ open, onOpenChange, onChanged }: LiveCheckDial
   const [checkingId, setCheckingId] = useState<number | null>(null)
 
   const load = useCallback(async () => {
-    const [users, ids] = await Promise.all([
-      window.api.user.getAll(),
-      window.api.live.getRecordingUsers()
-    ])
-    setMonitoredUsers(users.filter((u) => u.live_record))
-    setRecordingUserIds(ids)
+    try {
+      const [users, ids] = await Promise.all([
+        window.api.user.getAll(),
+        window.api.live.getRecordingUsers()
+      ])
+      setMonitoredUsers(users.filter((u) => u.live_record))
+      setRecordingUserIds(ids)
+    } catch (error) {
+      toast.error(`加载监控用户失败: ${(error as Error).message}`)
+    }
   }, [])
 
   useEffect(() => {
@@ -54,11 +58,15 @@ export function LiveCheckDialog({ open, onOpenChange, onChanged }: LiveCheckDial
   }
 
   const handleStop = async (userId: number) => {
-    const stopped = await window.api.live.stop(userId)
-    if (stopped) {
-      toast.info('正在停止录制，收尾中…')
-    } else {
-      toast.warning('没有正在进行的录制（状态已刷新）')
+    try {
+      const stopped = await window.api.live.stop(userId)
+      if (stopped) {
+        toast.info('正在停止录制，收尾中…')
+      } else {
+        toast.warning('没有正在进行的录制（状态已刷新）')
+      }
+    } catch (error) {
+      toast.error(`停止录制失败: ${(error as Error).message}`)
     }
     await load()
     onChanged?.()
