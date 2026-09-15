@@ -152,8 +152,10 @@ const liveAPI = {
     ipcRenderer.invoke('live:preparePlayback', id),
   getDanmaku: (id: number): Promise<DanmakuLine[]> => ipcRenderer.invoke('live:getDanmaku', id),
   openPlayer: (id: number): Promise<void> => ipcRenderer.invoke('live:openPlayer', id),
-  deleteRecord: (id: number): Promise<LiveRecord | undefined> =>
-    ipcRenderer.invoke('live:deleteRecord', id),
+  deleteRecord: (id: number, deleteFiles?: boolean): Promise<DeleteLiveRecordsResult> =>
+    ipcRenderer.invoke('live:deleteRecord', id, deleteFiles),
+  deleteRecords: (ids: number[], deleteFiles?: boolean): Promise<DeleteLiveRecordsResult> =>
+    ipcRenderer.invoke('live:deleteRecords', ids, deleteFiles),
   revealFile: (filePath: string): Promise<void> => ipcRenderer.invoke('live:revealFile', filePath),
   updateUserSchedule: (userId: number): Promise<void> =>
     ipcRenderer.invoke('live:updateUserSchedule', userId),
