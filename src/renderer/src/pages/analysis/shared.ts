@@ -40,6 +40,6 @@ export function jobProgress(job: AnalysisJobView): number {
 }
 
 /** 分析队列页的路径；tab 用 query 传，方便别处深链到「提供方」 */
-export function analysisPath(tab?: 'queue' | 'settings' | 'providers'): string {
+export function analysisPath(tab?: 'queue' | 'settings' | 'providers' | 'asr'): string {
   return tab && tab !== 'queue' ? `/analysis?tab=${tab}` : '/analysis'
 }

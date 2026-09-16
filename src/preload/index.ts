@@ -10,10 +10,13 @@ import type {
   AnalysisJobView,
   AnalysisQueueEvent,
   AnalysisSettings,
+  AsrProviderInput,
+  AsrProviderView,
   CodexAuthStatus,
   OpenCodeCliKey,
   CreateAnalysisJobInput
 } from '../shared/ai'
+import type { PostAnalysisDetail } from '../shared/analysis'
 
 const dbAPI = {
   execute: (sql: string, params?: unknown[]): Promise<unknown> =>
@@ -217,8 +220,26 @@ const aiAPI = {
     ipcRenderer.invoke('ai:opencodeCliKey', baseUrl)
 }
 
+const asrAPI = {
+  listProviders: (): Promise<AsrProviderView[]> => ipcRenderer.invoke('asr:listProviders'),
+  saveProvider: (input: AsrProviderInput): Promise<AsrProviderView> =>
+    ipcRenderer.invoke('asr:saveProvider', input),
+  deleteProvider: (id: string): Promise<void> => ipcRenderer.invoke('asr:deleteProvider', id),
+  setDefaultProvider: (id: string): Promise<void> =>
+    ipcRenderer.invoke('asr:setDefaultProvider', id),
+  verifyProvider: (input: AsrProviderInput): Promise<{ ok: true; message: string }> =>
+    ipcRenderer.invoke('asr:verifyProvider', input)
+}
+
 const analysisAPI = {
   getSettings: (): Promise<AnalysisSettings> => ipcRenderer.invoke('analysis:getSettings'),
+  getDetail: (postId: number): Promise<PostAnalysisDetail> =>
+    ipcRenderer.invoke('analysis:getDetail', postId),
+  searchTranscripts: (
+    keyword: string,
+    limit?: number
+  ): Promise<{ postId: number; snippet: string }[]> =>
+    ipcRenderer.invoke('analysis:searchTranscripts', keyword, limit),
   saveSettings: (patch: Partial<AnalysisSettings>): Promise<AnalysisSettings> =>
     ipcRenderer.invoke('analysis:saveSettings', patch),
   createJob: (input: CreateAnalysisJobInput): Promise<AnalysisJobView> =>
@@ -427,6 +448,7 @@ const api = {
   live: liveAPI,
   post: postAPI,
   ai: aiAPI,
+  asr: asrAPI,
   analysis: analysisAPI,
   tag: tagAPI,
   video: videoAPI,

@@ -7,7 +7,7 @@ import { ANALYSIS_DEFAULTS } from '../../shared/ai'
  * 给已存在的表补列。用 table_info 判断列是否存在，而不是 try/catch 吞掉 ALTER 的所有错误，
  * 这样磁盘满、库被锁等真实故障不会被当成「列已存在」静默跳过。
  */
-function ensureColumn(
+export function ensureColumn(
   database: Database.Database,
   table: string,
   column: string,
@@ -131,6 +131,11 @@ export function initDatabase(): void {
   // 模型原始输出（JSON 文本）与所用模型：换提示词 / 换模型后可以离线重新解析、对比
   ensureColumn(database, 'posts', 'analysis_raw', 'TEXT')
   ensureColumn(database, 'posts', 'analysis_model', 'TEXT')
+  // 媒体元数据：分析分段规划与页面展示用，下载 / 分析时探测后回填
+  ensureColumn(database, 'posts', 'duration', 'REAL')
+  ensureColumn(database, 'posts', 'width', 'INTEGER')
+  ensureColumn(database, 'posts', 'height', 'INTEGER')
+  ensureColumn(database, 'posts', 'has_audio', 'INTEGER')
 
   // posts 表索引
   database.exec(`CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id)`)
@@ -211,7 +216,14 @@ export function initDatabase(): void {
     // 分析相关设置（提供方 / 模型在 ai_providers 表里）
     { key: 'analysis_concurrency', value: String(ANALYSIS_DEFAULTS.concurrency) },
     { key: 'analysis_rpm', value: String(ANALYSIS_DEFAULTS.rpm) },
-    { key: 'analysis_slices', value: String(ANALYSIS_DEFAULTS.slices) },
+    { key: 'analysis_frames_short', value: String(ANALYSIS_DEFAULTS.framesShort) },
+    { key: 'analysis_frames_per_segment', value: String(ANALYSIS_DEFAULTS.framesPerSegment) },
+    { key: 'analysis_segment_seconds', value: String(ANALYSIS_DEFAULTS.segmentSeconds) },
+    { key: 'analysis_max_minutes', value: String(ANALYSIS_DEFAULTS.maxMinutes) },
+    { key: 'analysis_skip_over_minutes', value: String(ANALYSIS_DEFAULTS.skipOverMinutes) },
+    { key: 'analysis_mosaic', value: ANALYSIS_DEFAULTS.mosaic },
+    { key: 'analysis_transcribe', value: ANALYSIS_DEFAULTS.transcribe ? 'true' : 'false' },
+    { key: 'analysis_asr_rpm', value: String(ANALYSIS_DEFAULTS.asrRpm) },
     { key: 'analysis_prompt', value: ANALYSIS_DEFAULTS.prompt },
     { key: 'analysis_tag_mode', value: ANALYSIS_DEFAULTS.tagMode },
     { key: 'analysis_auto', value: ANALYSIS_DEFAULTS.autoAnalyze ? 'true' : 'false' },
