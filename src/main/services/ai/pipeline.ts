@@ -29,7 +29,8 @@ import {
   PROMPT_VERSION,
   buildReduceMessage,
   buildSegmentMessage,
-  buildSingleMessage
+  buildSingleMessage,
+  formatTime
 } from './prompt'
 import { parseSegmentUnderstanding, parseVideoAnalysis, type SegmentUnderstanding } from './schema'
 
@@ -353,6 +354,13 @@ export async function analyzePost(post: DbPost, options: PipelineOptions): Promi
         summary: u.summary,
         tags: u.tags.slice(0, 6)
       }))
+    }
+    if (!analysis.content) {
+      // 汇总步骤没写 content 就把各段内容按时间拼起来，总比没有强
+      analysis.content = understandings
+        .filter((u) => u.content || u.summary)
+        .map((u) => `[${formatTime(u.start)}-${formatTime(u.end)}] ${u.content || u.summary}`)
+        .join('\n')
     }
   }
   // 转写过且没听到人声才敢说「无口播」；全部段都转写失败时不下结论

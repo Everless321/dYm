@@ -26,6 +26,11 @@ export interface VideoAnalysis {
   schemaVersion: typeof ANALYSIS_SCHEMA_VERSION
   /** 两三句话：这条视频整体在讲什么 */
   summary: string
+  /**
+   * 视频内容：按时间顺序把视频里发生了什么、说了什么、画面怎么变化写清楚，
+   * 是「看完视频后向别人复述」级别的描述（几百字），summary 是它的摘要
+   */
+  content: string
   category: { primary: string; secondary: string }
   subjects: {
     /** 单人 / 双人 / 多人 / 无人 */

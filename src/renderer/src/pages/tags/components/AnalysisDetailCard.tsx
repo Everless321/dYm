@@ -216,7 +216,20 @@ function Overview({ analysis }: { analysis: VideoAnalysis }): React.JSX.Element 
   return (
     <div className="space-y-3">
       {analysis.summary && (
-        <p className="text-sm text-[#1D1D1F] leading-relaxed">{analysis.summary}</p>
+        <p className="text-sm font-medium text-[#1D1D1F] leading-relaxed">{analysis.summary}</p>
+      )}
+      {analysis.content && (
+        <div className="space-y-1.5">
+          {analysis.content
+            .split(/\n+/)
+            .map((p) => p.trim())
+            .filter(Boolean)
+            .map((p, i) => (
+              <p key={i} className="text-[13px] text-[#3A3A3C] leading-relaxed">
+                {p}
+              </p>
+            ))}
+        </div>
       )}
 
       {(analysis.rating.level > 0 || flags.length > 0) && (

@@ -14,7 +14,7 @@ import type { SegmentUnderstanding } from './schema'
  */
 
 /** 输出结构改了就升版本，落库时记下来，方便日后判断哪些结果要重跑 */
-export const PROMPT_VERSION = 'v2.0'
+export const PROMPT_VERSION = 'v2.1'
 
 export function getAnalysisPrompt(): string {
   return (getSetting('analysis_prompt') || '').trim() || ANALYSIS_DEFAULTS.prompt
@@ -79,7 +79,8 @@ const LEGACY_V1_PROMPT = `你是短视频内容分析助手，根据视频截帧
 const FULL_OUTPUT_BLOCK = `## 输出格式（必须遵守）
 只输出一个 JSON 对象，不要输出任何解释、前后缀或 Markdown 代码块。结构如下（字段名固定，值按实际内容填）：
 {
-  "summary": "两三句话概括整条视频讲了什么、怎么呈现",
+  "content": "视频内容：按时间顺序具体描述这条视频里发生了什么——开头是什么画面、人物做了什么、说了什么（引用口播要点）、画面和场景怎么变化、结尾如何。要像看完后向别人复述一样具体，写成 1-3 个自然段，短视频 150-300 字，长视频 300-600 字",
+  "summary": "两三句话概括整条视频讲了什么、怎么呈现（content 的摘要）",
   "category": {"primary": "主分类（从【内容类型】里选）", "secondary": "细分类型或空串"},
   "subjects": {"peopleCount": "单人/双人/多人/无人", "appearance": ["外貌特征"], "outfit": ["穿搭要素"]},
   "setting": {"location": "室内/室外/混合", "place": "具体地点（从【场景】里选或自拟）", "timeOfDay": "白天/夜晚/未知"},
@@ -92,14 +93,16 @@ const FULL_OUTPUT_BLOCK = `## 输出格式（必须遵守）
   "tags": [{"name": "标签", "facet": "内容类型/场景/风格/人物/拍摄/其它", "confidence": 0.9}],
   "chapters": [{"start": 0, "end": 30, "title": "章节名", "summary": "这一段讲什么", "tags": ["标签"]}]
 }
+- content 只写看到、听到的事实，不要评价、不要复述标签；有口播就把说了什么写进去
 - tags 至少 8 个，name 只写标签词本身；facet 用上面列出的分面名
-- chapters：短视频可给 1 段或空数组；长视频按内容转折分段，start/end 为秒
+- chapters：按镜头 / 内容转折分段，短视频 1-4 段，长视频按转折分，start/end 为秒；单一镜头的短视频可给空数组
 - rating.level 与 dimensions 都是 1-10 的整数`
 
 const SEGMENT_OUTPUT_BLOCK = `## 输出格式（必须遵守）
 只输出一个 JSON 对象，不要任何解释或 Markdown 代码块：
 {
-  "summary": "这一段讲了什么、画面里发生了什么（两三句话）",
+  "content": "这一段的具体内容：按先后顺序描述画面里发生了什么、人物说了什么（引用口播要点）、画面怎么变化，100-250 字，只写看到听到的事实",
+  "summary": "这一段讲了什么（一两句话，content 的摘要）",
   "scene": "这一段的地点 / 场景",
   "actions": ["主要动作或事件"],
   "onScreenText": ["画面里出现的文字"],
@@ -126,6 +129,7 @@ export function buildReducePrompt(userPrompt: string): string {
 
 ## 当前任务
 下面是一条长视频按时间顺序各段的理解结果（可能只抽样了部分时间段）。请把它们汇总成整条视频的分析：
+content 按时间顺序把各段内容串成连贯的全片叙述（保留具体事实和口播要点，不要只是把各段概要拼起来），
 summary 概括全片主线，chapters 按内容转折合并相邻相似的段（不必与输入分段一一对应），tags 覆盖全片。
 
 ${FULL_OUTPUT_BLOCK}`
@@ -264,6 +268,7 @@ export function buildReduceMessage(input: {
     const lines = [
       `### ${formatTime(seg.start)} - ${formatTime(seg.end)}`,
       `概要：${seg.summary || '（空）'}`,
+      seg.content ? `内容：${seg.content}` : '',
       seg.scene ? `场景：${seg.scene}` : '',
       seg.actions.length ? `动作/事件：${seg.actions.join('、')}` : '',
       seg.speechTopics.length ? `口播话题：${seg.speechTopics.join('、')}` : '',

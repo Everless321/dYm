@@ -129,6 +129,7 @@ export function toVideoAnalysis(raw: Record<string, unknown>, duration: number):
   return {
     schemaVersion: ANALYSIS_SCHEMA_VERSION,
     summary: str(raw.summary, 600),
+    content: str(raw.content ?? raw.description ?? raw.narrative, 4000),
     category: {
       // 兼容旧格式：category 直接是字符串
       primary: str(category.primary ?? (typeof raw.category === 'string' ? raw.category : ''), 30),
@@ -178,6 +179,8 @@ export interface SegmentUnderstanding {
   start: number
   end: number
   summary: string
+  /** 这一段的详细内容（发生了什么、说了什么），汇总时拼成整片 content */
+  content: string
   scene: string
   actions: string[]
   onScreenText: string[]
@@ -197,6 +200,7 @@ export function parseSegmentUnderstanding(
     start: window.start,
     end: window.end,
     summary: str(raw.summary, 400),
+    content: str(raw.content ?? raw.description, 2000),
     scene: str(raw.scene, 40),
     actions: strList(raw.actions, 10),
     onScreenText: strList(raw.onScreenText ?? raw.on_screen_text, 15),
