@@ -1,0 +1,662 @@
+import { BrowserWindow } from 'electron'
+import { join } from 'path'
+import { existsSync, readdirSync, unlinkSync } from 'fs'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
+import { ffmpegPath } from '../../utils/ffmpeg-path'
+
+const execFileAsync = promisify(execFile)
+import { DouyinHandler } from 'polydl'
+import { DouyinDownloader } from 'polydl'
+import {
+  getTaskById,
+  updateTask,
+  getSetting,
+  createPost,
+  getPostByAwemeId,
+  type DbTaskWithUsers,
+  type DbUser
+} from '../../database'
+import { validateDownloadFolder, cleanupFailedDownload, expectsMusic } from './validator'
+import { emitPostDownloaded } from '../scripts/emit'
+import { track } from '../telemetry'
+import { getDownloadPath } from '../media'
+import { runWithConcurrency } from '../../utils/concurrency'
+
+/** 下载任务触发来源：手动点开始 / 定时调度 */
+export type DownloadSource = 'manual' | 'schedule'
+
+/** 一次任务下载的最终结果。失败不抛出而是收敛在这里，调用方据此记录日志 / 更新时间 */
+export interface DownloadTaskResult {
+  status: 'completed' | 'cancelled' | 'failed'
+  downloaded: number
+  error?: string
+}
+
+// 全局串行队列：避免多个分享链接同时下载打爆抖音 CDN 导致 mp3 被限流丢失。
+// 单作品下载逐个排队执行，互不抢占连接。
+let singlePostQueue: Promise<unknown> = Promise.resolve()
+function enqueueSinglePost<T>(work: () => Promise<T>): Promise<T> {
+  const run = singlePostQueue.then(work, work)
+  singlePostQueue = run.catch(() => {})
+  return run
+}
+
+export interface DownloadProgress {
+  taskId: number
+  status: 'running' | 'completed' | 'failed'
+  currentUser: string | null
+  currentUserIndex: number
+  totalUsers: number
+  currentVideo: number
+  totalVideos: number
+  message: string
+  downloadedPosts: number
+}
+
+const runningTasks: Map<number, { abort: boolean }> = new Map()
+
+function sendProgress(progress: DownloadProgress): void {
+  const windows = BrowserWindow.getAllWindows()
+  for (const win of windows) {
+    win.webContents.send('download:progress', progress)
+  }
+}
+
+function formatFolderName(awemeId: string): string {
+  return awemeId
+}
+
+export async function startDownloadTask(
+  taskId: number,
+  options: { source?: DownloadSource } = {}
+): Promise<DownloadTaskResult> {
+  const source: DownloadSource = options.source ?? 'manual'
+  const task = getTaskById(taskId)
+  if (!task) {
+    throw new Error('任务不存在')
+  }
+
+  if (runningTasks.has(taskId)) {
+    throw new Error('任务正在执行中')
+  }
+
+  const cookie = getSetting('douyin_cookie')
+  if (!cookie) {
+    throw new Error('请先配置抖音 Cookie')
+  }
+
+  const globalMaxDownloadCount = Math.max(0, parseInt(getSetting('max_download_count') || '0') || 0)
+  // 负数 / 0 会让分批循环 i += batchSize 永不前进
+  const videoDownloadConcurrency = Math.max(
+    1,
+    parseInt(getSetting('video_download_concurrency') || '3') || 3
+  )
+
+  const downloadPath = getDownloadPath()
+  const concurrency = Math.max(1, task.concurrency || 3)
+
+  // 占位放在 try 里：之前 updateTask / getDownloadPath 抛错会让 runningTasks 里留下永远删不掉的条目
+  runningTasks.set(taskId, { abort: false })
+  updateTask(taskId, { status: 'running' })
+
+  // 计算历史已下载数量（从用户的 downloaded_count 动态统计）
+  const historicalDownloads = task.users.reduce((sum, u) => sum + (u.downloaded_count || 0), 0)
+  let totalDownloaded = 0
+  // completed | cancelled | failed — 任务真正跑过之后上报一次
+  let finishStatus: 'completed' | 'cancelled' | 'failed' = 'failed'
+  let failureMessage: string | undefined
+
+  try {
+    sendProgress({
+      taskId,
+      status: 'running',
+      currentUser: null,
+      currentUserIndex: 0,
+      totalUsers: task.users.length,
+      currentVideo: 0,
+      totalVideos: 0,
+      message: '正在初始化下载...',
+      downloadedPosts: historicalDownloads
+    })
+
+    // 使用并发控制下载用户视频
+    const userTasks = task.users.map((user, index) => () => {
+      // 优先使用用户级别的下载限制，如果为0则使用全局设置
+      const userMaxCount = (user as DbUser & { max_download_count?: number }).max_download_count
+      const maxDownloadCount =
+        userMaxCount && userMaxCount > 0 ? userMaxCount : globalMaxDownloadCount
+      return downloadUserVideos(
+        taskId,
+        task,
+        user,
+        index,
+        downloadPath,
+        cookie,
+        maxDownloadCount,
+        historicalDownloads,
+        videoDownloadConcurrency
+      )
+    })
+
+    const results = await runWithConcurrency(userTasks, concurrency)
+    // 单个用户失败不中断其他用户；累计成功数量，同时记下失败的用户
+    const failedUsers: { nickname: string; message: string }[] = []
+    for (const [index, result] of results.entries()) {
+      if (result instanceof Error) {
+        const nickname = task.users[index]?.nickname ?? String(index)
+        console.error(`[Downloader] 用户 ${nickname} 下载失败:`, result.message)
+        failedUsers.push({ nickname, message: result.message })
+        continue
+      }
+      totalDownloaded += result
+    }
+
+    // 检查是否被中止
+    const taskState = runningTasks.get(taskId)
+    const allFailed = task.users.length > 0 && failedUsers.length === task.users.length
+    if (allFailed && !taskState?.abort) {
+      // 每个用户都失败（典型是 Cookie 过期 / 被风控）不能记成「完成」，否则用户永远不知道
+      throw new Error(
+        `全部 ${failedUsers.length} 个用户下载失败，首个错误：${failedUsers[0].message}`
+      )
+    }
+    if (taskState?.abort) {
+      finishStatus = 'cancelled'
+      updateTask(taskId, { status: 'failed', downloaded_videos: totalDownloaded })
+      sendProgress({
+        taskId,
+        status: 'failed',
+        currentUser: null,
+        currentUserIndex: task.users.length,
+        totalUsers: task.users.length,
+        currentVideo: 0,
+        totalVideos: 0,
+        message: '任务已取消',
+        downloadedPosts: historicalDownloads + totalDownloaded
+      })
+    } else {
+      finishStatus = 'completed'
+      if (failedUsers.length > 0) {
+        failureMessage = `${failedUsers.length} 个用户下载失败：${failedUsers
+          .map((item) => `${item.nickname}（${item.message}）`)
+          .join('；')}`
+      }
+      updateTask(taskId, { status: 'completed', downloaded_videos: totalDownloaded })
+      sendProgress({
+        taskId,
+        status: 'completed',
+        currentUser: null,
+        currentUserIndex: task.users.length,
+        totalUsers: task.users.length,
+        currentVideo: 0,
+        totalVideos: 0,
+        message:
+          failedUsers.length > 0
+            ? `下载完成，共 ${totalDownloaded} 个作品，${failedUsers.length} 个用户失败`
+            : `下载完成，共 ${totalDownloaded} 个作品`,
+        downloadedPosts: historicalDownloads + totalDownloaded
+      })
+    }
+  } catch (error) {
+    finishStatus = 'failed'
+    failureMessage = (error as Error).message
+    console.error('[Downloader] Task failed:', error)
+    updateTask(taskId, { status: 'failed', downloaded_videos: totalDownloaded })
+    sendProgress({
+      taskId,
+      status: 'failed',
+      currentUser: null,
+      currentUserIndex: 0,
+      totalUsers: task.users.length,
+      currentVideo: 0,
+      totalVideos: 0,
+      message: `下载失败: ${(error as Error).message}`,
+      downloadedPosts: historicalDownloads + totalDownloaded
+    })
+  } finally {
+    runningTasks.delete(taskId)
+    // 匿名统计：一次任务结束 = 1 次运行；videos 为本轮实际新下数量
+    track('download_finished', {
+      kind: 'task',
+      source,
+      videos: totalDownloaded,
+      status: finishStatus
+    })
+  }
+  return { status: finishStatus, downloaded: totalDownloaded, error: failureMessage }
+}
+
+async function downloadUserVideos(
+  taskId: number,
+  task: DbTaskWithUsers,
+  user: DbUser,
+  userIndex: number,
+  basePath: string,
+  cookie: string,
+  maxDownloadCount: number,
+  historicalDownloads: number,
+  videoConcurrency: number
+): Promise<number> {
+  const taskState = runningTasks.get(taskId)
+  if (taskState?.abort) return 0
+
+  const userPath = join(basePath, user.sec_uid)
+  let downloadedCount = 0
+  let skippedCount = 0
+
+  sendProgress({
+    taskId,
+    status: 'running',
+    currentUser: user.nickname,
+    currentUserIndex: userIndex + 1,
+    totalUsers: task.users.length,
+    currentVideo: 0,
+    totalVideos: 0,
+    message: `正在获取 ${user.nickname} 的作品列表...`,
+    downloadedPosts: historicalDownloads + downloadedCount
+  })
+
+  try {
+    const handler = new DouyinHandler({ cookie })
+    const downloader = new DouyinDownloader({
+      cookie,
+      downloadPath: userPath,
+      naming: '{aweme_id}',
+      folderize: true,
+      cover: true,
+      music: true,
+      desc: true
+    })
+
+    // maxCounts: 0 表示无限制，有值则限制获取数量
+    const maxCounts = maxDownloadCount > 0 ? maxDownloadCount : 0
+
+    // 收集待下载的视频
+    interface VideoToDownload {
+      awemeId: string
+      awemeData: {
+        awemeId?: string
+        nickname?: string
+        caption?: string
+        desc?: string
+        descRaw?: string
+        awemeType?: number
+        createTime?: string
+        musicStatus?: number
+        musicPlayUrl?: string
+      }
+    }
+    const videosToDownload: VideoToDownload[] = []
+
+    for await (const postFilter of handler.fetchUserPostVideos(user.sec_uid, { maxCounts })) {
+      // 风控 / 未登录时抖音返回 status_code≠0 且 aweme_list 为空的合法 JSON，
+      // polydl 不会抛错；不检查就会被当成「无新作品」并更新 last_sync_at
+      if (postFilter.statusCode !== null && postFilter.statusCode !== 0) {
+        throw new Error(
+          `抖音接口返回 status_code=${postFilter.statusCode}，通常是 Cookie 失效或触发风控，请重新登录后重试`
+        )
+      }
+
+      const awemeList = postFilter.toAwemeDataList()
+      if (taskState?.abort) break
+
+      for (const awemeData of awemeList) {
+        if (taskState?.abort) break
+
+        const awemeId = awemeData.awemeId
+        if (!awemeId) continue
+
+        // 检查是否已下载
+        const existing = getPostByAwemeId(awemeId)
+        if (existing) {
+          skippedCount++
+          if (skippedCount % 20 === 0) {
+            sendProgress({
+              taskId,
+              status: 'running',
+              currentUser: user.nickname,
+              currentUserIndex: userIndex + 1,
+              totalUsers: task.users.length,
+              currentVideo: downloadedCount,
+              totalVideos: maxDownloadCount || user.aweme_count,
+              message: `已跳过 ${skippedCount} 个已下载作品...`,
+              downloadedPosts: historicalDownloads + downloadedCount
+            })
+          }
+          continue
+        }
+
+        videosToDownload.push({ awemeId, awemeData })
+
+        // 检查是否达到最大数量
+        if (maxDownloadCount > 0 && videosToDownload.length >= maxDownloadCount) {
+          break
+        }
+      }
+
+      if (maxDownloadCount > 0 && videosToDownload.length >= maxDownloadCount) {
+        break
+      }
+    }
+
+    if (videosToDownload.length === 0) {
+      sendProgress({
+        taskId,
+        status: 'running',
+        currentUser: user.nickname,
+        currentUserIndex: userIndex + 1,
+        totalUsers: task.users.length,
+        currentVideo: 0,
+        totalVideos: 0,
+        message: `${user.nickname} 无新作品需要下载，跳过 ${skippedCount} 个已下载`,
+        downloadedPosts: historicalDownloads
+      })
+      return 0
+    }
+
+    // 并发下载视频
+    // 批次并发下载，每批完成后休息
+    const totalToDownload = videosToDownload.length
+    const batchSize = videoConcurrency
+    const batchDelayMs = 3000 // 每批完成后休息3秒
+
+    sendProgress({
+      taskId,
+      status: 'running',
+      currentUser: user.nickname,
+      currentUserIndex: userIndex + 1,
+      totalUsers: task.users.length,
+      currentVideo: 0,
+      totalVideos: totalToDownload,
+      message: `开始下载 ${totalToDownload} 个视频 (每批 ${batchSize} 个)...`,
+      downloadedPosts: historicalDownloads
+    })
+
+    // 分批下载
+    for (let i = 0; i < videosToDownload.length; i += batchSize) {
+      if (taskState?.abort) break
+
+      const batch = videosToDownload.slice(i, i + batchSize)
+      const batchNum = Math.floor(i / batchSize) + 1
+      const totalBatches = Math.ceil(videosToDownload.length / batchSize)
+
+      sendProgress({
+        taskId,
+        status: 'running',
+        currentUser: user.nickname,
+        currentUserIndex: userIndex + 1,
+        totalUsers: task.users.length,
+        currentVideo: downloadedCount,
+        totalVideos: totalToDownload,
+        message: `正在下载第 ${batchNum}/${totalBatches} 批 (${batch.length} 个)...`,
+        downloadedPosts: historicalDownloads + downloadedCount
+      })
+
+      // 并发下载当前批次
+      const batchResults = await Promise.all(
+        batch.map(async ({ awemeId, awemeData }) => {
+          if (taskState?.abort) return false
+
+          const folderName = formatFolderName(awemeId)
+
+          try {
+            const expectMusic = expectsMusic(awemeData)
+
+            await downloader.createDownloadTasks(awemeData, userPath)
+
+            const folderPath = join(userPath, folderName)
+
+            // Validate download
+            if (!validateDownloadFolder(folderPath, awemeData.awemeType || 0, expectMusic)) {
+              // Cleanup and retry once
+              cleanupFailedDownload(folderPath)
+              await downloader.createDownloadTasks(awemeData, userPath)
+
+              if (!validateDownloadFolder(folderPath, awemeData.awemeType || 0, expectMusic)) {
+                console.error(`[Downloader] Validation failed after retry for ${awemeId}`)
+                cleanupFailedDownload(folderPath)
+                return false
+              }
+            }
+
+            // Image to JPG conversion
+            if (
+              (awemeData.awemeType || 0) === 68 &&
+              getSetting('convert_images_to_jpg') === 'true'
+            ) {
+              await convertFolderImagesToJpg(folderPath)
+            }
+
+            const post = createPost({
+              aweme_id: awemeId,
+              user_id: user.id,
+              sec_uid: user.sec_uid,
+              nickname: awemeData.nickname || user.nickname,
+              caption: awemeData.caption || '',
+              // descRaw 为原始未转义文案；desc 会被 polydl 转义为下划线
+              desc: awemeData.descRaw || awemeData.desc || '',
+              aweme_type: awemeData.awemeType || 0,
+              create_time: awemeData.createTime || '',
+              folder_name: folderName,
+              video_path: join(userPath, folderName),
+              cover_path: join(userPath, folderName),
+              music_path: join(userPath, folderName)
+            })
+            emitPostDownloaded(post, folderPath, 'task')
+
+            return true
+          } catch (error) {
+            console.error(`[Downloader] Failed to download ${awemeId}:`, error)
+            cleanupFailedDownload(join(userPath, folderName))
+            return false
+          }
+        })
+      )
+
+      // 统计成功数量
+      downloadedCount += batchResults.filter(Boolean).length
+
+      sendProgress({
+        taskId,
+        status: 'running',
+        currentUser: user.nickname,
+        currentUserIndex: userIndex + 1,
+        totalUsers: task.users.length,
+        currentVideo: downloadedCount,
+        totalVideos: totalToDownload,
+        message: `已完成 ${downloadedCount}/${totalToDownload}`,
+        downloadedPosts: historicalDownloads + downloadedCount
+      })
+
+      // 如果还有下一批，休息一下
+      if (i + batchSize < videosToDownload.length && !taskState?.abort) {
+        sendProgress({
+          taskId,
+          status: 'running',
+          currentUser: user.nickname,
+          currentUserIndex: userIndex + 1,
+          totalUsers: task.users.length,
+          currentVideo: downloadedCount,
+          totalVideos: totalToDownload,
+          message: `休息 ${batchDelayMs / 1000} 秒...`,
+          downloadedPosts: historicalDownloads + downloadedCount
+        })
+        await new Promise((resolve) => setTimeout(resolve, batchDelayMs))
+      }
+    }
+
+    const skipMsg = skippedCount > 0 ? `，跳过 ${skippedCount} 个已下载` : ''
+    sendProgress({
+      taskId,
+      status: 'running',
+      currentUser: user.nickname,
+      currentUserIndex: userIndex + 1,
+      totalUsers: task.users.length,
+      currentVideo: downloadedCount,
+      totalVideos: downloadedCount,
+      message: `${user.nickname} 完成，新下载 ${downloadedCount} 个${skipMsg}`,
+      downloadedPosts: historicalDownloads + downloadedCount
+    })
+  } catch (error) {
+    console.error(`[Downloader] Error downloading user ${user.nickname}:`, error)
+    sendProgress({
+      taskId,
+      status: 'running',
+      currentUser: user.nickname,
+      currentUserIndex: userIndex + 1,
+      totalUsers: task.users.length,
+      currentVideo: downloadedCount,
+      totalVideos: 0,
+      message: `${user.nickname} 下载出错: ${(error as Error).message}`,
+      downloadedPosts: historicalDownloads + downloadedCount
+    })
+    // 抛给并发池，让任务层知道这个用户失败了；池不会因此中断其他用户
+    throw error
+  }
+
+  return downloadedCount
+}
+
+export function stopDownloadTask(taskId: number): void {
+  const taskState = runningTasks.get(taskId)
+  if (taskState) {
+    taskState.abort = true
+  }
+}
+
+export function isTaskRunning(taskId: number): boolean {
+  return runningTasks.has(taskId)
+}
+
+export type SinglePostResult =
+  | { status: 'success'; folderPath: string }
+  | { status: 'already-downloaded' }
+  | { status: 'failed'; error: string }
+
+interface SinglePostAwemeData {
+  awemeId?: string
+  awemeType?: number
+  nickname?: string
+  caption?: string
+  desc?: string
+  descRaw?: string
+  createTime?: string
+  musicStatus?: number
+  musicPlayUrl?: string
+  [key: string]: unknown
+}
+
+// 公开入口：经全局串行队列排队，避免并发分享链接下载相互限流导致 mp3 丢失。
+export function downloadSinglePost(
+  user: DbUser,
+  awemeData: SinglePostAwemeData
+): Promise<SinglePostResult> {
+  return enqueueSinglePost(() => downloadSinglePostInner(user, awemeData))
+}
+
+async function downloadSinglePostInner(
+  user: DbUser,
+  awemeData: SinglePostAwemeData
+): Promise<SinglePostResult> {
+  const awemeId = awemeData.awemeId
+  if (!awemeId) {
+    return { status: 'failed', error: '作品数据缺少 aweme_id' }
+  }
+
+  if (getPostByAwemeId(awemeId)) {
+    return { status: 'already-downloaded' }
+  }
+
+  const cookie = getSetting('douyin_cookie') || ''
+  const basePath = getDownloadPath()
+  const userPath = join(basePath, user.sec_uid)
+  const folderName = formatFolderName(awemeId)
+  const folderPath = join(userPath, folderName)
+
+  try {
+    const downloader = new DouyinDownloader({
+      cookie,
+      downloadPath: userPath,
+      naming: '{aweme_id}',
+      folderize: true,
+      cover: true,
+      music: true,
+      desc: true
+    })
+
+    const expectMusic = expectsMusic(awemeData)
+
+    await downloader.createDownloadTasks(awemeData, userPath)
+
+    if (!validateDownloadFolder(folderPath, awemeData.awemeType || 0, expectMusic)) {
+      cleanupFailedDownload(folderPath)
+      await downloader.createDownloadTasks(awemeData, userPath)
+      if (!validateDownloadFolder(folderPath, awemeData.awemeType || 0, expectMusic)) {
+        cleanupFailedDownload(folderPath)
+        return { status: 'failed', error: '下载校验失败' }
+      }
+    }
+
+    if ((awemeData.awemeType || 0) === 68 && getSetting('convert_images_to_jpg') === 'true') {
+      await convertFolderImagesToJpg(folderPath)
+    }
+
+    const post = createPost({
+      aweme_id: awemeId,
+      user_id: user.id,
+      sec_uid: user.sec_uid,
+      nickname: awemeData.nickname || user.nickname,
+      caption: awemeData.caption || '',
+      // descRaw 为原始未转义文案；desc 会被 polydl 转义为下划线
+      desc: awemeData.descRaw || awemeData.desc || '',
+      aweme_type: awemeData.awemeType || 0,
+      create_time: awemeData.createTime || '',
+      folder_name: folderName,
+      video_path: folderPath,
+      cover_path: folderPath,
+      music_path: folderPath
+    })
+    emitPostDownloaded(post, folderPath, 'single')
+
+    track('download_finished', {
+      kind: 'single',
+      source: 'manual',
+      videos: 1,
+      status: 'completed'
+    })
+    return { status: 'success', folderPath }
+  } catch (error) {
+    console.error(`[Downloader] downloadSinglePost failed for ${awemeId}:`, error)
+    cleanupFailedDownload(folderPath)
+    track('download_finished', {
+      kind: 'single',
+      source: 'manual',
+      videos: 0,
+      status: 'failed'
+    })
+    return { status: 'failed', error: (error as Error).message }
+  }
+}
+
+export async function convertFolderImagesToJpg(folderPath: string): Promise<void> {
+  if (!existsSync(folderPath)) return
+  try {
+    const files = readdirSync(folderPath)
+    for (const file of files) {
+      if (file.includes('_cover')) continue
+      const ext = file.split('.').pop()?.toLowerCase()
+      if (ext !== 'webp' && ext !== 'png') continue
+      const filePath = join(folderPath, file)
+      const newPath = filePath.replace(/\.(webp|png)$/i, '.jpg')
+      try {
+        await execFileAsync(ffmpegPath, ['-i', filePath, '-q:v', '1', '-y', newPath])
+        unlinkSync(filePath)
+      } catch (e) {
+        console.error(`[Downloader] Failed to convert ${file}:`, e)
+      }
+    }
+  } catch (error) {
+    console.error('[Downloader] Image conversion failed:', error)
+  }
+}

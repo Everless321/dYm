@@ -22,7 +22,7 @@ import {
   resetStaleTaskStatus,
   migrateTagsFromJsonColumns
 } from './database'
-import { initDouyinHandler } from './services/douyin'
+import { initDouyinHandler } from './services/douyin/client'
 import {
   blockCustomProtocols,
   attachProtocolGuards,
@@ -32,22 +32,22 @@ import {
 import { initUpdater, registerUpdaterHandlers } from './services/updater'
 import { initTelemetry, track } from './services/telemetry'
 import { initScheduler, stopScheduler } from './services/scheduler'
-import { closePage } from './services/douyin-page'
-import { hasRunningLiveRecordings, stopAllLiveRecordings } from './services/live-recorder'
+import { closePage } from './services/douyin/page'
+import { hasRunningLiveRecordings, stopAllLiveRecordings } from './services/live/recorder'
 import {
   initAnalysisQueue,
   isQueueBusy,
   migrateLegacyProviderSettings,
   shutdownQueue
 } from './services/ai'
-import { sweepUnconverted } from './services/live-convert'
+import { sweepUnconverted } from './services/live/convert'
 import { fromUrlPath } from './services/media'
 import { startScriptHooks } from './services/scripts/hooks'
 import {
   getWebServerInfo,
   startWebBrowserServer,
   stopWebBrowserServer
-} from './services/web-browser'
+} from './services/web/server'
 import { registerIpcHandlers } from './ipc'
 
 // 放开 Node fetch(undici)的 TLS 证书校验。

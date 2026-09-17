@@ -373,6 +373,13 @@ declare global {
     filePath: string | null
   }
 
+  // 批量删除录制记录的结果（录制中 / 转换中的会进 failed）
+  interface DeleteLiveRecordsResult {
+    deleted: number
+    freedBytes: number
+    failed: { id: number; reason: string }[]
+  }
+
   interface LiveAPI {
     isRecording: (userId: number) => Promise<boolean>
     getRecordingUsers: () => Promise<number[]>
@@ -383,7 +390,8 @@ declare global {
     preparePlayback: (id: number) => Promise<LivePlaybackInfo>
     getDanmaku: (id: number) => Promise<DanmakuLine[]>
     openPlayer: (id: number) => Promise<void>
-    deleteRecord: (id: number) => Promise<LiveRecord | undefined>
+    deleteRecord: (id: number, deleteFiles?: boolean) => Promise<DeleteLiveRecordsResult>
+    deleteRecords: (ids: number[], deleteFiles?: boolean) => Promise<DeleteLiveRecordsResult>
     revealFile: (filePath: string) => Promise<void>
     updateUserSchedule: (userId: number) => Promise<void>
     onProgress: (callback: (progress: LiveProgress) => void) => () => void

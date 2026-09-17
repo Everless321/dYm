@@ -12,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
-import { PageHeader, Crumbs } from './components/PageHeader'
+import { PageHeader, Crumbs } from '@/components/layout/PageHeader'
 import { StatCard } from './components/StatCard'
 import { TAG_SOURCE, TagSource, ACCENT } from './components/tokens'
 
@@ -176,7 +176,7 @@ export default function TagLibraryPage() {
             ]}
           />
         }
-        right={
+        actions={
           <>
             <Button
               variant="outline"
@@ -205,7 +205,7 @@ export default function TagLibraryPage() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto p-8 space-y-8">
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
         <div className="grid grid-cols-4 gap-4">
           <StatCard label="标签总数" value={stats.totalTags} />
           <StatCard label="标签分类" value={stats.categories} color={ACCENT.blue} />

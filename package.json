@@ -24,10 +24,7 @@
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
-    "docs:deploy": "npm run docs:build && wrangler deploy",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui",
-    "test:e2e:report": "playwright show-report"
+    "docs:deploy": "npm run docs:build && wrangler deploy --config docs/wrangler.jsonc"
   },
   "dependencies": {
     "@aptabase/electron": "^0.3.1",
@@ -72,7 +69,6 @@
     "@electron-toolkit/eslint-config-ts": "^3.1.0",
     "@electron-toolkit/tsconfig": "^2.0.0",
     "@electron/rebuild": "^4.0.2",
-    "@playwright/test": "^1.58.0",
     "@tailwindcss/postcss": "^4.1.18",
     "@types/better-sqlite3": "^7.6.13",
     "@types/fluent-ffmpeg": "^2.1.28",

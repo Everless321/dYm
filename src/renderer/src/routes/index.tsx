@@ -1,19 +1,19 @@
 import { lazy } from 'react'
 import { createHashRouter, Navigate, useParams } from 'react-router-dom'
-import { AppLayout } from '@/components/AppLayout'
-import HomePage from '@/pages/HomePage'
-import UsersPage from '@/pages/settings/UsersPage'
-import DownloadPage from '@/pages/settings/DownloadPage'
-import TaskDetailPage from '@/pages/settings/TaskDetailPage'
+import { AppLayout } from '@/components/layout/AppLayout'
+import BrowsePage from '@/pages/browse/BrowsePage'
+import UsersPage from '@/pages/users/UsersPage'
+import DownloadPage from '@/pages/download/DownloadPage'
+import TaskDetailPage from '@/pages/download/TaskDetailPage'
 import AnalysisPage from '@/pages/analysis/AnalysisPage'
-import SystemPage from '@/pages/settings/SystemPage'
-import LogsPage from '@/pages/settings/LogsPage'
-import LiveRecordPage from '@/pages/settings/LiveRecordPage'
-import FilesPage from '@/pages/settings/FilesPage'
+import SystemPage from '@/pages/system/SystemPage'
+import LogsPage from '@/pages/logs/LogsPage'
+import LiveRecordPage from '@/pages/live/LiveRecordPage'
+import FilesPage from '@/pages/files/FilesPage'
 
 // 重依赖页面按路由拆包：recharts / codemirror / 标签工作台只在进入时才加载
-const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
-const ScriptsPage = lazy(() => import('@/pages/settings/ScriptsPage'))
+const DashboardPage = lazy(() => import('@/pages/dashboard/DashboardPage'))
+const ScriptsPage = lazy(() => import('@/pages/scripts/ScriptsPage'))
 const TagWorkbenchPage = lazy(() => import('@/pages/tags/TagWorkbenchPage'))
 const VideoTagEditPage = lazy(() => import('@/pages/tags/VideoTagEditPage'))
 const TagLibraryPage = lazy(() => import('@/pages/tags/TagLibraryPage'))
@@ -35,7 +35,7 @@ export const router = createHashRouter([
       },
       {
         path: 'browse',
-        element: <HomePage />
+        element: <BrowsePage />
       },
       {
         path: 'users',

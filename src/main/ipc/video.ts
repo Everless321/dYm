@@ -4,8 +4,8 @@ import { createWriteStream } from 'fs'
 import { mkdir } from 'fs/promises'
 import { pipeline } from 'stream/promises'
 import { getSetting } from '../database'
-import { fetchVideoDetail } from '../services/douyin'
-import { convertFolderImagesToJpg } from '../services/downloader'
+import { fetchVideoDetail } from '../services/douyin/client'
+import { convertFolderImagesToJpg } from '../services/download/downloader'
 
 export function registerVideoIpc(): void {
   // Video IPC handlers
