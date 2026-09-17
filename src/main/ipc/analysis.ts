@@ -14,6 +14,8 @@ import {
   getTagFilterFacets,
   addTagsToPosts,
   getPostById,
+  getPostAnalysisDetail,
+  searchTranscripts,
   setPostTags,
   clearTags,
   renameTag,
@@ -39,6 +41,11 @@ import {
   codexImportFromCli,
   codexLogout,
   opencodeCliKey,
+  listAsrProviders,
+  saveAsrProvider,
+  deleteAsrProvider,
+  setDefaultAsrProvider,
+  verifyAsrProvider,
   createJob,
   listJobs,
   getJob,
@@ -53,6 +60,7 @@ import {
 } from '../services/ai'
 import type {
   AiProviderInput,
+  AsrProviderInput,
   AnalysisJobItemStatus,
   AnalysisSettings,
   CreateAnalysisJobInput
@@ -75,6 +83,15 @@ export function registerAnalysisIpc(): void {
   )
   ipcMain.handle('ai:codexLogout', (_event, providerId: string) => codexLogout(providerId))
   ipcMain.handle('ai:opencodeCliKey', (_event, baseUrl: string) => opencodeCliKey(baseUrl))
+
+  // ---- 语音转写提供方 ----
+  ipcMain.handle('asr:listProviders', () => listAsrProviders())
+  ipcMain.handle('asr:saveProvider', (_event, input: AsrProviderInput) => saveAsrProvider(input))
+  ipcMain.handle('asr:deleteProvider', (_event, id: string) => deleteAsrProvider(id))
+  ipcMain.handle('asr:setDefaultProvider', (_event, id: string) => setDefaultAsrProvider(id))
+  ipcMain.handle('asr:verifyProvider', (_event, input: AsrProviderInput) =>
+    verifyAsrProvider(input)
+  )
 
   // ---- 分析队列 ----
   ipcMain.handle('analysis:getSettings', () => getAnalysisSettings())
@@ -105,6 +122,10 @@ export function registerAnalysisIpc(): void {
   )
   ipcMain.handle('analysis:getUnanalyzedCountByUser', () => getUnanalyzedPostsCountByUser())
   ipcMain.handle('analysis:getUserStats', () => getUserAnalysisStats())
+  ipcMain.handle('analysis:getDetail', (_event, postId: number) => getPostAnalysisDetail(postId))
+  ipcMain.handle('analysis:searchTranscripts', (_event, keyword: string, limit?: number) =>
+    searchTranscripts(String(keyword ?? ''), limit)
+  )
   ipcMain.handle('analysis:getTotalStats', () => getTotalAnalysisStats())
 
   // ---- 标签 ----

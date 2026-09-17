@@ -18,8 +18,9 @@ import { MediaViewer } from '@/components/media/MediaViewer'
 import { parseTags } from '@/lib/utils'
 import { PageHeader, BackLink } from '@/components/layout/PageHeader'
 import { parseTagFilters, stripNavMarkers } from './filters'
+import { AnalysisDetailCard } from './components/AnalysisDetailCard'
 
-export default function VideoTagEditPage() {
+export default function VideoTagEditPage(): React.JSX.Element {
   const { postId = '' } = useParams()
   const [searchParams] = useSearchParams()
   const id = Number(postId)
@@ -35,6 +36,8 @@ export default function VideoTagEditPage() {
   const [siblings, setSiblings] = useState<number[]>([])
   const [status, setStatus] = useState<'loading' | 'ready' | 'notFound' | 'error'>('loading')
   const [errorMessage, setErrorMessage] = useState('')
+  // 重新分析完成后 bump，让「AI 理解」卡片重新拉取结构化结果
+  const [detailKey, setDetailKey] = useState(0)
   // 上/下一条切换很快时，旧请求可能晚于新请求返回，用序号丢弃过期结果
   const loadSeqRef = useRef(0)
 
@@ -89,8 +92,10 @@ export default function VideoTagEditPage() {
       if (done && done.postId === id) {
         reanalyzeJobRef.current = null
         setReanalyzingId((prev) => (prev === id ? null : prev))
-        if (done.ok) load()
-        else toast.error(`重新分析失败: ${done.error || '未知错误'}`)
+        if (done.ok) {
+          load()
+          setDetailKey((k) => k + 1)
+        } else toast.error(`重新分析失败: ${done.error || '未知错误'}`)
         return
       }
       const jobId = reanalyzeJobRef.current
@@ -198,9 +203,10 @@ export default function VideoTagEditPage() {
     }
   }
 
-  const removeAi = (t: string) => save({ aiTags: aiTags.filter((x) => x !== t) })
-  const removeManual = (t: string) => save({ manualTags: manualTags.filter((x) => x !== t) })
-  const addManual = async (t: string) => {
+  const removeAi = (t: string): Promise<boolean> => save({ aiTags: aiTags.filter((x) => x !== t) })
+  const removeManual = (t: string): Promise<boolean> =>
+    save({ manualTags: manualTags.filter((x) => x !== t) })
+  const addManual = async (t: string): Promise<void> => {
     const tag = t.trim()
     if (!tag) return
     if (manualTags.includes(tag) || aiTags.includes(tag)) {
@@ -211,7 +217,7 @@ export default function VideoTagEditPage() {
     if (ok) setInput('')
   }
 
-  const handleReanalyze = async () => {
+  const handleReanalyze = async (): Promise<void> => {
     setReanalyzingId(id)
     try {
       const job = await window.api.analysis.createJob({
@@ -285,9 +291,6 @@ export default function VideoTagEditPage() {
               <p className="text-sm text-[#1D1D1F] leading-relaxed">
                 {post.desc || post.caption || '无描述'}
               </p>
-              {post.analysis_summary && (
-                <p className="text-xs text-[#A1A1A6] leading-relaxed">{post.analysis_summary}</p>
-              )}
             </div>
           </div>
 
@@ -323,6 +326,12 @@ export default function VideoTagEditPage() {
               bg="#E8F8EE"
               onRemove={removeManual}
               empty="暂无手动标签"
+            />
+
+            <AnalysisDetailCard
+              postId={id}
+              refreshKey={detailKey}
+              fallbackSummary={post.analysis_summary}
             />
 
             {/* Add + suggestions */}
@@ -384,7 +393,7 @@ function TagSection({
   bg: string
   onRemove: (t: string) => void
   empty: string
-}) {
+}): React.JSX.Element {
   return (
     <div className="rounded-xl border border-[#E5E5E7] bg-white p-5">
       <div className="flex items-center gap-2 mb-4">

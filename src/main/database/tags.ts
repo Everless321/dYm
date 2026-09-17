@@ -112,10 +112,12 @@ export function replacePostTags(
   postId: number,
   source: TagSource,
   names: string[],
-  mode: 'open' | 'closed' = 'open'
+  mode: 'open' | 'closed' = 'open',
+  details?: Map<string, { facet: string; confidence: number }>
 ): string[] {
   const database = getDatabase()
   const ids: number[] = []
+  const detailOf = new Map<number, { facet: string; confidence: number }>()
   const kept: string[] = []
   const seen = new Set<number>()
   for (const raw of names) {
@@ -123,16 +125,24 @@ export function replacePostTags(
     if (id === null || seen.has(id)) continue
     seen.add(id)
     ids.push(id)
+    const detail = details?.get(raw)
+    if (detail) detailOf.set(id, detail)
   }
   database.prepare('DELETE FROM post_tags WHERE post_id = ? AND source = ?').run(postId, source)
   const insert = database.prepare(
-    'INSERT OR IGNORE INTO post_tags (post_id, tag_id, source, created_at) VALUES (?, ?, ?, ?)'
+    'INSERT OR IGNORE INTO post_tags (post_id, tag_id, source, created_at, confidence) VALUES (?, ?, ?, ?, ?)'
   )
   const nameOf = database.prepare('SELECT name FROM tags WHERE id = ?')
+  // 分面只在标签还没有分面时写入：同一个标签在不同视频里被模型归到不同分面时，以第一次为准，避免来回跳
+  const setFacet = database.prepare(
+    `UPDATE tags SET facet = ? WHERE id = ? AND (facet IS NULL OR facet = '')`
+  )
   // created_at 递增保证回写 JSON 时保持模型输出顺序（基础标签在前、组合标签在后）
   const base = Math.floor(Date.now() / 1000)
   ids.forEach((id, index) => {
-    insert.run(postId, id, source, base + index)
+    const detail = detailOf.get(id)
+    insert.run(postId, id, source, base + index, detail ? detail.confidence : null)
+    if (detail?.facet) setFacet.run(detail.facet, id)
     kept.push((nameOf.get(id) as { name: string }).name)
   })
   syncPostTagColumns([postId])

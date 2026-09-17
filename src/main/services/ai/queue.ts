@@ -36,8 +36,16 @@ import {
 import { appEvents } from '../app-events'
 import { createClientFor, getProviderView, resolveProvider } from './providers'
 import { RateLimiter } from './rate-limit'
-import { analyzeOnePost } from './analyzer'
-import { buildSystemPrompt, getAnalysisPrompt } from './prompt'
+import { analyzePost, type PipelineOptions } from './pipeline'
+import {
+  buildReducePrompt,
+  buildSegmentPrompt,
+  buildSinglePrompt,
+  getAnalysisPrompt,
+  migrateAnalysisPromptV2
+} from './prompt'
+import { createAsrClient, getDefaultAsrProviderId, resolveAsrProvider } from './asr'
+import { ANALYSIS_STAGE_LABELS, type AnalysisStage } from '../../../shared/analysis'
 
 const QUEUE_CHANNEL = 'analysis:queue'
 const BROADCAST_THROTTLE_MS = 150
@@ -49,11 +57,20 @@ function intSetting(key: string, fallback: number): number {
 }
 
 export function getAnalysisSettings(): AnalysisSettings {
+  const d = ANALYSIS_DEFAULTS
+  const mosaic = getSetting('analysis_mosaic')
   return {
     prompt: getAnalysisPrompt(),
-    slices: intSetting('analysis_slices', ANALYSIS_DEFAULTS.slices),
-    concurrency: intSetting('analysis_concurrency', ANALYSIS_DEFAULTS.concurrency),
-    rpm: intSetting('analysis_rpm', ANALYSIS_DEFAULTS.rpm),
+    framesShort: intSetting('analysis_frames_short', d.framesShort),
+    framesPerSegment: intSetting('analysis_frames_per_segment', d.framesPerSegment),
+    segmentSeconds: intSetting('analysis_segment_seconds', d.segmentSeconds),
+    maxMinutes: intSetting('analysis_max_minutes', d.maxMinutes),
+    skipOverMinutes: intSetting('analysis_skip_over_minutes', d.skipOverMinutes),
+    mosaic: mosaic === 'on' || mosaic === 'off' ? mosaic : 'auto',
+    transcribe: (getSetting('analysis_transcribe') ?? 'true') !== 'false',
+    asrRpm: intSetting('analysis_asr_rpm', d.asrRpm),
+    concurrency: intSetting('analysis_concurrency', d.concurrency),
+    rpm: intSetting('analysis_rpm', d.rpm),
     tagMode: getSetting('analysis_tag_mode') === 'closed' ? 'closed' : 'open',
     autoAnalyze: getSetting('analysis_auto') === 'true'
   }
@@ -69,15 +86,34 @@ function clampInt(value: unknown, min: number, max: number, field: string): numb
 
 /** 校验并写入分析设置；只更新传入的字段。空提示词表示恢复默认 */
 export function saveAnalysisSettings(patch: Partial<AnalysisSettings>): AnalysisSettings {
+  const ints: [keyof AnalysisSettings, string, number, number, string][] = [
+    ['framesShort', 'analysis_frames_short', 1, 30, '短视频帧数'],
+    ['framesPerSegment', 'analysis_frames_per_segment', 1, 16, '每段帧数'],
+    ['segmentSeconds', 'analysis_segment_seconds', 30, 300, '分段长度'],
+    ['maxMinutes', 'analysis_max_minutes', 1, 240, '最多分析分钟数'],
+    ['skipOverMinutes', 'analysis_skip_over_minutes', 1, 1440, '跳过阈值'],
+    ['asrRpm', 'analysis_asr_rpm', 1, 600, '转写每分钟请求数'],
+    ['concurrency', 'analysis_concurrency', 1, 16, '并发数'],
+    ['rpm', 'analysis_rpm', 1, 600, '每分钟请求数']
+  ]
   if (patch.prompt !== undefined) setSetting('analysis_prompt', String(patch.prompt).trim())
-  if (patch.slices !== undefined) {
-    setSetting('analysis_slices', String(clampInt(patch.slices, 1, 20, '截帧数')))
+  for (const [field, key, min, max, label] of ints) {
+    if (patch[field] !== undefined) setSetting(key, String(clampInt(patch[field], min, max, label)))
   }
-  if (patch.concurrency !== undefined) {
-    setSetting('analysis_concurrency', String(clampInt(patch.concurrency, 1, 16, '并发数')))
+  if (patch.maxMinutes !== undefined || patch.skipOverMinutes !== undefined) {
+    const next = getAnalysisSettings()
+    if (next.skipOverMinutes < next.maxMinutes) {
+      setSetting('analysis_skip_over_minutes', String(next.maxMinutes))
+    }
   }
-  if (patch.rpm !== undefined) {
-    setSetting('analysis_rpm', String(clampInt(patch.rpm, 1, 600, '每分钟请求数')))
+  if (patch.mosaic !== undefined) {
+    setSetting(
+      'analysis_mosaic',
+      patch.mosaic === 'on' || patch.mosaic === 'off' ? patch.mosaic : 'auto'
+    )
+  }
+  if (patch.transcribe !== undefined) {
+    setSetting('analysis_transcribe', patch.transcribe ? 'true' : 'false')
   }
   if (patch.tagMode !== undefined) {
     setSetting('analysis_tag_mode', patch.tagMode === 'closed' ? 'closed' : 'open')
@@ -227,17 +263,19 @@ export function createJob(input: CreateAnalysisJobInput): AnalysisJobView {
   if (!postIds.length) throw new Error('没有需要分析的作品')
 
   const settings = getAnalysisSettings()
+  // 转写提供方在建作业时就定下来：中途改设置不影响已排队的作业
+  const asrProviderId = settings.transcribe
+    ? (input.asrProviderId ?? getDefaultAsrProviderId())
+    : null
+  if (asrProviderId) resolveAsrProvider(asrProviderId)
+  const { prompt, autoAnalyze: _auto, ...rest } = settings
+  void _auto
   const row = insertAnalysisJob({
     name: input.name?.trim() || defaultJobName(input, postIds.length),
     kind: input.kind ?? 'analyze',
     providerId: provider.id,
-    prompt: settings.prompt,
-    options: {
-      slices: settings.slices,
-      concurrency: settings.concurrency,
-      rpm: settings.rpm,
-      tagMode: settings.tagMode
-    },
+    prompt,
+    options: { ...rest, asrProviderId },
     postIds,
     priority: !!input.priority
   })
@@ -378,7 +416,19 @@ async function runJob(job: AnalysisJobRow): Promise<void> {
     const provider = resolveProvider(job.provider_id)
     const client = createClientFor(provider.id)
     const limiter = limiterFor(provider.id, options.rpm)
-    const systemPrompt = buildSystemPrompt(job.prompt)
+    const asrProvider = options.transcribe ? resolveAsrProvider(options.asrProviderId) : null
+    const asr = asrProvider
+      ? {
+          client: createAsrClient(asrProvider),
+          provider: asrProvider,
+          limiter: limiterFor(`asr:${asrProvider.id}`, options.asrRpm)
+        }
+      : null
+    const prompts = {
+      single: buildSinglePrompt(job.prompt),
+      segment: buildSegmentPrompt(job.prompt),
+      reduce: buildReducePrompt(job.prompt)
+    }
 
     const worker = async (): Promise<void> => {
       try {
@@ -388,11 +438,19 @@ async function runJob(job: AnalysisJobRow): Promise<void> {
           await processItem(job.id, postId, run, {
             client,
             limiter,
-            systemPrompt,
-            slices: options.slices,
+            model: provider.model,
+            asr,
+            prompts,
+            plan: {
+              segmentSeconds: options.segmentSeconds,
+              maxMinutes: options.maxMinutes,
+              skipOverMinutes: options.skipOverMinutes,
+              framesShort: options.framesShort,
+              framesPerSegment: options.framesPerSegment,
+              mosaic: options.mosaic
+            },
             tagMode: options.tagMode,
-            signal: run.controller.signal,
-            model: provider.model
+            signal: run.controller.signal
           })
         }
       } catch (error) {
@@ -450,7 +508,7 @@ async function processItem(
   jobId: number,
   postId: number,
   run: ActiveRun,
-  options: Parameters<typeof analyzeOnePost>[1]
+  options: Omit<PipelineOptions, 'onStage'>
 ): Promise<void> {
   const post = getPostById(postId)
   if (!post) {
@@ -461,9 +519,20 @@ async function processItem(
   const title = postTitle(post)
   run.current.set(postId, title)
   broadcast()
+  const onStage = (stage: AnalysisStage, detail?: string): void => {
+    run.current.set(
+      postId,
+      `${title} · ${ANALYSIS_STAGE_LABELS[stage]}${detail ? ` ${detail}` : ''}`
+    )
+    broadcast()
+  }
   try {
-    await analyzeOnePost(post, options)
+    const result = await analyzePost(post, { ...options, onStage })
     finishItem(jobId, postId, 'done', null)
+    console.log(
+      `[AI] 作品 ${post.aweme_id} 分析完成：${result.meta.segmentCount} 段 / ${result.meta.frameCount} 帧 / ` +
+        `${result.keptTags.length} 标签，${Math.round(result.meta.elapsedMs / 1000)} 秒`
+    )
     broadcast({ jobId, postId, ok: true, title, error: null })
   } catch (error) {
     if (run.controller.signal.aborted) {
@@ -471,6 +540,11 @@ async function processItem(
       return
     }
     const message = describeError(error)
+    if ((error as Error)?.name === 'VideoTooLongError') {
+      finishItem(jobId, postId, 'skipped', message)
+      broadcast({ jobId, postId, ok: false, title, error: message })
+      return
+    }
     console.error(`[AI] 作品 ${post.aweme_id} 分析失败: ${message}`)
     finishItem(jobId, postId, 'failed', message)
     broadcast({ jobId, postId, ok: false, title, error: message })
@@ -481,7 +555,7 @@ async function processItem(
 
 function describeError(error: unknown): string {
   const err = error as Error & { raw?: string }
-  if (err?.name === 'TimeoutError') return '请求超时（120 秒无响应）'
+  if (err?.name === 'TimeoutError') return '请求超时（长时间无响应）'
   const message = err?.message || String(error)
   return message.length > 500 ? `${message.slice(0, 500)}…` : message
 }
@@ -492,6 +566,7 @@ function describeError(error: unknown): string {
 export function initAnalysisQueue(): void {
   const db = getDatabase()
   stopping = false
+  migrateAnalysisPromptV2()
   releaseRunningItems()
   const interrupted = db
     .prepare(`UPDATE analysis_jobs SET status = 'queued' WHERE status = 'running'`)

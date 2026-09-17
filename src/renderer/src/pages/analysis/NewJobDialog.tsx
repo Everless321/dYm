@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Loader2, Search, Sparkles } from 'lucide-react'
 import {
@@ -17,12 +18,14 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import type { AiProviderView, AnalysisJobView } from '@shared/ai'
+import type { AiProviderView, AnalysisJobView, AsrProviderView } from '@shared/ai'
+import { analysisPath } from './shared'
 
 interface NewJobDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   providers: AiProviderView[]
+  asrProviders: AsrProviderView[]
   onCreated: (job: AnalysisJobView) => void
   onNeedProvider: () => void
 }
@@ -34,6 +37,7 @@ export function NewJobDialog({
   open,
   onOpenChange,
   providers,
+  asrProviders,
   onCreated,
   onNeedProvider
 }: NewJobDialogProps): React.JSX.Element {
@@ -43,6 +47,8 @@ export function NewJobDialog({
   const [search, setSearch] = useState('')
   const [onlyUnanalyzed, setOnlyUnanalyzed] = useState(true)
   const [providerId, setProviderId] = useState(DEFAULT_PROVIDER)
+  const [asrProviderId, setAsrProviderId] = useState(DEFAULT_PROVIDER)
+  const [transcribeEnabled, setTranscribeEnabled] = useState<boolean | null>(null)
   const [priority, setPriority] = useState(false)
   const [creating, setCreating] = useState(false)
 
@@ -52,6 +58,7 @@ export function NewJobDialog({
     setSearch('')
     setOnlyUnanalyzed(true)
     setProviderId(DEFAULT_PROVIDER)
+    setAsrProviderId(DEFAULT_PROVIDER)
     setPriority(false)
     Promise.all([window.api.analysis.getUserStats(), window.api.analysis.getTotalStats()])
       .then(([users, total]) => {
@@ -59,6 +66,10 @@ export function NewJobDialog({
         setTotals(total)
       })
       .catch((error) => toast.error(`加载统计失败: ${(error as Error).message}`))
+    window.api.analysis
+      .getSettings()
+      .then((s) => setTranscribeEnabled(s.transcribe))
+      .catch(() => setTranscribeEnabled(null))
   }, [open])
 
   const filteredUsers = useMemo(() => {
@@ -79,6 +90,7 @@ export function NewJobDialog({
   })()
 
   const defaultProvider = providers.find((p) => p.isDefault) ?? providers[0]
+  const defaultAsr = asrProviders.find((p) => p.isDefault) ?? asrProviders[0]
 
   const handleCreate = async (): Promise<void> => {
     if (!providers.length) {
@@ -92,6 +104,7 @@ export function NewJobDialog({
         secUid: secUid === ALL ? undefined : secUid,
         onlyUnanalyzed,
         providerId: providerId === DEFAULT_PROVIDER ? undefined : providerId,
+        asrProviderId: asrProviderId === DEFAULT_PROVIDER ? undefined : asrProviderId,
         priority
       })
       toast.success(`已加入队列：${job.name}`)
@@ -200,6 +213,37 @@ export function NewJobDialog({
               插队优先
             </label>
           </div>
+
+          {transcribeEnabled && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#6E6E73]">语音转写</label>
+              {asrProviders.length ? (
+                <Select value={asrProviderId} onValueChange={setAsrProviderId}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={DEFAULT_PROVIDER}>
+                      默认{defaultAsr ? `（${defaultAsr.name}）` : ''}
+                    </SelectItem>
+                    {asrProviders.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name} · {p.model}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Link
+                  to={analysisPath('asr')}
+                  onClick={() => onOpenChange(false)}
+                  className="block w-full h-9 px-3 leading-9 rounded-md border border-dashed border-[#D1D1D6] text-sm text-[#6E6E73] bg-[#FAFAFA] hover:border-[#0A84FF] hover:text-[#0A84FF] transition-colors"
+                >
+                  未配置转写服务，本次只看画面和文案；点击前往配置
+                </Link>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-between pt-2">

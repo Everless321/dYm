@@ -8,10 +8,13 @@ import type {
   AnalysisJobView,
   AnalysisQueueEvent,
   AnalysisSettings,
+  AsrProviderInput,
+  AsrProviderView,
   CodexAuthStatus,
   OpenCodeCliKey,
   CreateAnalysisJobInput
 } from '../shared/ai'
+import type { PostAnalysisDetail } from '../shared/analysis'
 
 declare global {
   interface DatabaseAPI {
@@ -521,8 +524,24 @@ declare global {
     opencodeCliKey: (baseUrl: string) => Promise<OpenCodeCliKey | null>
   }
 
+  interface AsrAPI {
+    listProviders: () => Promise<AsrProviderView[]>
+    saveProvider: (input: AsrProviderInput) => Promise<AsrProviderView>
+    deleteProvider: (id: string) => Promise<void>
+    setDefaultProvider: (id: string) => Promise<void>
+    /** 用一小段合成音频验证连通性（未保存也可） */
+    verifyProvider: (input: AsrProviderInput) => Promise<{ ok: true; message: string }>
+  }
+
   interface AnalysisAPI {
     getSettings: () => Promise<AnalysisSettings>
+    /** 单条作品的结构化分析、元信息与字幕 */
+    getDetail: (postId: number) => Promise<PostAnalysisDetail>
+    /** 字幕全文检索 */
+    searchTranscripts: (
+      keyword: string,
+      limit?: number
+    ) => Promise<{ postId: number; snippet: string }[]>
     /** 只更新传入字段；主进程校验范围，非法值抛错 */
     saveSettings: (patch: Partial<AnalysisSettings>) => Promise<AnalysisSettings>
     createJob: (input: CreateAnalysisJobInput) => Promise<AnalysisJobView>
@@ -784,6 +803,7 @@ declare global {
     live: LiveAPI
     post: PostAPI
     ai: AiAPI
+    asr: AsrAPI
     analysis: AnalysisAPI
     tag: TagAPI
     video: VideoAPI
