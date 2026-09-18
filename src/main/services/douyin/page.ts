@@ -1,7 +1,7 @@
 import { BrowserWindow, session, type Session } from 'electron'
 import { getSetting } from '../../database'
 import { blockCustomProtocols } from '../../utils/block-protocols'
-import { CHROME_UA } from '../../utils/user-agent'
+import { getBrowserUserAgent } from '../../utils/user-agent'
 
 /**
  * 在真实抖音页面里发接口请求。
@@ -148,7 +148,8 @@ async function ensurePage(): Promise<BrowserWindow> {
 
   closePage()
   const ses = session.fromPartition(PARTITION)
-  ses.setUserAgent(CHROME_UA)
+  const userAgent = getBrowserUserAgent()
+  ses.setUserAgent(userAgent)
   await injectCookies(ses)
 
   const created = new BrowserWindow({
@@ -165,7 +166,7 @@ async function ensurePage(): Promise<BrowserWindow> {
       sandbox: false
     }
   })
-  created.webContents.setUserAgent(CHROME_UA)
+  created.webContents.setUserAgent(userAgent)
   blockCustomProtocols(created)
 
   // 不 await：抖音个人页是长连接型 SPA，loadURL 常常不 resolve

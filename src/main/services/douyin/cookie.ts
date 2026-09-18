@@ -2,7 +2,9 @@ import { BrowserWindow, session } from 'electron'
 import { setSetting } from '../../database'
 import { refreshDouyinHandler } from './client'
 import { blockCustomProtocols } from '../../utils/block-protocols'
-import { CHROME_UA } from '../../utils/user-agent'
+import { getBrowserUserAgent } from '../../utils/user-agent'
+import { commitDeviceProfile, createMachineProfile } from './device'
+import { userAgentOf } from 'polydl'
 
 // Cookie 刷新状态
 let isRefreshing = false
@@ -15,10 +17,16 @@ const LOGIN_COOKIE_NAMES = new Set(['sessionid', 'sessionid_ss', 'sid_tt', 'sid_
  * 打开浏览器窗口让用户登录获取 Cookie（手动模式）
  */
 export async function fetchDouyinCookie(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const partition = 'persist:douyin-login'
-    const ses = session.fromPartition(partition)
+  const partition = 'persist:douyin-login'
+  const ses = session.fromPartition(partition)
 
+  // 重新登录 = 换一台「新机器」：新指纹先用在登录窗口上，登录成功后才落库；
+  // 分区里旧指纹下发的 ttwid / s_v_web_id 等匿名 cookie 一并清掉，避免新旧混用。
+  // 用户没登录就关窗的话，候选指纹作废，继续沿用旧指纹配旧 Cookie。
+  const candidate = createMachineProfile()
+  await ses.clearStorageData({ storages: ['cookies'] })
+
+  return new Promise((resolve, reject) => {
     const win = new BrowserWindow({
       width: 1200,
       height: 800,
@@ -30,7 +38,7 @@ export async function fetchDouyinCookie(): Promise<string> {
       }
     })
 
-    win.webContents.setUserAgent(CHROME_UA)
+    win.webContents.setUserAgent(userAgentOf(candidate))
     blockCustomProtocols(win)
     win.loadURL('https://www.douyin.com')
 
@@ -47,6 +55,8 @@ export async function fetchDouyinCookie(): Promise<string> {
           return
         }
 
+        // 先换指纹再换 Cookie：refreshDouyinHandler 会把新 device 灌给 polydl
+        commitDeviceProfile(candidate)
         setSetting('douyin_cookie', cookieString)
         refreshDouyinHandler()
         lastRefreshTime = Date.now()
@@ -124,7 +134,9 @@ export async function refreshDouyinCookieSilent(): Promise<string> {
         const cookies = await ses.cookies.get({ domain: '.douyin.com' })
         const cookieString = cookies.map((c) => `${c.name}=${c.value}`).join('; ')
 
-        if (cookieString) {
+        // 分区里没有会话（从未登录 / 已登出）时只会拿到匿名 cookie，不能拿它覆盖有效的 Cookie
+        const loggedIn = cookies.some((c) => LOGIN_COOKIE_NAMES.has(c.name))
+        if (cookieString && loggedIn) {
           console.log('[Cookie] Silent refresh success, cookie length:', cookieString.length)
           setSetting('douyin_cookie', cookieString)
           refreshDouyinHandler()
@@ -133,7 +145,7 @@ export async function refreshDouyinCookieSilent(): Promise<string> {
           cleanup()
           resolve(cookieString)
         } else {
-          console.log('[Cookie] No cookies found')
+          console.log(loggedIn ? '[Cookie] No cookies found' : '[Cookie] Not logged in, skip')
           clearTimeout(timeout)
           cleanup()
           resolve('')
@@ -154,7 +166,7 @@ export async function refreshDouyinCookieSilent(): Promise<string> {
       resolve('')
     })
 
-    win.webContents.setUserAgent(CHROME_UA)
+    win.webContents.setUserAgent(getBrowserUserAgent())
     blockCustomProtocols(win)
     win.loadURL('https://www.douyin.com')
   })
