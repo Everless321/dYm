@@ -5,6 +5,7 @@ import { mkdirSync, statSync } from 'fs'
 import { ffmpegPath } from '../../utils/ffmpeg-path'
 import { track } from '../telemetry'
 import { getDouyinHandler } from '../douyin/client'
+import { getBrowserUserAgent } from '../../utils/user-agent'
 import { downloadLiveCover } from './cover'
 import { startDanmakuRecording, danmakuPathFor, type DanmakuRecorder } from './danmaku'
 import { enqueueConvert } from './convert'
@@ -347,7 +348,7 @@ async function doCheckAndRecord(userId: number): Promise<boolean> {
     '-rw_timeout',
     '60000000',
     '-headers',
-    'Referer: https://live.douyin.com/\r\n',
+    `Referer: https://live.douyin.com/\r\nUser-Agent: ${getBrowserUserAgent()}\r\n`,
     '-i',
     streamUrl
   ]

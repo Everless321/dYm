@@ -1,15 +1,20 @@
 import { DouyinCrawler, DouyinHandler, getSecUserId, getAwemeId, setConfig } from 'polydl'
 import { getSetting } from '../../database'
+import { getDeviceProfile } from './device'
 
 let handler: DouyinHandler | null = null
 
 export function initDouyinHandler(): DouyinHandler | null {
   const cookie = getSetting('douyin_cookie')
+  // 设备指纹先于一切请求就位：没有 Cookie 时静默刷新 / 登录窗口也要用同一份 UA
+  const device = getDeviceProfile()
   if (cookie) {
-    // 设置使用 A-Bogus 签名
-    setConfig({ encryption: 'ab' })
+    // A-Bogus 签名 + 与登录环境一致的设备指纹（UA / Client Hints / browser_* 参数同源）
+    setConfig({ encryption: 'ab', device })
     handler = new DouyinHandler({ cookie })
-    console.log('[Douyin] Handler initialized with A-Bogus encryption')
+    console.log(
+      `[Douyin] Handler initialized (A-Bogus, ${device.os} ${device.browser} ${device.browserVersion})`
+    )
   } else {
     handler = null
     console.log('[Douyin] No cookie, handler not initialized')
