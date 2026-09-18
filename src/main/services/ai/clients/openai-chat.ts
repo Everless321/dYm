@@ -108,7 +108,7 @@ export class OpenAiChatClient implements AiClient {
   private post(body: unknown, signal?: AbortSignal): Promise<Response> {
     return fetchJson(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: bearerHeaders(this.provider.credential),
+      headers: bearerHeaders(this.provider.credential, this.provider.extraHeaders),
       body: JSON.stringify(body),
       signal
     })
@@ -117,7 +117,7 @@ export class OpenAiChatClient implements AiClient {
   async verify(): Promise<void> {
     await fetchJson(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: bearerHeaders(this.provider.credential),
+      headers: bearerHeaders(this.provider.credential, this.provider.extraHeaders),
       body: JSON.stringify({
         model: this.provider.model,
         messages: [{ role: 'user', content: 'Hi' }],
@@ -131,7 +131,7 @@ export class OpenAiChatClient implements AiClient {
     try {
       const response = await fetchJson(`${this.baseUrl}/models`, {
         method: 'GET',
-        headers: bearerHeaders(this.provider.credential),
+        headers: bearerHeaders(this.provider.credential, this.provider.extraHeaders),
         timeoutMs: 20_000
       })
       const data = (await response.json()) as { data?: { id: string }[] }
