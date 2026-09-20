@@ -20,11 +20,18 @@ export async function fetchDouyinCookie(): Promise<string> {
   const partition = 'persist:douyin-login'
   const ses = session.fromPartition(partition)
 
-  // 重新登录 = 换一台「新机器」：新指纹先用在登录窗口上，登录成功后才落库；
-  // 分区里旧指纹下发的 ttwid / s_v_web_id 等匿名 cookie 一并清掉，避免新旧混用。
-  // 用户没登录就关窗的话，候选指纹作废，继续沿用旧指纹配旧 Cookie。
-  const candidate = createMachineProfile()
-  await ses.clearStorageData({ storages: ['cookies'] })
+  // 分区里已经有登录态：什么都不动，用当前指纹打开窗口，用户看到的就是已登录的抖音，
+  // 关窗时把 cookie 重新导出一遍即可（这是「从浏览器获取」一直以来的体验）。
+  //
+  // 分区里没有登录态（首次使用 / 已登出）：这次登录 = 换一台「新机器」——
+  // 生成候选指纹先用在登录窗口上，把旧指纹下发的 ttwid / s_v_web_id 等匿名 cookie 清掉，
+  // 登录成功后候选指纹与新 Cookie 一起落库；没登录就关窗则候选作废，继续沿用旧指纹。
+  const existing = await ses.cookies.get({ domain: '.douyin.com' })
+  const alreadyLoggedIn = existing.some((c) => LOGIN_COOKIE_NAMES.has(c.name))
+  const candidate = alreadyLoggedIn ? null : createMachineProfile()
+  if (candidate) await ses.clearStorageData({ storages: ['cookies'] })
+  const userAgent = candidate ? userAgentOf(candidate) : getBrowserUserAgent()
+  console.log(`[Cookie] 打开登录窗口（${alreadyLoggedIn ? '沿用已有登录态与指纹' : '新指纹'}）`)
 
   return new Promise((resolve, reject) => {
     const win = new BrowserWindow({
@@ -38,7 +45,7 @@ export async function fetchDouyinCookie(): Promise<string> {
       }
     })
 
-    win.webContents.setUserAgent(userAgentOf(candidate))
+    win.webContents.setUserAgent(userAgent)
     blockCustomProtocols(win)
     win.loadURL('https://www.douyin.com')
 
@@ -56,7 +63,7 @@ export async function fetchDouyinCookie(): Promise<string> {
         }
 
         // 先换指纹再换 Cookie：refreshDouyinHandler 会把新 device 灌给 polydl
-        commitDeviceProfile(candidate)
+        if (candidate) commitDeviceProfile(candidate)
         setSetting('douyin_cookie', cookieString)
         refreshDouyinHandler()
         lastRefreshTime = Date.now()
