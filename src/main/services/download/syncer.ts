@@ -13,6 +13,7 @@ import { validateDownloadFolder, cleanupFailedDownload, expectsMusic } from './v
 import { emitPostDownloaded } from '../scripts/emit'
 import { track } from '../telemetry'
 import { getDownloadPath } from '../media'
+import { diagnoseUserPost } from '../douyin/client'
 
 /** 同步触发来源：手动 / 定时调度 */
 export type SyncSource = 'manual' | 'schedule'
@@ -147,7 +148,10 @@ export async function startUserSync(
       // - HTTP 403 + 非 JSON 响应体：解析不出 status_code，statusCode 为 null
       // - status_code≠0 且 aweme_list 为空的合法 JSON
       if (postFilter.statusCode === null) {
-        throw new Error('抖音接口没有返回有效 JSON（多半是 HTTP 403 被风控拦截），请重新登录后重试')
+        const detail = await diagnoseUserPost(user.sec_uid)
+        throw new Error(
+          `抖音接口没有返回有效 JSON（${detail}），多半是被风控拦截，请重新登录后重试`
+        )
       }
       if (postFilter.statusCode !== 0) {
         throw new Error(

@@ -201,4 +201,48 @@ export async function diagnosePostDetail(awemeId: string): Promise<string> {
   return `详情接口正常返回但缺少作者字段（HTTP ${res.status}，status_code ${data?.status_code}）`
 }
 
+/**
+ * 诊断作者作品列表接口。
+ *
+ * 风控时这个接口会直接返回 HTTP 403 + 非 JSON 响应体，polydl 不抛错，
+ * 上层只能看到 statusCode 为 null。这里重新请求一次，把状态码、响应头和响应体开头
+ * 取出来，看清是被什么拦的（人机验证、IP、签名……）。仅在失败路径上调用。
+ *
+ * 返回一句可直接拼进错误消息的中文描述；完整响应头只打到控制台。
+ */
+export async function diagnoseUserPost(secUserId: string): Promise<string> {
+  const cookie = getSetting('douyin_cookie')
+  if (!cookie) {
+    return '未配置 cookie'
+  }
+
+  let res: { status: number; data: unknown; headers: Headers; url: string }
+  try {
+    const crawler = new DouyinCrawler({ cookie })
+    res = await crawler.fetchUserPost(secUserId, 0, 18)
+  } catch (error) {
+    return `作品列表接口请求失败：${(error as Error).message}`
+  }
+
+  // set-cookie 里有令牌，不打出来
+  const headers: Record<string, string> = {}
+  res.headers.forEach((value, key) => {
+    if (key !== 'set-cookie') headers[key] = value
+  })
+  const body = typeof res.data === 'string' ? res.data.trim() : JSON.stringify(res.data ?? null)
+  const snippet = body.length > 300 ? `${body.slice(0, 300)}…` : body
+  console.log('[Douyin] diagnoseUserPost:', {
+    http: res.status,
+    path: new URL(res.url).pathname,
+    headers,
+    bodyLength: body.length,
+    body: snippet
+  })
+
+  const logId = headers['x-tt-logid'] ? `，logid ${headers['x-tt-logid']}` : ''
+  return `HTTP ${res.status}，content-type ${headers['content-type'] || '无'}，响应体 ${
+    body.length
+  } 字节${logId}`
+}
+
 export { getSecUserId, getAwemeId }
