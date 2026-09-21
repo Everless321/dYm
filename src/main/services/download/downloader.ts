@@ -290,9 +290,13 @@ async function downloadUserVideos(
     const videosToDownload: VideoToDownload[] = []
 
     for await (const postFilter of handler.fetchUserPostVideos(user.sec_uid, { maxCounts })) {
-      // 风控 / 未登录时抖音返回 status_code≠0 且 aweme_list 为空的合法 JSON，
-      // polydl 不会抛错；不检查就会被当成「无新作品」并更新 last_sync_at
-      if (postFilter.statusCode !== null && postFilter.statusCode !== 0) {
+      // 风控时抖音有两种返回，polydl 都不会抛错，不检查就会被当成「无新作品」并更新 last_sync_at：
+      // - HTTP 403 + 非 JSON 响应体：解析不出 status_code，statusCode 为 null
+      // - status_code≠0 且 aweme_list 为空的合法 JSON
+      if (postFilter.statusCode === null) {
+        throw new Error('抖音接口没有返回有效 JSON（多半是 HTTP 403 被风控拦截），请重新登录后重试')
+      }
+      if (postFilter.statusCode !== 0) {
         throw new Error(
           `抖音接口返回 status_code=${postFilter.statusCode}，通常是 Cookie 失效或触发风控，请重新登录后重试`
         )
