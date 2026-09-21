@@ -48,6 +48,8 @@ interface PageResponse {
   data: Record<string, unknown> | null
   /** 非 JSON 时的原文，用于报错 */
   text: string | null
+  /** 响应头，只在排查失败时打出来 */
+  headers: Record<string, string>
 }
 
 let win: BrowserWindow | null = null
@@ -223,7 +225,9 @@ async function requestInPage(
       const text = await response.text()
       let data = null
       try { data = JSON.parse(text) } catch (error) { data = null }
-      return { ok: response.ok, status: response.status, data, text: data ? null : text.slice(0, 200) }
+      const headers = {}
+      response.headers.forEach((value, key) => { headers[key] = value })
+      return { ok: response.ok, status: response.status, data, text: data ? null : text.slice(0, 200), headers }
     })()
   `
   return (await target.webContents.executeJavaScript(script)) as PageResponse
@@ -261,10 +265,16 @@ export async function fetchGuarded(
     const response = await requestInPage(path, params, method)
 
     if (!response.data) {
+      console.log('[DouyinPage] 非 JSON 响应:', {
+        path,
+        http: response.status,
+        headers: response.headers,
+        body: response.text || '（空）'
+      })
       const hint = response.text?.includes('ArgusSecurityPlugin')
         ? '（接口被抖音安全策略拦截）'
         : ''
-      throw new Error(`抖音接口返回异常 ${response.status}${hint}：${response.text ?? '空响应'}`)
+      throw new Error(`抖音接口返回异常 ${response.status}${hint}：${response.text || '空响应'}`)
     }
 
     const statusCode = Number(response.data.status_code ?? 0)

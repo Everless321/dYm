@@ -1,5 +1,6 @@
 import { DouyinCrawler, UserPostFilter } from 'polydl'
 import { getSetting } from '../../database'
+import { diagnoseUserPost } from './client'
 import { fetchGuarded, getPageUifid } from './page'
 
 /**
@@ -113,7 +114,8 @@ async function fetchOnePage(
       return direct
     }
 
-    // 被拦：补上页面里的 uifid 再直连一次
+    // 被拦：先把原始请求 / 响应打出来，再补上页面里的 uifid 直连一次
+    console.log(`[UserPost] 直连诊断：${await diagnoseUserPost(secUserId)}`)
     const hadUifid = sampledUifid ?? cookieUifid(cookie)
     const uifid = await getPageUifid().catch(() => null)
     if (uifid && uifid !== hadUifid) {

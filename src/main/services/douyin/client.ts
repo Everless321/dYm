@@ -210,39 +210,89 @@ export async function diagnosePostDetail(awemeId: string): Promise<string> {
  *
  * 返回一句可直接拼进错误消息的中文描述；完整响应头只打到控制台。
  */
+interface CapturedResponse {
+  status: number
+  requestHeaders: Record<string, string>
+  headers: Record<string, string>
+  body: string
+}
+
 export async function diagnoseUserPost(secUserId: string): Promise<string> {
   const cookie = getSetting('douyin_cookie')
   if (!cookie) {
     return '未配置 cookie'
   }
 
-  let res: { status: number; data: unknown; headers: Headers; url: string }
-  try {
-    const crawler = new DouyinCrawler({ cookie })
-    res = await crawler.fetchUserPost(secUserId, 0, 18)
-  } catch (error) {
-    return `作品列表接口请求失败：${(error as Error).message}`
+  // 空响应体时 polydl 在解析阶段就抛错，拿不到响应；只能在 fetch 这一层截下原始请求与响应
+  let captured: CapturedResponse | null = null
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (input, init) => {
+    const response = await originalFetch(input, init)
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (url.includes('/aweme/v1/web/aweme/post/')) {
+      captured = {
+        status: response.status,
+        requestHeaders: pickHeaders(new Headers(init?.headers), [
+          'x-tt-argus',
+          'uifid',
+          'user-agent'
+        ]),
+        headers: headersWithoutCookies(response.headers),
+        body: (await response.clone().text()).trim()
+      }
+    }
+    return response
   }
 
-  // set-cookie 里有令牌，不打出来
-  const headers: Record<string, string> = {}
-  res.headers.forEach((value, key) => {
-    if (key !== 'set-cookie') headers[key] = value
-  })
-  const body = typeof res.data === 'string' ? res.data.trim() : JSON.stringify(res.data ?? null)
-  const snippet = body.length > 300 ? `${body.slice(0, 300)}…` : body
+  let thrown: string | null = null
+  try {
+    await new DouyinCrawler({ cookie }).fetchUserPost(secUserId, 0, 18)
+  } catch (error) {
+    thrown = (error as Error).message
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+
+  // 赋值发生在上面的 fetch 包装里，TS 看不到，会误收窄成 null
+  const result = captured as CapturedResponse | null
+  if (!result) {
+    return `作品列表接口请求失败：${thrown ?? '未截到响应'}`
+  }
+  const snippet = result.body.length > 300 ? `${result.body.slice(0, 300)}…` : result.body
   console.log('[Douyin] diagnoseUserPost:', {
-    http: res.status,
-    path: new URL(res.url).pathname,
-    headers,
-    bodyLength: body.length,
-    body: snippet
+    http: result.status,
+    sent: {
+      'x-tt-argus': result.requestHeaders['x-tt-argus'] ?? '（没带）',
+      uifid: result.requestHeaders.uifid ? '有' : '（没带）',
+      'user-agent': result.requestHeaders['user-agent']
+    },
+    headers: result.headers,
+    bodyLength: result.body.length,
+    body: snippet || '（空）'
   })
 
-  const logId = headers['x-tt-logid'] ? `，logid ${headers['x-tt-logid']}` : ''
-  return `HTTP ${res.status}，content-type ${headers['content-type'] || '无'}，响应体 ${
-    body.length
-  } 字节${logId}`
+  const logId = result.headers['x-tt-logid'] ? `，logid ${result.headers['x-tt-logid']}` : ''
+  return `HTTP ${result.status}，响应体 ${result.body.length} 字节${
+    snippet ? `：${snippet.slice(0, 80)}` : ''
+  }${logId}`
+}
+
+function pickHeaders(headers: Headers, names: string[]): Record<string, string> {
+  const picked: Record<string, string> = {}
+  for (const name of names) {
+    const value = headers.get(name)
+    if (value !== null) picked[name] = value
+  }
+  return picked
+}
+
+/** set-cookie 里有令牌，不打出来 */
+function headersWithoutCookies(headers: Headers): Record<string, string> {
+  const result: Record<string, string> = {}
+  headers.forEach((value, key) => {
+    if (key !== 'set-cookie') result[key] = value
+  })
+  return result
 }
 
 export { getSecUserId, getAwemeId }
