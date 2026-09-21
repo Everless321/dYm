@@ -201,4 +201,98 @@ export async function diagnosePostDetail(awemeId: string): Promise<string> {
   return `详情接口正常返回但缺少作者字段（HTTP ${res.status}，status_code ${data?.status_code}）`
 }
 
+/**
+ * 诊断作者作品列表接口。
+ *
+ * 风控时这个接口会直接返回 HTTP 403 + 非 JSON 响应体，polydl 不抛错，
+ * 上层只能看到 statusCode 为 null。这里重新请求一次，把状态码、响应头和响应体开头
+ * 取出来，看清是被什么拦的（人机验证、IP、签名……）。仅在失败路径上调用。
+ *
+ * 返回一句可直接拼进错误消息的中文描述；完整响应头只打到控制台。
+ */
+interface CapturedResponse {
+  status: number
+  requestHeaders: Record<string, string>
+  headers: Record<string, string>
+  body: string
+}
+
+export async function diagnoseUserPost(secUserId: string): Promise<string> {
+  const cookie = getSetting('douyin_cookie')
+  if (!cookie) {
+    return '未配置 cookie'
+  }
+
+  // 空响应体时 polydl 在解析阶段就抛错，拿不到响应；只能在 fetch 这一层截下原始请求与响应
+  let captured: CapturedResponse | null = null
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (input, init) => {
+    const response = await originalFetch(input, init)
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (url.includes('/aweme/v1/web/aweme/post/')) {
+      captured = {
+        status: response.status,
+        requestHeaders: pickHeaders(new Headers(init?.headers), [
+          'x-tt-argus',
+          'uifid',
+          'user-agent'
+        ]),
+        headers: headersWithoutCookies(response.headers),
+        body: (await response.clone().text()).trim()
+      }
+    }
+    return response
+  }
+
+  let thrown: string | null = null
+  try {
+    await new DouyinCrawler({ cookie }).fetchUserPost(secUserId, 0, 18)
+  } catch (error) {
+    thrown = (error as Error).message
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+
+  // 赋值发生在上面的 fetch 包装里，TS 看不到，会误收窄成 null
+  const result = captured as CapturedResponse | null
+  if (!result) {
+    return `作品列表接口请求失败：${thrown ?? '未截到响应'}`
+  }
+  const snippet = result.body.length > 300 ? `${result.body.slice(0, 300)}…` : result.body
+  console.log('[Douyin] diagnoseUserPost:', {
+    http: result.status,
+    sent: {
+      'x-tt-argus': result.requestHeaders['x-tt-argus'] ?? '（没带）',
+      uifid: result.requestHeaders.uifid ? '有' : '（没带）',
+      'user-agent': result.requestHeaders['user-agent']
+    },
+    headers: result.headers,
+    bodyLength: result.body.length,
+    body: snippet || '（空）'
+  })
+
+  const logId = result.headers['x-tt-logid'] ? `，logid ${result.headers['x-tt-logid']}` : ''
+  return `HTTP ${result.status}，响应体 ${result.body.length} 字节${
+    snippet ? `：${snippet.slice(0, 80)}` : ''
+  }${logId}`
+}
+
+function pickHeaders(headers: Headers, names: string[]): Record<string, string> {
+  const picked: Record<string, string> = {}
+  for (const name of names) {
+    const value = headers.get(name)
+    if (value !== null) picked[name] = value
+  }
+  return picked
+}
+
+/** set-cookie 里有令牌，不打出来 */
+function headersWithoutCookies(headers: Headers): Record<string, string> {
+  const result: Record<string, string> = {}
+  headers.forEach((value, key) => {
+    if (key !== 'set-cookie') result[key] = value
+  })
+  return result
+}
+
 export { getSecUserId, getAwemeId }

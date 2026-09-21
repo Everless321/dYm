@@ -4,15 +4,15 @@
 所以文件、网络、数据库一律从这里走。第二个参数 `event` 只在[事件钩子](/scripts/hooks)
 触发时有值，手动运行或 cron 时为空。
 
-| 命名空间 | 作用 |
-| --- | --- |
-| [`api.log` / `sleep` / `cancelled`](#运行控制) | 输出日志、等待、响应停止 |
-| [`api.db`](#api-db) | 读写本地 SQLite |
-| [`api.actions`](#api-actions) | 添加用户、同步、下载、分析 |
-| [`api.douyin`](#api-douyin) | 查作品/作者/收藏夹，带 cookie 与签名 |
-| [`api.fs`](#api-fs) | 读写下载目录与用户数据目录 |
-| [`api.shell`](#api-shell) | 执行本地命令（默认关闭） |
-| [`api.net`](#api-net) | 裸 HTTP 请求 |
+| 命名空间                                       | 作用                                 |
+| ---------------------------------------------- | ------------------------------------ |
+| [`api.log` / `sleep` / `cancelled`](#运行控制) | 输出日志、等待、响应停止             |
+| [`api.db`](#api-db)                            | 读写本地 SQLite                      |
+| [`api.actions`](#api-actions)                  | 添加用户、同步、下载、分析           |
+| [`api.douyin`](#api-douyin)                    | 查作品/作者/收藏夹，带 cookie 与签名 |
+| [`api.fs`](#api-fs)                            | 读写下载目录与用户数据目录           |
+| [`api.shell`](#api-shell)                      | 执行本地命令（默认关闭）             |
+| [`api.net`](#api-net)                          | 裸 HTTP 请求                         |
 
 ## 运行控制
 
@@ -96,15 +96,15 @@ api.db.users.delete(id: number): { sec_uid: string } | undefined
 
 `updateSettings` 只传需要改的字段，可选字段有：
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `show_in_home` | boolean | 是否在首页显示 |
-| `max_download_count` | number | 用户级下载上限，0 = 用全局设置 |
-| `remark` | string | 备注 |
-| `auto_sync` | boolean | 是否自动同步 |
-| `sync_cron` | string | 自动同步的 cron 表达式 |
-| `live_record` | boolean | 是否自动录制直播 |
-| `live_check_cron` | string | 直播检测的 cron 表达式 |
+| 字段                 | 类型    | 说明                           |
+| -------------------- | ------- | ------------------------------ |
+| `show_in_home`       | boolean | 是否在首页显示                 |
+| `max_download_count` | number  | 用户级下载上限，0 = 用全局设置 |
+| `remark`             | string  | 备注                           |
+| `auto_sync`          | boolean | 是否自动同步                   |
+| `sync_cron`          | string  | 自动同步的 cron 表达式         |
+| `live_record`        | boolean | 是否自动录制直播               |
+| `live_check_cron`    | string  | 直播检测的 cron 表达式         |
 
 ```js
 api.db.users.updateSettings(7, { max_download_count: 10, auto_sync: true })
@@ -163,30 +163,30 @@ if (api.db.settings.get('download_post_on_add_user') === 'false') {
 
 ### 数据库表结构
 
-| 表 | 说明 |
-| --- | --- |
-| `users` | 作者 |
-| `posts` | 作品 |
-| `download_tasks` | 下载任务 |
-| `task_users` | 任务与作者的关联 |
-| `live_records` | 直播录制记录 |
-| `settings` | 键值设置 |
+| 表               | 说明             |
+| ---------------- | ---------------- |
+| `users`          | 作者             |
+| `posts`          | 作品             |
+| `download_tasks` | 下载任务         |
+| `task_users`     | 任务与作者的关联 |
+| `live_records`   | 直播录制记录     |
+| `settings`       | 键值设置         |
 
 `posts` 常用字段：
 
-| 字段 | 说明 |
-| --- | --- |
-| `id` / `aweme_id` | 主键 / 抖音作品 ID |
-| `user_id` / `sec_uid` / `nickname` | 作者 |
-| `desc` / `caption` | 文案 |
-| `aweme_type` | 0 = 视频，其它值为图文 |
-| `create_time` | 作品发布时间 |
-| `folder_name` | 该作品在下载目录里的文件夹名 |
-| `video_path` / `cover_path` / `music_path` | 本地文件路径 |
-| `downloaded_at` / `analyzed_at` | Unix 秒 |
-| `analysis_tags` / `manual_tags` | JSON 字符串数组 |
-| `analysis_category` / `analysis_summary` / `analysis_scene` | AI 分析结果 |
-| `analysis_content_level` | AI 判定的内容分级 |
+| 字段                                                        | 说明                         |
+| ----------------------------------------------------------- | ---------------------------- |
+| `id` / `aweme_id`                                           | 主键 / 抖音作品 ID           |
+| `user_id` / `sec_uid` / `nickname`                          | 作者                         |
+| `desc` / `caption`                                          | 文案                         |
+| `aweme_type`                                                | 0 = 视频，其它值为图文       |
+| `create_time`                                               | 作品发布时间                 |
+| `folder_name`                                               | 该作品在下载目录里的文件夹名 |
+| `video_path` / `cover_path` / `music_path`                  | 本地文件路径                 |
+| `downloaded_at` / `analyzed_at`                             | Unix 秒                      |
+| `analysis_tags` / `manual_tags`                             | JSON 字符串数组              |
+| `analysis_category` / `analysis_summary` / `analysis_scene` | AI 分析结果                  |
+| `analysis_content_level`                                    | AI 判定的内容分级            |
 
 `users` 常用字段：`id`、`sec_uid`、`uid`、`nickname`、`aweme_count`、
 `downloaded_count`、`max_download_count`、`auto_sync`、`sync_cron`、
@@ -214,13 +214,13 @@ const result = await api.actions.addUser('https://www.douyin.com/user/MS4wLjABAA
 
 `postDownload.status` 的取值：
 
-| 值 | 含义 |
-| --- | --- |
-| `downloading` | 已在后台开始下载 |
-| `already-downloaded` | 本地已有该作品 |
-| `disabled` | 设置里关掉了「添加用户时下载作品」 |
-| `unavailable` | 拿不到作品数据 |
-| `not-video-link` | 传的是主页链接，没有作品要下 |
+| 值                   | 含义                               |
+| -------------------- | ---------------------------------- |
+| `downloading`        | 已在后台开始下载                   |
+| `already-downloaded` | 本地已有该作品                     |
+| `disabled`           | 设置里关掉了「添加用户时下载作品」 |
+| `unavailable`        | 拿不到作品数据                     |
+| `not-video-link`     | 传的是主页链接，没有作品要下       |
 
 ::: warning 下载是后台进行的
 返回时下载才刚开始排队，**不代表文件已经下完**。要在文件落地之后接着处理，
@@ -301,19 +301,19 @@ api.log(`发布于 ${new Date(info.createTime * 1000).toLocaleString()}`)
 
 返回的 `DouyinVideoInfo`：
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `awemeId` | string | 作品 ID |
-| `desc` | string | 文案 |
-| `createTime` | number | 发布时间，**Unix 秒** |
-| `duration` | number \| null | 时长（毫秒），图文为 null |
-| `awemeType` | number \| null | 0 = 视频，其它值为图文 |
-| `cover` | string \| null | 封面图地址 |
-| `videoUrl` | string \| null | 无水印播放地址，图文为 null |
-| `images` | string[] \| null | 图文的图片地址，视频为 null |
-| `author` | object | `{ secUid, nickname, uid, uniqueId }` |
-| `stats` | object | `{ digg, comment, collect, share }` |
-| `hashtags` | string[] | 话题标签名 |
+| 字段         | 类型             | 说明                                  |
+| ------------ | ---------------- | ------------------------------------- |
+| `awemeId`    | string           | 作品 ID                               |
+| `desc`       | string           | 文案                                  |
+| `createTime` | number           | 发布时间，**Unix 秒**                 |
+| `duration`   | number \| null   | 时长（毫秒），图文为 null             |
+| `awemeType`  | number \| null   | 0 = 视频，其它值为图文                |
+| `cover`      | string \| null   | 封面图地址                            |
+| `videoUrl`   | string \| null   | 无水印播放地址，图文为 null           |
+| `images`     | string[] \| null | 图文的图片地址，视频为 null           |
+| `author`     | object           | `{ secUid, nickname, uid, uniqueId }` |
+| `stats`      | object           | `{ digg, comment, collect, share }`   |
+| `hashtags`   | string[]         | 话题标签名                            |
 
 ::: warning 没有 cookie 时字段会变少
 没配 cookie 时会回落到移动端分享页，那条路拿不到 `hashtags`、`uniqueId`、`awemeType`，
@@ -341,11 +341,15 @@ api.log(`${user.nickname}（${user.uniqueId}）粉丝 ${user.followerCount}`)
 ### api.douyin.userVideos()
 
 ```ts
-api.douyin.userVideos(secUid: string, limit?: number): Promise<CollectedAweme[]>
+api.douyin.userVideos(
+  secUid: string,
+  limit?: number,
+  options?: PagingOptions
+): Promise<CollectedAweme[]>
 ```
 
 从抖音拉作者的作品列表，**不入库**。`limit` 是条数上限，不传或传 0 会一直翻到最后一页——
-大号作品上千条时记得设个上限。
+大号作品上千条时记得设个上限。`options` 见下方[翻页选项](#翻页选项)。
 
 ```js
 // 只看最近 20 条
@@ -375,7 +379,7 @@ else api.log('识别不了这条链接：' + text)
 ### api.douyin.collects()
 
 ```ts
-api.douyin.collects(): Promise<{ id: string; name: string; total: number }[]>
+api.douyin.collects(options?: PagingOptions): Promise<{ id: string; name: string; total: number }[]>
 ```
 
 收藏夹列表。`total` 是该收藏夹里的作品数。
@@ -383,7 +387,10 @@ api.douyin.collects(): Promise<{ id: string; name: string; total: number }[]>
 ### api.douyin.collectsVideos()
 
 ```ts
-api.douyin.collectsVideos(collectsId: string): Promise<CollectedAweme[]>
+api.douyin.collectsVideos(
+  collectsId: string,
+  options?: PagingOptions
+): Promise<CollectedAweme[]>
 ```
 
 指定收藏夹里的全部作品，会一直翻到最后一页。
@@ -391,10 +398,39 @@ api.douyin.collectsVideos(collectsId: string): Promise<CollectedAweme[]>
 ### api.douyin.collectionVideos()
 
 ```ts
-api.douyin.collectionVideos(): Promise<CollectedAweme[]>
+api.douyin.collectionVideos(options?: PagingOptions): Promise<CollectedAweme[]>
 ```
 
 「收藏」里的全部作品，包含没有归入任何收藏夹的。
+
+### 翻页选项
+
+```ts
+interface PagingOptions {
+  /** 两次翻页请求之间的等待（毫秒），省略时为 1500 */
+  intervalMs?: number
+}
+```
+
+`userVideos` / `collects` / `collectsVideos` / `collectionVideos` 都会自己翻页，
+每页 20 条（抖音的硬上限），每翻一页默认等 **1.5 秒**。
+
+条目多的时候这段等待很显眼：184 条要翻 10 页，光间隔就是 13.5 秒，而且翻页过程中
+不会有任何日志输出，看起来很像卡住了。嫌慢就把间隔调小：
+
+```js
+// 默认 1.5 秒 → 0.5 秒，10 页省下约 9 秒
+const items = await api.douyin.collectionVideos({ intervalMs: 500 })
+```
+
+::: warning 代价是风控
+翻页间隔就是用来躲风控的。调小抓得快，但连续请求更容易被抖音拦；
+传 `0` 表示完全不等待，只建议在小数据量上临时用。
+非法值（负数、`NaN` 等）会回落到默认的 1500。
+:::
+
+注意 `intervalMs` 只影响**抓取阶段**的翻页等待，和脚本自己在处理每个作品之间
+写的 `await api.sleep(...)` 是两回事。
 
 `CollectedAweme` 是作品列表类接口（`userVideos` / `collectsVideos` / `collectionVideos`）
 共用的摘要形状：
@@ -522,22 +558,22 @@ if (!api.shell.allowed) {
 
 `ShellResult`：
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `ok` | boolean | 退出码是否为 0 |
-| `code` | number \| null | 退出码；被信号杀掉时为 null |
-| `stdout` / `stderr` | string | 完整输出，各自上限 5 MB，超出会截断并在面板提示 |
-| `signal` | string \| null | 被信号终止时的信号名 |
+| 字段                | 类型           | 说明                                            |
+| ------------------- | -------------- | ----------------------------------------------- |
+| `ok`                | boolean        | 退出码是否为 0                                  |
+| `code`              | number \| null | 退出码；被信号杀掉时为 null                     |
+| `stdout` / `stderr` | string         | 完整输出，各自上限 5 MB，超出会截断并在面板提示 |
+| `signal`            | string \| null | 被信号终止时的信号名                            |
 
 `ShellOptions`：
 
-| 字段 | 默认 | 说明 |
-| --- | --- | --- |
-| `cwd` | 脚本目录 | 工作目录 |
-| `env` | — | 追加的环境变量，与应用环境合并 |
-| `input` | — | 写入 stdin 的内容 |
-| `timeout` | 0（不限） | 超时毫秒数，到点杀进程并抛错 |
-| `log` | false | 把 stdout / stderr 按行实时推到运行面板 |
+| 字段      | 默认      | 说明                                    |
+| --------- | --------- | --------------------------------------- |
+| `cwd`     | 脚本目录  | 工作目录                                |
+| `env`     | —         | 追加的环境变量，与应用环境合并          |
+| `input`   | —         | 写入 stdin 的内容                       |
+| `timeout` | 0（不限） | 超时毫秒数，到点杀进程并抛错            |
+| `log`     | false     | 把 stdout / stderr 按行实时推到运行面板 |
 
 长任务建议开 `log: true`，否则输出要等命令结束才能看到：
 

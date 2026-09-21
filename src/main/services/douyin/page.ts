@@ -48,11 +48,18 @@ interface PageResponse {
   data: Record<string, unknown> | null
   /** 非 JSON 时的原文，用于报错 */
   text: string | null
+  /** 响应头，只在排查失败时打出来 */
+  headers: Record<string, string>
 }
 
 let win: BrowserWindow | null = null
 /** 从页面已发请求里抠出的业务参数（device_platform / browser_* / os_* 等） */
 let bizParams: string | null = null
+/**
+ * 页面请求里的 uifid。它属于 PAGE_OWNED_PARAMS，页面内请求不需要我们填；
+ * 记下来是给直连请求用的（见 user-post.ts）。设备级的值，关窗不清。
+ */
+let pageUifid: string | null = null
 /** 串行化，避免并发 executeJavaScript 互相干扰 */
 let queue: Promise<unknown> = Promise.resolve()
 let idleTimer: NodeJS.Timeout | null = null
@@ -109,7 +116,9 @@ async function injectCookies(ses: Session): Promise<number> {
  * 做法是等页面自己发一次接口请求，从它的 URL 里抄参数——这样不管抖音以后加了什么
  * 新的业务参数，我们都会跟着带上，不用手工维护一张表。
  */
-async function readBizParams(target: BrowserWindow): Promise<string> {
+async function readBizParams(
+  target: BrowserWindow
+): Promise<{ params: string; uifid: string | null }> {
   const script = `
     (() => {
       const url = performance.getEntriesByType('resource')
@@ -121,10 +130,11 @@ async function readBizParams(target: BrowserWindow): Promise<string> {
       const kept = []
       for (const [key, value] of query.entries()) {
         if (skip.includes(key)) continue
-        if (key === 'cursor' || key === 'count' || key === 'sec_user_id') continue
+        // 分页与目标参数由调用方传，这里不能抄过来，否则同名参数出现两次
+        if (['cursor', 'max_cursor', 'count', 'sec_user_id'].includes(key)) continue
         kept.push(key + '=' + encodeURIComponent(value))
       }
-      return kept.join('&')
+      return JSON.stringify({ params: kept.join('&'), uifid: query.get('uifid') })
     })()
   `
   const deadline = Date.now() + SAMPLE_TIMEOUT_MS
@@ -133,7 +143,7 @@ async function readBizParams(target: BrowserWindow): Promise<string> {
     const found = (await target.webContents.executeJavaScript(script).catch(() => null)) as
       | string
       | null
-    if (found) return found
+    if (found) return JSON.parse(found) as { params: string; uifid: string | null }
     await new Promise((resolve) => setTimeout(resolve, SAMPLE_POLL_MS))
   }
   throw new Error('抖音页面未发出可取样的请求，可能是 Cookie 已失效，请重新登录')
@@ -174,7 +184,10 @@ async function ensurePage(): Promise<BrowserWindow> {
   win = created
 
   try {
-    bizParams = await readBizParams(created)
+    const sampled = await readBizParams(created)
+    bizParams = sampled.params
+    if (sampled.uifid) pageUifid = sampled.uifid
+    console.log(`[DouyinPage] 页面就绪，采样到 uifid: ${sampled.uifid ? '有' : '无'}`)
   } catch (error) {
     closePage()
     throw error
@@ -212,7 +225,9 @@ async function requestInPage(
       const text = await response.text()
       let data = null
       try { data = JSON.parse(text) } catch (error) { data = null }
-      return { ok: response.ok, status: response.status, data, text: data ? null : text.slice(0, 200) }
+      const headers = {}
+      response.headers.forEach((value, key) => { headers[key] = value })
+      return { ok: response.ok, status: response.status, data, text: data ? null : text.slice(0, 200), headers }
     })()
   `
   return (await target.webContents.executeJavaScript(script)) as PageResponse
@@ -224,6 +239,17 @@ function serialize<T>(task: () => Promise<T>): Promise<T> {
   // 失败不能让后续任务一起挂掉，所以这里吞掉链上的错误（调用方仍拿得到）
   queue = run.catch(() => undefined)
   return run
+}
+
+/**
+ * 取页面请求里的 uifid，必要时先把页面开起来。
+ * 与页面请求共用串行队列，不会和 fetchGuarded 抢 executeJavaScript。
+ */
+export async function getPageUifid(): Promise<string | null> {
+  return serialize(async () => {
+    await ensurePage()
+    return pageUifid
+  })
 }
 
 /**
@@ -239,10 +265,16 @@ export async function fetchGuarded(
     const response = await requestInPage(path, params, method)
 
     if (!response.data) {
+      console.log('[DouyinPage] 非 JSON 响应:', {
+        path,
+        http: response.status,
+        headers: response.headers,
+        body: response.text || '（空）'
+      })
       const hint = response.text?.includes('ArgusSecurityPlugin')
         ? '（接口被抖音安全策略拦截）'
         : ''
-      throw new Error(`抖音接口返回异常 ${response.status}${hint}：${response.text ?? '空响应'}`)
+      throw new Error(`抖音接口返回异常 ${response.status}${hint}：${response.text || '空响应'}`)
     }
 
     const statusCode = Number(response.data.status_code ?? 0)

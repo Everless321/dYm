@@ -196,6 +196,15 @@ export interface CollectedAweme {
   createTime: number
 }
 
+/** 作品列表类接口的翻页选项 */
+export interface PagingOptions {
+  /**
+   * 两次翻页请求之间的等待（毫秒），省略时用内置的 1500。
+   * 调小能加快抓取，但连续请求更容易触发抖音风控；0 表示完全不等待。
+   */
+  intervalMs?: number
+}
+
 /** 单个作品的详细信息 */
 export interface DouyinVideoInfo {
   awemeId: string
@@ -372,6 +381,9 @@ export interface ScriptApi {
   /**
    * 抖音只读接口，走应用里配置的 cookie 与签名。
    * 收藏相关接口没有用户参数，抖音按 cookie 判断「我」是谁，拿到的都是登录账号自己的数据。
+   *
+   * 列表类接口会自己翻页，每翻一页默认等 1.5 秒；
+   * 嫌慢可以传 `{ intervalMs }` 调小，代价是更容易触发风控。
    */
   douyin: {
     /** 当前 cookie 对应的登录账号 */
@@ -381,15 +393,19 @@ export interface ScriptApi {
     /** 查作者资料，入参可以是主页链接或 sec_uid */
     user: (urlOrSecUid: string) => Promise<DouyinUserInfo>
     /** 拉作者的作品列表；不传 limit 会一直翻到最后一页 */
-    userVideos: (secUid: string, limit?: number) => Promise<CollectedAweme[]>
+    userVideos: (
+      secUid: string,
+      limit?: number,
+      options?: PagingOptions
+    ) => Promise<CollectedAweme[]>
     /** 识别抖音链接是主页还是作品，支持短链 */
     parseUrl: (url: string) => Promise<DouyinLink>
     /** 收藏夹列表 */
-    collects: () => Promise<DouyinCollect[]>
+    collects: (options?: PagingOptions) => Promise<DouyinCollect[]>
     /** 指定收藏夹里的全部作品 */
-    collectsVideos: (collectsId: string) => Promise<CollectedAweme[]>
+    collectsVideos: (collectsId: string, options?: PagingOptions) => Promise<CollectedAweme[]>
     /** 「收藏」里的全部作品（含未归入收藏夹的） */
-    collectionVideos: () => Promise<CollectedAweme[]>
+    collectionVideos: (options?: PagingOptions) => Promise<CollectedAweme[]>
   }
 
   /**

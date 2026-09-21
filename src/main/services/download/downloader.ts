@@ -6,7 +6,6 @@ import { promisify } from 'util'
 import { ffmpegPath } from '../../utils/ffmpeg-path'
 
 const execFileAsync = promisify(execFile)
-import { DouyinHandler } from 'polydl'
 import { DouyinDownloader } from 'polydl'
 import {
   getTaskById,
@@ -21,6 +20,8 @@ import { validateDownloadFolder, cleanupFailedDownload, expectsMusic } from './v
 import { emitPostDownloaded } from '../scripts/emit'
 import { track } from '../telemetry'
 import { getDownloadPath } from '../media'
+import { diagnoseUserPost } from '../douyin/client'
+import { fetchUserPostPages } from '../douyin/user-post'
 import { runWithConcurrency } from '../../utils/concurrency'
 
 /** 下载任务触发来源：手动点开始 / 定时调度 */
@@ -258,7 +259,6 @@ async function downloadUserVideos(
   })
 
   try {
-    const handler = new DouyinHandler({ cookie })
     const downloader = new DouyinDownloader({
       cookie,
       downloadPath: userPath,
@@ -289,10 +289,18 @@ async function downloadUserVideos(
     }
     const videosToDownload: VideoToDownload[] = []
 
-    for await (const postFilter of handler.fetchUserPostVideos(user.sec_uid, { maxCounts })) {
-      // 风控 / 未登录时抖音返回 status_code≠0 且 aweme_list 为空的合法 JSON，
-      // polydl 不会抛错；不检查就会被当成「无新作品」并更新 last_sync_at
-      if (postFilter.statusCode !== null && postFilter.statusCode !== 0) {
+    // 直连优先，被 Argus 拦（403「Uifid Not Found」）时自动补 uifid 或改走页面上下文
+    for await (const postFilter of fetchUserPostPages(user.sec_uid, { maxCounts })) {
+      // 风控时抖音有两种返回，polydl 都不会抛错，不检查就会被当成「无新作品」并更新 last_sync_at：
+      // - HTTP 403 + 非 JSON 响应体：解析不出 status_code，statusCode 为 null
+      // - status_code≠0 且 aweme_list 为空的合法 JSON
+      if (postFilter.statusCode === null) {
+        const detail = await diagnoseUserPost(user.sec_uid)
+        throw new Error(
+          `抖音接口没有返回有效 JSON（${detail}），多半是被风控拦截，请重新登录后重试`
+        )
+      }
+      if (postFilter.statusCode !== 0) {
         throw new Error(
           `抖音接口返回 status_code=${postFilter.statusCode}，通常是 Cookie 失效或触发风控，请重新登录后重试`
         )

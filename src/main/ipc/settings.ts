@@ -4,7 +4,8 @@ import { getSetting, setSetting, getAllSettings } from '../database'
 import {
   fetchDouyinCookie,
   refreshDouyinCookieSilent,
-  isCookieRefreshing
+  isCookieRefreshing,
+  resetLoginBrowser
 } from '../services/douyin/cookie'
 import { refreshDouyinHandler } from '../services/douyin/client'
 
@@ -34,6 +35,7 @@ export function registerSettingsIpc(): void {
     return cookie
   })
   ipcMain.handle('cookie:isRefreshing', () => isCookieRefreshing())
+  ipcMain.handle('cookie:resetBrowser', () => resetLoginBrowser())
 
   // Download path IPC handler
   ipcMain.handle('settings:getDefaultDownloadPath', () => {

@@ -14,6 +14,7 @@ import type {
   DouyinLink,
   DouyinUserInfo,
   DouyinVideoInfo,
+  PagingOptions,
   ScriptApi
 } from './types'
 
@@ -24,8 +25,8 @@ import type {
  * 所以那部分拿到的一律是当前登录账号自己的数据。
  */
 
-/** 翻页之间的间隔，连续请求容易触发风控 */
-const PAGE_INTERVAL_MS = 1500
+/** 翻页之间的默认间隔，连续请求容易触发风控；脚本可按接口用 options.intervalMs 覆盖 */
+const DEFAULT_PAGE_INTERVAL_MS = 1500
 
 /** 受 Argus 保护、必须在页面上下文里请求的三个接口 */
 const COLLECTS_PATH = '/aweme/v1/web/collects/list/'
@@ -56,6 +57,17 @@ function requireHandler(): NonNullable<ReturnType<typeof getDouyinHandler>> {
     throw new Error('未配置抖音 Cookie，请先在「设置 - 账号」里登录后再运行')
   }
   return handler
+}
+
+/**
+ * 解析脚本传进来的翻页间隔。
+ * 脚本是用户自己写的，值可能是任何东西：非有限数一律回落到默认值，负数按 0 处理。
+ * 允许 0（完全不等待），风控风险由脚本作者自己承担。
+ */
+function resolveInterval(options?: PagingOptions): number {
+  const ms = options?.intervalMs
+  if (ms === undefined) return DEFAULT_PAGE_INTERVAL_MS
+  return Number.isFinite(ms) ? Math.max(0, ms) : DEFAULT_PAGE_INTERVAL_MS
 }
 
 /** 收藏、收藏夹作品、作者作品列表返回的都是 aweme_list，抽取逻辑共用 */
@@ -167,14 +179,15 @@ export function createDouyinApi(
   async function drain<P extends { toRaw: () => Record<string, unknown> }, T>(
     pages: AsyncGenerator<P, void, unknown>,
     take: (raw: Record<string, unknown>) => T[],
-    limit = 0
+    limit = 0,
+    intervalMs = DEFAULT_PAGE_INTERVAL_MS
   ): Promise<T[]> {
     const out: T[] = []
     for await (const page of pages) {
       throwIfCancelled()
       out.push(...take(page.toRaw()))
       if (limit > 0 && out.length >= limit) return out.slice(0, limit)
-      await sleep(PAGE_INTERVAL_MS)
+      await sleep(intervalMs)
     }
     return out
   }
@@ -187,7 +200,8 @@ export function createDouyinApi(
     path: string,
     extraParams: Record<string, string | number>,
     method: 'GET' | 'POST',
-    take: (raw: Record<string, unknown>) => T[]
+    take: (raw: Record<string, unknown>) => T[],
+    intervalMs = DEFAULT_PAGE_INTERVAL_MS
   ): Promise<T[]> {
     const out: T[] = []
     let cursor = 0
@@ -207,7 +221,7 @@ export function createDouyinApi(
       usedCursors.add(next)
       cursor = next
 
-      await sleep(PAGE_INTERVAL_MS)
+      await sleep(intervalMs)
     }
 
     return out
@@ -236,11 +250,16 @@ export function createDouyinApi(
       return toUserInfo(profile as UserProfileFilter)
     },
 
-    userVideos: async (secUid: string, limit = 0): Promise<CollectedAweme[]> =>
+    userVideos: async (
+      secUid: string,
+      limit = 0,
+      options?: PagingOptions
+    ): Promise<CollectedAweme[]> =>
       drain(
         requireHandler().fetchUserPostVideos(secUid.trim(), { interval: 0 }),
         toCollectedAwemes,
-        limit
+        limit,
+        resolveInterval(options)
       ),
 
     parseUrl: async (url: string): Promise<DouyinLink> => {
@@ -250,22 +269,36 @@ export function createDouyinApi(
 
     // 下面三个走页面上下文：它们被抖音 ArgusSecurityPlugin 保护，直连必定 403，
     // 详见 ../douyin-page.ts
-    collects: async (): Promise<DouyinCollect[]> =>
-      drainPage(COLLECTS_PATH, {}, 'GET', (raw) =>
-        ((raw.collects_list ?? []) as RawCollect[])
-          .filter((item) => item.collects_id)
-          .map((item) => ({
-            id: String(item.collects_id),
-            name: item.collects_name ?? '',
-            total: item.total_number ?? 0
-          }))
+    collects: async (options?: PagingOptions): Promise<DouyinCollect[]> =>
+      drainPage(
+        COLLECTS_PATH,
+        {},
+        'GET',
+        (raw) =>
+          ((raw.collects_list ?? []) as RawCollect[])
+            .filter((item) => item.collects_id)
+            .map((item) => ({
+              id: String(item.collects_id),
+              name: item.collects_name ?? '',
+              total: item.total_number ?? 0
+            })),
+        resolveInterval(options)
       ),
 
-    collectsVideos: async (collectsId: string): Promise<CollectedAweme[]> =>
-      drainPage(COLLECTS_VIDEO_PATH, { collects_id: collectsId }, 'GET', toCollectedAwemes),
+    collectsVideos: async (
+      collectsId: string,
+      options?: PagingOptions
+    ): Promise<CollectedAweme[]> =>
+      drainPage(
+        COLLECTS_VIDEO_PATH,
+        { collects_id: collectsId },
+        'GET',
+        toCollectedAwemes,
+        resolveInterval(options)
+      ),
 
     // listcollection 只认 POST，用 GET 会返回 404 Unsupported path(Janus)
-    collectionVideos: async (): Promise<CollectedAweme[]> =>
-      drainPage(COLLECTION_PATH, {}, 'POST', toCollectedAwemes)
+    collectionVideos: async (options?: PagingOptions): Promise<CollectedAweme[]> =>
+      drainPage(COLLECTION_PATH, {}, 'POST', toCollectedAwemes, resolveInterval(options))
   }
 }
