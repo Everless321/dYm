@@ -55,7 +55,7 @@ let win: BrowserWindow | null = null
 let bizParams: string | null = null
 /**
  * 页面请求里的 uifid。它属于 PAGE_OWNED_PARAMS，页面内请求不需要我们填；
- * 记下来是给直连请求用的（见 uifid.ts）。设备级的值，关窗不清。
+ * 记下来是给直连请求用的（见 user-post.ts）。设备级的值，关窗不清。
  */
 let pageUifid: string | null = null
 /** 串行化，避免并发 executeJavaScript 互相干扰 */

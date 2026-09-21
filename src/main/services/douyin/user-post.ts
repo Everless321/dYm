@@ -1,14 +1,13 @@
 import { DouyinCrawler, UserPostFilter } from 'polydl'
 import { getSetting } from '../../database'
 import { fetchGuarded, getPageUifid } from './page'
-import { currentUifid, setDirectUifid } from './uifid'
 
 /**
  * 翻作者作品列表：直连优先，被拦了再退。
  *
  * 多数会话 polydl 直连就能拿到，最快；被抖音加强管控的会话会被 ArgusSecurityPlugin
  * 以 HTTP 403「Uifid Not Found」拦下（polydl 不抛错，statusCode 为 null）。这时：
- * 1. 从页面请求里采 uifid，补进直连再试一次——通了就继续直连；
+ * 1. 从页面请求里采 uifid，经 polydl 的 setUifid 补进直连再试一次——通了就继续直连；
  * 2. 仍不通就改在页面上下文里请求（fetchGuarded，uifid 等参数由页面补），
  *    并对这个会话记住，后面不再白白试直连。
  *
@@ -33,6 +32,11 @@ type Route = 'direct' | 'page'
 /** 按会话记住走哪条路；换了 Cookie（重新登录）就重新从直连试起 */
 let remembered: { session: string; route: Route } | null = null
 let crawler: { cookie: string; instance: DouyinCrawler } | null = null
+/**
+ * 页面请求里采到的 uifid。polydl 默认用 Cookie 里的 UIFID，
+ * 有采样值时用 setUifid 覆盖（设备级，换 Cookie 也沿用）。
+ */
+let sampledUifid: string | null = null
 
 function currentCookie(): string {
   return getSetting('douyin_cookie') ?? ''
@@ -46,13 +50,19 @@ function routeFor(cookie: string): Route {
   return remembered?.session === sessionOf(cookie) ? remembered.route : 'direct'
 }
 
+function cookieUifid(cookie: string): string | null {
+  return cookie.match(/(?:^|;\s*)UIFID=([^;]+)/)?.[1] ?? null
+}
+
 function remember(cookie: string, route: Route): void {
   remembered = { session: sessionOf(cookie), route }
 }
 
 /** 同一份 Cookie 复用一个 crawler，省掉重复取 msToken */
 function crawlerFor(cookie: string): DouyinCrawler {
-  if (crawler?.cookie !== cookie) crawler = { cookie, instance: new DouyinCrawler({ cookie }) }
+  if (crawler?.cookie !== cookie) {
+    crawler = { cookie, instance: new DouyinCrawler({ cookie, uifid: sampledUifid ?? undefined }) }
+  }
   return crawler.instance
 }
 
@@ -104,10 +114,11 @@ async function fetchOnePage(
     }
 
     // 被拦：补上页面里的 uifid 再直连一次
-    const hadUifid = currentUifid()
+    const hadUifid = sampledUifid ?? cookieUifid(cookie)
     const uifid = await getPageUifid().catch(() => null)
     if (uifid && uifid !== hadUifid) {
-      setDirectUifid(uifid)
+      sampledUifid = uifid
+      crawlerFor(cookie).setUifid(uifid)
       const retried = await fetchDirect(cookie, secUserId, cursor, count)
       if (retried) {
         console.log(`[UserPost] 直连补 uifid 后可用，继续直连 cursor=${cursor} ${elapsed()}`)
