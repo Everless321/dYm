@@ -14,7 +14,7 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "start": "electron-vite preview",
     "ffmpeg:fetch": "node scripts/download-ffmpeg.mjs",
-    "dev": "npm run ffmpeg:fetch && electron-vite dev",
+    "dev": "node scripts/console-utf8.mjs && npm run ffmpeg:fetch && electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run ffmpeg:fetch && npm run build && electron-builder --dir",

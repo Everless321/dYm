@@ -1,5 +1,3 @@
-// 必须是第一个 import：Windows 下先把控制台切到 UTF-8，再让其他模块打日志
-import './utils/console-encoding'
 import {
   app,
   shell,
