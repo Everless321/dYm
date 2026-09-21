@@ -121,7 +121,8 @@ async function readBizParams(target: BrowserWindow): Promise<string> {
       const kept = []
       for (const [key, value] of query.entries()) {
         if (skip.includes(key)) continue
-        if (key === 'cursor' || key === 'count' || key === 'sec_user_id') continue
+        // 分页与目标参数由调用方传，这里不能抄过来，否则同名参数出现两次
+        if (['cursor', 'max_cursor', 'count', 'sec_user_id'].includes(key)) continue
         kept.push(key + '=' + encodeURIComponent(value))
       }
       return kept.join('&')

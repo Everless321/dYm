@@ -6,7 +6,6 @@ import { promisify } from 'util'
 import { ffmpegPath } from '../../utils/ffmpeg-path'
 
 const execFileAsync = promisify(execFile)
-import { DouyinHandler } from 'polydl'
 import { DouyinDownloader } from 'polydl'
 import {
   getTaskById,
@@ -22,6 +21,7 @@ import { emitPostDownloaded } from '../scripts/emit'
 import { track } from '../telemetry'
 import { getDownloadPath } from '../media'
 import { diagnoseUserPost } from '../douyin/client'
+import { fetchUserPostPagesInPage } from '../douyin/user-post'
 import { runWithConcurrency } from '../../utils/concurrency'
 
 /** 下载任务触发来源：手动点开始 / 定时调度 */
@@ -259,7 +259,6 @@ async function downloadUserVideos(
   })
 
   try {
-    const handler = new DouyinHandler({ cookie })
     const downloader = new DouyinDownloader({
       cookie,
       downloadPath: userPath,
@@ -290,7 +289,8 @@ async function downloadUserVideos(
     }
     const videosToDownload: VideoToDownload[] = []
 
-    for await (const postFilter of handler.fetchUserPostVideos(user.sec_uid, { maxCounts })) {
+    // 作品列表被 Argus 保护，直连 403「Uifid Not Found」，改在页面上下文里翻
+    for await (const postFilter of fetchUserPostPagesInPage(user.sec_uid, { maxCounts })) {
       // 风控时抖音有两种返回，polydl 都不会抛错，不检查就会被当成「无新作品」并更新 last_sync_at：
       // - HTTP 403 + 非 JSON 响应体：解析不出 status_code，statusCode 为 null
       // - status_code≠0 且 aweme_list 为空的合法 JSON

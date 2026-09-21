@@ -1,6 +1,6 @@
 import { BrowserWindow } from 'electron'
 import { join } from 'path'
-import { DouyinHandler, DouyinDownloader } from 'polydl'
+import { DouyinDownloader } from 'polydl'
 import {
   getUserById,
   getSetting,
@@ -14,6 +14,7 @@ import { emitPostDownloaded } from '../scripts/emit'
 import { track } from '../telemetry'
 import { getDownloadPath } from '../media'
 import { diagnoseUserPost } from '../douyin/client'
+import { fetchUserPostPagesInPage } from '../douyin/user-post'
 
 /** 同步触发来源：手动 / 定时调度 */
 export type SyncSource = 'manual' | 'schedule'
@@ -109,8 +110,6 @@ export async function startUserSync(
       message: `正在获取 ${user.nickname} 的作品列表...`
     })
 
-    console.log(`[Syncer] Creating DouyinHandler`)
-    const handler = new DouyinHandler({ cookie })
     const downloader = new DouyinDownloader({
       cookie,
       downloadPath: userPath,
@@ -142,7 +141,8 @@ export async function startUserSync(
     const videosToDownload: VideoToDownload[] = []
 
     console.log(`[Syncer] Starting to fetch videos for ${user.nickname}`)
-    for await (const postFilter of handler.fetchUserPostVideos(user.sec_uid, { maxCounts })) {
+    // 作品列表被 Argus 保护，直连 403「Uifid Not Found」，改在页面上下文里翻
+    for await (const postFilter of fetchUserPostPagesInPage(user.sec_uid, { maxCounts })) {
       if (syncState?.abort) break
       // 风控时抖音有两种返回，polydl 都不会抛错，不检查就会被当成「无新作品」并更新 last_sync_at：
       // - HTTP 403 + 非 JSON 响应体：解析不出 status_code，statusCode 为 null
