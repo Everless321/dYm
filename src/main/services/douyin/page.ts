@@ -53,6 +53,11 @@ interface PageResponse {
 let win: BrowserWindow | null = null
 /** 从页面已发请求里抠出的业务参数（device_platform / browser_* / os_* 等） */
 let bizParams: string | null = null
+/**
+ * 页面请求里的 uifid。它属于 PAGE_OWNED_PARAMS，页面内请求不需要我们填；
+ * 记下来是给直连请求用的（见 uifid.ts）。设备级的值，关窗不清。
+ */
+let pageUifid: string | null = null
 /** 串行化，避免并发 executeJavaScript 互相干扰 */
 let queue: Promise<unknown> = Promise.resolve()
 let idleTimer: NodeJS.Timeout | null = null
@@ -109,7 +114,9 @@ async function injectCookies(ses: Session): Promise<number> {
  * 做法是等页面自己发一次接口请求，从它的 URL 里抄参数——这样不管抖音以后加了什么
  * 新的业务参数，我们都会跟着带上，不用手工维护一张表。
  */
-async function readBizParams(target: BrowserWindow): Promise<string> {
+async function readBizParams(
+  target: BrowserWindow
+): Promise<{ params: string; uifid: string | null }> {
   const script = `
     (() => {
       const url = performance.getEntriesByType('resource')
@@ -125,7 +132,7 @@ async function readBizParams(target: BrowserWindow): Promise<string> {
         if (['cursor', 'max_cursor', 'count', 'sec_user_id'].includes(key)) continue
         kept.push(key + '=' + encodeURIComponent(value))
       }
-      return kept.join('&')
+      return JSON.stringify({ params: kept.join('&'), uifid: query.get('uifid') })
     })()
   `
   const deadline = Date.now() + SAMPLE_TIMEOUT_MS
@@ -134,7 +141,7 @@ async function readBizParams(target: BrowserWindow): Promise<string> {
     const found = (await target.webContents.executeJavaScript(script).catch(() => null)) as
       | string
       | null
-    if (found) return found
+    if (found) return JSON.parse(found) as { params: string; uifid: string | null }
     await new Promise((resolve) => setTimeout(resolve, SAMPLE_POLL_MS))
   }
   throw new Error('抖音页面未发出可取样的请求，可能是 Cookie 已失效，请重新登录')
@@ -175,7 +182,10 @@ async function ensurePage(): Promise<BrowserWindow> {
   win = created
 
   try {
-    bizParams = await readBizParams(created)
+    const sampled = await readBizParams(created)
+    bizParams = sampled.params
+    if (sampled.uifid) pageUifid = sampled.uifid
+    console.log(`[DouyinPage] 页面就绪，采样到 uifid: ${sampled.uifid ? '有' : '无'}`)
   } catch (error) {
     closePage()
     throw error
@@ -225,6 +235,17 @@ function serialize<T>(task: () => Promise<T>): Promise<T> {
   // 失败不能让后续任务一起挂掉，所以这里吞掉链上的错误（调用方仍拿得到）
   queue = run.catch(() => undefined)
   return run
+}
+
+/**
+ * 取页面请求里的 uifid，必要时先把页面开起来。
+ * 与页面请求共用串行队列，不会和 fetchGuarded 抢 executeJavaScript。
+ */
+export async function getPageUifid(): Promise<string | null> {
+  return serialize(async () => {
+    await ensurePage()
+    return pageUifid
+  })
 }
 
 /**

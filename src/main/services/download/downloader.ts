@@ -21,7 +21,7 @@ import { emitPostDownloaded } from '../scripts/emit'
 import { track } from '../telemetry'
 import { getDownloadPath } from '../media'
 import { diagnoseUserPost } from '../douyin/client'
-import { fetchUserPostPagesInPage } from '../douyin/user-post'
+import { fetchUserPostPages } from '../douyin/user-post'
 import { runWithConcurrency } from '../../utils/concurrency'
 
 /** 下载任务触发来源：手动点开始 / 定时调度 */
@@ -289,8 +289,8 @@ async function downloadUserVideos(
     }
     const videosToDownload: VideoToDownload[] = []
 
-    // 作品列表被 Argus 保护，直连 403「Uifid Not Found」，改在页面上下文里翻
-    for await (const postFilter of fetchUserPostPagesInPage(user.sec_uid, { maxCounts })) {
+    // 直连优先，被 Argus 拦（403「Uifid Not Found」）时自动补 uifid 或改走页面上下文
+    for await (const postFilter of fetchUserPostPages(user.sec_uid, { maxCounts })) {
       // 风控时抖音有两种返回，polydl 都不会抛错，不检查就会被当成「无新作品」并更新 last_sync_at：
       // - HTTP 403 + 非 JSON 响应体：解析不出 status_code，statusCode 为 null
       // - status_code≠0 且 aweme_list 为空的合法 JSON

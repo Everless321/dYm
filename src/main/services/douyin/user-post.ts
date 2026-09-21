@@ -1,16 +1,18 @@
-import { UserPostFilter } from 'polydl'
-import { fetchGuarded } from './page'
+import { DouyinCrawler, UserPostFilter } from 'polydl'
+import { getSetting } from '../../database'
+import { fetchGuarded, getPageUifid } from './page'
+import { currentUifid, setDirectUifid } from './uifid'
 
 /**
- * 在页面上下文里翻作者作品列表。
+ * 翻作者作品列表：直连优先，被拦了再退。
  *
- * 作品列表接口进了抖音 ArgusSecurityPlugin 的保护名单：polydl 直连会被
- * HTTP 403「Blocked by ArgusSecurityPlugin Uifid Not Found」拦下——请求里缺 uifid，
- * 而 uifid / a_bogus / msToken 这些参数只有页面里的 secsdk 才补得上。
- * 与收藏接口同样的做法，交给 fetchGuarded 在真实抖音页面里发。
+ * 多数会话 polydl 直连就能拿到，最快；被抖音加强管控的会话会被 ArgusSecurityPlugin
+ * 以 HTTP 403「Uifid Not Found」拦下（polydl 不抛错，statusCode 为 null）。这时：
+ * 1. 从页面请求里采 uifid，补进直连再试一次——通了就继续直连；
+ * 2. 仍不通就改在页面上下文里请求（fetchGuarded，uifid 等参数由页面补），
+ *    并对这个会话记住，后面不再白白试直连。
  *
- * 每页用 polydl 同一个 UserPostFilter 包装，行为对齐 handler.fetchUserPostVideos，
- * 调用方只换数据源，下游逻辑不动。
+ * 每页都是 polydl 的 UserPostFilter，翻页语义与默认值对齐 handler.fetchUserPostVideos。
  */
 
 const USER_POST_PATH = '/aweme/v1/web/aweme/post/'
@@ -26,7 +28,106 @@ export interface UserPostPageOptions {
   interval?: number
 }
 
-export async function* fetchUserPostPagesInPage(
+type Route = 'direct' | 'page'
+
+/** 按会话记住走哪条路；换了 Cookie（重新登录）就重新从直连试起 */
+let remembered: { session: string; route: Route } | null = null
+let crawler: { cookie: string; instance: DouyinCrawler } | null = null
+
+function currentCookie(): string {
+  return getSetting('douyin_cookie') ?? ''
+}
+
+function sessionOf(cookie: string): string {
+  return cookie.match(/(?:^|;\s*)sessionid=([^;]+)/)?.[1] ?? ''
+}
+
+function routeFor(cookie: string): Route {
+  return remembered?.session === sessionOf(cookie) ? remembered.route : 'direct'
+}
+
+function remember(cookie: string, route: Route): void {
+  remembered = { session: sessionOf(cookie), route }
+}
+
+/** 同一份 Cookie 复用一个 crawler，省掉重复取 msToken */
+function crawlerFor(cookie: string): DouyinCrawler {
+  if (crawler?.cookie !== cookie) crawler = { cookie, instance: new DouyinCrawler({ cookie }) }
+  return crawler.instance
+}
+
+async function fetchDirect(
+  cookie: string,
+  secUserId: string,
+  cursor: number,
+  count: number
+): Promise<UserPostFilter | null> {
+  try {
+    const res = await crawlerFor(cookie).fetchUserPost(secUserId, cursor, count)
+    const page = new UserPostFilter(res.data as Record<string, unknown>)
+    // null = 非 JSON（被 Argus 拦）；status_code≠0 的风控 JSON 原样交给调用方报错
+    return page.statusCode === null ? null : page
+  } catch (error) {
+    // 空响应体等 polydl 重试后仍失败，同样当作直连不可用
+    console.warn('[UserPost] 直连请求失败:', (error as Error).message)
+    return null
+  }
+}
+
+async function fetchViaPage(
+  secUserId: string,
+  cursor: number,
+  count: number
+): Promise<UserPostFilter> {
+  const raw = await fetchGuarded(USER_POST_PATH, {
+    sec_user_id: secUserId,
+    max_cursor: cursor,
+    count
+  })
+  return new UserPostFilter(raw)
+}
+
+async function fetchOnePage(
+  secUserId: string,
+  cursor: number,
+  count: number
+): Promise<UserPostFilter> {
+  const cookie = currentCookie()
+  const startedAt = Date.now()
+  const elapsed = (): string => `${Date.now() - startedAt}ms`
+
+  if (routeFor(cookie) === 'direct') {
+    const direct = await fetchDirect(cookie, secUserId, cursor, count)
+    if (direct) {
+      console.log(`[UserPost] 直连 cursor=${cursor} ${elapsed()}`)
+      return direct
+    }
+
+    // 被拦：补上页面里的 uifid 再直连一次
+    const hadUifid = currentUifid()
+    const uifid = await getPageUifid().catch(() => null)
+    if (uifid && uifid !== hadUifid) {
+      setDirectUifid(uifid)
+      const retried = await fetchDirect(cookie, secUserId, cursor, count)
+      if (retried) {
+        console.log(`[UserPost] 直连补 uifid 后可用，继续直连 cursor=${cursor} ${elapsed()}`)
+        remember(cookie, 'direct')
+        return retried
+      }
+    }
+
+    console.log(
+      `[UserPost] 直连被拦（uifid: ${uifid ? '已补仍不行' : '页面里没采到'}），本会话改走页面上下文`
+    )
+    remember(cookie, 'page')
+  }
+
+  const page = await fetchViaPage(secUserId, cursor, count)
+  console.log(`[UserPost] 页面 cursor=${cursor} ${elapsed()}`)
+  return page
+}
+
+export async function* fetchUserPostPages(
   secUserId: string,
   { maxCounts = 0, interval = DEFAULT_INTERVAL_MS }: UserPostPageOptions = {}
 ): AsyncGenerator<UserPostFilter, void, unknown> {
@@ -36,12 +137,7 @@ export async function* fetchUserPostPagesInPage(
 
   while (true) {
     const count = cap === Infinity ? PAGE_SIZE : Math.min(PAGE_SIZE, cap - collected)
-    const raw = await fetchGuarded(USER_POST_PATH, {
-      sec_user_id: secUserId,
-      max_cursor: cursor,
-      count
-    })
-    const page = new UserPostFilter(raw)
+    const page = await fetchOnePage(secUserId, cursor, count)
     yield page
 
     if (!page.hasMore) return
