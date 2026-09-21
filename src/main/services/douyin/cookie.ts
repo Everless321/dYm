@@ -15,6 +15,17 @@ const MIN_REFRESH_INTERVAL = 30000 // 最小刷新间隔 30 秒
 const LOGIN_COOKIE_NAMES = new Set(['sessionid', 'sessionid_ss', 'sid_tt', 'sid_guard'])
 
 /**
+ * 读出浏览器访问 www.douyin.com 时实际会带的全部 Cookie。
+ *
+ * 不能用 `{ domain: '.douyin.com' }`：它只返回挂在 .douyin.com 上的，漏掉 www.douyin.com
+ * 的 host-only Cookie——其中的 s_v_web_id 是 verifyFp / fp 的来源，缺了它 detail 等接口会被
+ * ArgusSecurityPlugin 判「Signature Not Found」；fpk1 / fpk2 / web_sign_token 等指纹 Cookie 也会一并丢失。
+ */
+function readDouyinCookies(ses: Electron.Session): Promise<Electron.Cookie[]> {
+  return ses.cookies.get({ url: 'https://www.douyin.com' })
+}
+
+/**
  * 打开浏览器窗口让用户登录获取 Cookie（手动模式）
  */
 export async function fetchDouyinCookie(): Promise<string> {
@@ -27,7 +38,7 @@ export async function fetchDouyinCookie(): Promise<string> {
   // 分区里没有登录态（首次使用 / 已登出）：这次登录 = 换一台「新机器」——
   // 生成候选指纹先用在登录窗口上，把旧指纹下发的 ttwid / s_v_web_id 等匿名 cookie 清掉，
   // 登录成功后候选指纹与新 Cookie 一起落库；没登录就关窗则候选作废，继续沿用旧指纹。
-  const existing = await ses.cookies.get({ domain: '.douyin.com' })
+  const existing = await readDouyinCookies(ses)
   const alreadyLoggedIn = existing.some((c) => LOGIN_COOKIE_NAMES.has(c.name))
   const candidate = alreadyLoggedIn ? null : createMachineProfile()
   if (candidate) await ses.clearStorageData({ storages: ['cookies'] })
@@ -52,7 +63,7 @@ export async function fetchDouyinCookie(): Promise<string> {
 
     win.on('closed', async () => {
       try {
-        const cookies = await ses.cookies.get({ domain: '.douyin.com' })
+        const cookies = await readDouyinCookies(ses)
         const cookieString = cookies.map((c) => `${c.name}=${c.value}`).join('; ')
 
         // 没登录就关窗时也有 ttwid / __ac_nonce 这类匿名 cookie，字符串非空；
@@ -139,7 +150,7 @@ export async function refreshDouyinCookieSilent(): Promise<string> {
       await new Promise((r) => setTimeout(r, 3000))
 
       try {
-        const cookies = await ses.cookies.get({ domain: '.douyin.com' })
+        const cookies = await readDouyinCookies(ses)
         const cookieString = cookies.map((c) => `${c.name}=${c.value}`).join('; ')
 
         // 分区里没有会话（从未登录 / 已登出）时只会拿到匿名 cookie，不能拿它覆盖有效的 Cookie
