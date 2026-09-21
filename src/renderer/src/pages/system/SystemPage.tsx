@@ -12,7 +12,8 @@ import {
   FolderOpen,
   Database,
   X,
-  Sparkles
+  Sparkles,
+  RotateCcw
 } from 'lucide-react'
 import { emitDeveloperModeChange } from '@/lib/developer-mode'
 
@@ -20,6 +21,7 @@ export default function SystemPage() {
   // Cookie
   const [cookie, setCookie] = useState('')
   const [fetchingCookie, setFetchingCookie] = useState(false)
+  const [resettingBrowser, setResettingBrowser] = useState(false)
 
   // 下载
   const [downloadPath, setDownloadPath] = useState('')
@@ -173,6 +175,26 @@ export default function SystemPage() {
       toast.success('Cookie 已保存')
     } catch {
       toast.error('保存失败')
+    }
+  }
+
+  const handleResetBrowser = async (): Promise<void> => {
+    if (
+      !window.confirm(
+        '复位登录浏览器？\n\n会清空登录窗口里的抖音会话、缓存和已保存的 Cookie，之后需要重新扫码登录。\n适用于账号被风控、重新登录也换不掉旧会话的情况。'
+      )
+    ) {
+      return
+    }
+    setResettingBrowser(true)
+    try {
+      await window.api.cookie.resetBrowser()
+      setCookie('')
+      toast.success('已复位，请点击「从浏览器获取」重新登录')
+    } catch (error) {
+      toast.error(`复位失败：${(error as Error).message}`)
+    } finally {
+      setResettingBrowser(false)
     }
   }
 
@@ -352,7 +374,20 @@ export default function SystemPage() {
                   rows={3}
                   className="w-full px-3 py-2 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono resize-none transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
                 />
-                <div className="flex justify-end">
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    onClick={handleResetBrowser}
+                    disabled={resettingBrowser || fetchingCookie}
+                    title="清空登录窗口的会话与缓存，下次登录换一个全新的会话"
+                    className="h-9 px-3 rounded-lg text-sm text-[#86868B] hover:text-[#FF3B30] hover:bg-[#FF3B30]/5 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {resettingBrowser ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-4 w-4" />
+                    )}
+                    浏览器复位
+                  </button>
                   <button
                     onClick={handleSaveCookie}
                     disabled={!settingsLoaded}

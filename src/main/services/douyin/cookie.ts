@@ -4,6 +4,7 @@ import { refreshDouyinHandler } from './client'
 import { blockCustomProtocols } from '../../utils/block-protocols'
 import { getBrowserUserAgent } from '../../utils/user-agent'
 import { commitDeviceProfile, createMachineProfile } from './device'
+import { closePage } from './page'
 import { userAgentOf } from 'polydl'
 
 // Cookie 刷新状态
@@ -182,6 +183,27 @@ export async function refreshDouyinCookieSilent(): Promise<string> {
 /**
  * 检查是否正在刷新
  */
+/**
+ * 浏览器复位：清空登录用的浏览器分区并清掉已保存的 Cookie。
+ *
+ * 分区里只要还留着会话，「从浏览器获取」就会沿用它、只把 Cookie 再导出一遍，
+ * 被风控的旧会话永远换不掉。复位后下次登录是一个干净的窗口，会重新扫码并换一份设备指纹。
+ * 已保存的 Cookie 也必须清：否则后台的抖音页面会把它重新注入分区，又回到「已登录」。
+ */
+export async function resetLoginBrowser(): Promise<void> {
+  if (isRefreshing) {
+    throw new Error('正在刷新 Cookie，请稍后再试')
+  }
+  closePage()
+  const ses = session.fromPartition('persist:douyin-login')
+  await ses.clearStorageData()
+  await ses.clearCache()
+  setSetting('douyin_cookie', '')
+  refreshDouyinHandler()
+  lastRefreshTime = 0
+  console.log('[Cookie] 已复位登录浏览器，需重新登录')
+}
+
 export function isCookieRefreshing(): boolean {
   return isRefreshing
 }
