@@ -88,12 +88,20 @@ async function injectCookies(ses: Session): Promise<number> {
   const raw = getSetting('douyin_cookie')
   if (!raw) throw new Error('未配置抖音 Cookie，请先在「设置 - 账号」里登录')
 
+  // 分区里已有同名 host-only Cookie（页面 JS 维护的 s_v_web_id、web_sign_token 等）时不再注入：
+  // 注入到 .douyin.com 会和它并存成两份，浏览器两份都发，值还可能不一致
+  const hostOnly = new Set(
+    (await ses.cookies.get({ url: 'https://www.douyin.com' }))
+      .filter((cookie) => cookie.hostOnly)
+      .map((cookie) => cookie.name)
+  )
+
   let count = 0
   for (const part of raw.split(';')) {
     const eq = part.indexOf('=')
     if (eq < 0) continue
     const name = part.slice(0, eq).trim()
-    if (!name) continue
+    if (!name || hostOnly.has(name)) continue
     try {
       await ses.cookies.set({
         url: 'https://www.douyin.com',
