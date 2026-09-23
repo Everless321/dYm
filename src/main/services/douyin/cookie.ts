@@ -1,10 +1,13 @@
 import { BrowserWindow, session } from 'electron'
+import { release } from 'os'
 import { setSetting } from '../../database'
 import { refreshDouyinHandler } from './client'
 import { blockCustomProtocols } from '../../utils/block-protocols'
 import { getBrowserUserAgent } from '../../utils/user-agent'
-import { commitDeviceProfile, createMachineProfile } from './device'
+import { applyClientHints, installClientHintHeaders } from './client-hints'
+import { commitDeviceProfile, createMachineProfile, getDeviceProfile } from './device'
 import { closePage } from './page'
+import { dedupeCookies } from './cookie-dedupe'
 import { userAgentOf } from 'polydl'
 
 // Cookie 刷新状态
@@ -15,14 +18,24 @@ const MIN_REFRESH_INTERVAL = 30000 // 最小刷新间隔 30 秒
 const LOGIN_COOKIE_NAMES = new Set(['sessionid', 'sessionid_ss', 'sid_tt', 'sid_guard'])
 
 /**
- * 读出浏览器访问 www.douyin.com 时实际会带的全部 Cookie。
+ * 读出浏览器访问 www.douyin.com 时实际会带的全部 Cookie（同名去重）。
  *
  * 不能用 `{ domain: '.douyin.com' }`：它只返回挂在 .douyin.com 上的，漏掉 www.douyin.com
  * 的 host-only Cookie——其中的 s_v_web_id 是 verifyFp / fp 的来源，缺了它 detail 等接口会被
  * ArgusSecurityPlugin 判「Signature Not Found」；fpk1 / fpk2 / web_sign_token 等指纹 Cookie 也会一并丢失。
+ *
+ * 被顶掉的 .douyin.com 副本顺手从分区删掉，已经积了重复的分区在下次导出时自愈。
  */
-function readDouyinCookies(ses: Electron.Session): Promise<Electron.Cookie[]> {
-  return ses.cookies.get({ url: 'https://www.douyin.com' })
+async function readDouyinCookies(ses: Electron.Session): Promise<Electron.Cookie[]> {
+  const { kept, shadowed } = dedupeCookies(await ses.cookies.get({ url: 'https://www.douyin.com' }))
+  for (const cookie of shadowed) {
+    if (cookie.domain !== '.douyin.com') continue
+    await ses.cookies.remove('https://douyin.com', cookie.name).catch(() => {})
+  }
+  if (shadowed.length > 0) {
+    console.log(`[Cookie] 清理重复 Cookie：${shadowed.map((c) => c.name).join(', ')}`)
+  }
+  return kept
 }
 
 /**
@@ -43,6 +56,7 @@ export async function fetchDouyinCookie(): Promise<string> {
   const candidate = alreadyLoggedIn ? null : createMachineProfile()
   if (candidate) await ses.clearStorageData({ storages: ['cookies'] })
   const userAgent = candidate ? userAgentOf(candidate) : getBrowserUserAgent()
+  installClientHintHeaders(ses, candidate ?? getDeviceProfile())
   console.log(`[Cookie] 打开登录窗口（${alreadyLoggedIn ? '沿用已有登录态与指纹' : '新指纹'}）`)
 
   return new Promise((resolve, reject) => {
@@ -58,6 +72,7 @@ export async function fetchDouyinCookie(): Promise<string> {
     })
 
     win.webContents.setUserAgent(userAgent)
+    applyClientHints(win.webContents, candidate ?? getDeviceProfile(), release())
     blockCustomProtocols(win)
     win.loadURL('https://www.douyin.com')
 
@@ -112,6 +127,7 @@ export async function refreshDouyinCookieSilent(): Promise<string> {
   return new Promise((resolve) => {
     const partition = 'persist:douyin-login'
     const ses = session.fromPartition(partition)
+    installClientHintHeaders(ses, getDeviceProfile())
 
     const win = new BrowserWindow({
       width: 1200,
@@ -186,6 +202,7 @@ export async function refreshDouyinCookieSilent(): Promise<string> {
     })
 
     win.webContents.setUserAgent(getBrowserUserAgent())
+    applyClientHints(win.webContents, getDeviceProfile(), release())
     blockCustomProtocols(win)
     win.loadURL('https://www.douyin.com')
   })

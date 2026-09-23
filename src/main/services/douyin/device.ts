@@ -46,6 +46,9 @@ function machineOptions(seed: string): CreateDeviceProfileOptions {
   }
   return {
     os: process.platform === 'darwin' ? 'mac' : 'windows',
+    // 报 Electron 真实内核版本，而不是最新 Chrome：页面 JS 能靠功能检测看出大致内核，
+    // UA 说 154、内核却是 142 会被 secsdk 当成伪造环境
+    browserMajor: Number(process.versions.chrome.split('.')[0]) || undefined,
     screen: screenSize,
     cpuCores: Math.max(2, Math.min(32, os.cpus().length || 8)),
     deviceMemory,

@@ -1,3 +1,5 @@
+// 必须是第一个 import：之后所有模块的 console 输出都会同时写进 <userData>/logs/main.log
+import './utils/main-log'
 import {
   app,
   shell,
