@@ -1,9 +1,11 @@
 import { BrowserWindow, session } from 'electron'
+import { release } from 'os'
 import { setSetting } from '../../database'
 import { refreshDouyinHandler } from './client'
 import { blockCustomProtocols } from '../../utils/block-protocols'
 import { getBrowserUserAgent } from '../../utils/user-agent'
-import { commitDeviceProfile, createMachineProfile } from './device'
+import { applyClientHints, installClientHintHeaders } from './client-hints'
+import { commitDeviceProfile, createMachineProfile, getDeviceProfile } from './device'
 import { closePage } from './page'
 import { dedupeCookies } from './cookie-dedupe'
 import { userAgentOf } from 'polydl'
@@ -54,6 +56,7 @@ export async function fetchDouyinCookie(): Promise<string> {
   const candidate = alreadyLoggedIn ? null : createMachineProfile()
   if (candidate) await ses.clearStorageData({ storages: ['cookies'] })
   const userAgent = candidate ? userAgentOf(candidate) : getBrowserUserAgent()
+  installClientHintHeaders(ses, candidate ?? getDeviceProfile())
   console.log(`[Cookie] 打开登录窗口（${alreadyLoggedIn ? '沿用已有登录态与指纹' : '新指纹'}）`)
 
   return new Promise((resolve, reject) => {
@@ -69,6 +72,7 @@ export async function fetchDouyinCookie(): Promise<string> {
     })
 
     win.webContents.setUserAgent(userAgent)
+    applyClientHints(win.webContents, candidate ?? getDeviceProfile(), release())
     blockCustomProtocols(win)
     win.loadURL('https://www.douyin.com')
 
@@ -123,6 +127,7 @@ export async function refreshDouyinCookieSilent(): Promise<string> {
   return new Promise((resolve) => {
     const partition = 'persist:douyin-login'
     const ses = session.fromPartition(partition)
+    installClientHintHeaders(ses, getDeviceProfile())
 
     const win = new BrowserWindow({
       width: 1200,
@@ -197,6 +202,7 @@ export async function refreshDouyinCookieSilent(): Promise<string> {
     })
 
     win.webContents.setUserAgent(getBrowserUserAgent())
+    applyClientHints(win.webContents, getDeviceProfile(), release())
     blockCustomProtocols(win)
     win.loadURL('https://www.douyin.com')
   })
