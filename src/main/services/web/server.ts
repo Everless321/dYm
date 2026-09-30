@@ -154,6 +154,8 @@ function createMediaToken(filePath: string): string {
 
 function buildMediaUrl(filePath?: string | null): string | null {
   if (!filePath) return null
+  // 已迁到对象存储的作品，findMediaFiles 直接给出 https 地址，浏览器自己去取
+  if (/^https?:\/\//.test(filePath)) return filePath
   return `/media?path=${encodeURIComponent(createMediaToken(filePath))}`
 }
 

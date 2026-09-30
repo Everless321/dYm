@@ -1,7 +1,7 @@
 import { join } from 'path'
 import { existsSync, readdirSync } from 'fs'
 import { copyFile, readFile } from 'fs/promises'
-import { getDownloadPath } from '../media'
+import { resolveMediaFolder } from '../storage/cache'
 import type { VisionImage } from './types'
 import type { AnalysisWindow } from './plan'
 import { makeTempDir, removeTempDir, runFfmpeg } from './ffmpeg'
@@ -17,21 +17,10 @@ export interface FrameSet {
   mosaic: boolean
 }
 
+/** 本地目录有原文件就用本地；本地已清理则用从对象存储取回的缓存目录（先调 ensureLocalMedia） */
 export function findMediaFolder(secUid: string, folderName: string): string | null {
-  const basePath = join(getDownloadPath(), secUid)
-  if (!existsSync(basePath)) return null
-  const exactPath = join(basePath, folderName)
-  if (existsSync(exactPath)) return exactPath
-  try {
-    for (const folder of readdirSync(basePath)) {
-      if (folder.endsWith(folderName) || folder.includes(`_${folderName}`)) {
-        return join(basePath, folder)
-      }
-    }
-  } catch {
-    return null
-  }
-  return null
+  const awemeId = /(\d{8,})$/.exec(folderName)?.[1] ?? folderName
+  return resolveMediaFolder(secUid, folderName, awemeId)
 }
 
 export function findVideoFile(post: { sec_uid: string; folder_name: string }): string {

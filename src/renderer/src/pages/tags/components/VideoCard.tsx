@@ -1,7 +1,7 @@
 import { memo, useMemo } from 'react'
 import { Play, Tag, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getMergedTags, parseTags } from '@/lib/utils'
+import { getMergedTags, parseTags, toMediaSrc } from '@/lib/utils'
 
 interface VideoCardProps {
   post: DbPost
@@ -47,7 +47,7 @@ export const VideoCard = memo(function VideoCard({
       >
         {cover ? (
           <img
-            src={`local://file${cover}`}
+            src={toMediaSrc(cover)}
             loading="lazy"
             decoding="async"
             className="w-full h-full object-cover"

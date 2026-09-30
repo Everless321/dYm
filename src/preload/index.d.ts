@@ -15,6 +15,14 @@ import type {
   CreateAnalysisJobInput
 } from '../shared/ai'
 import type { PostAnalysisDetail } from '../shared/analysis'
+import type {
+  MigrationStatus,
+  PrunePreview,
+  StorageConfigInput,
+  StorageConfigView,
+  StorageQueueStats,
+  StorageTestResult
+} from '../shared/storage'
 
 declare global {
   interface DatabaseAPI {
@@ -791,6 +799,19 @@ declare global {
     getContentLevelDistribution: () => Promise<LevelDistItem[]>
   }
 
+  interface StorageAPI {
+    getConfig: () => Promise<StorageConfigView>
+    saveConfig: (input: StorageConfigInput) => Promise<StorageConfigView>
+    test: () => Promise<StorageTestResult>
+    getStats: () => Promise<StorageQueueStats>
+    enqueueAll: () => Promise<number>
+    retryFailed: () => Promise<number>
+    getMigrationStatus: () => Promise<MigrationStatus>
+    startVerify: () => Promise<void>
+    previewPrune: (fraction: number) => Promise<PrunePreview>
+    startPrune: (fraction: number) => Promise<void>
+  }
+
   interface API {
     db: DatabaseAPI
     settings: SettingsAPI
@@ -816,6 +837,7 @@ declare global {
     files: FilesAPI
     dashboard: DashboardAPI
     scripts: ScriptsAPI
+    storage: StorageAPI
   }
 
   interface Window {

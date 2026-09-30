@@ -16,6 +16,7 @@ import {
   RotateCcw
 } from 'lucide-react'
 import { emitDeveloperModeChange } from '@/lib/developer-mode'
+import { StorageSettingsCard } from './StorageSettingsCard'
 
 export default function SystemPage() {
   // Cookie
@@ -723,6 +724,10 @@ export default function SystemPage() {
               </button>
             </div>
           </div>
+        </Section>
+
+        <Section eyebrow="存储" title="对象存储">
+          <StorageSettingsCard />
         </Section>
 
         <Section eyebrow="系统" title="版本与安全">

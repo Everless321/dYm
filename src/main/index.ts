@@ -24,6 +24,7 @@ import {
   resetStaleTaskStatus,
   migrateTagsFromJsonColumns
 } from './database'
+import { initStorageUploader } from './services/storage/uploader'
 import { initDouyinHandler } from './services/douyin/client'
 import {
   blockCustomProtocols,
@@ -373,6 +374,8 @@ async function bootstrap(): Promise<void> {
   migrateTagsFromJsonColumns()
   migrateLegacyProviderSettings()
   initAnalysisQueue()
+  // 对象存储：恢复未完成的上传，新下载的作品自动入队
+  initStorageUploader()
 
   // 初始化抖音客户端
   initDouyinHandler()

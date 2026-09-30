@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import { getDatabase } from './connection'
 import { initAiSchema } from './ai-schema'
+import { initStorageSchema } from './storage'
 import { ANALYSIS_DEFAULTS } from '../../shared/ai'
 
 /**
@@ -136,6 +137,9 @@ export function initDatabase(): void {
   ensureColumn(database, 'posts', 'width', 'INTEGER')
   ensureColumn(database, 'posts', 'height', 'INTEGER')
   ensureColumn(database, 'posts', 'has_audio', 'INTEGER')
+  // 对象存储：null 未上云 / synced 已上云 / cloud_only 本地已清理
+  ensureColumn(database, 'posts', 'storage_state', 'TEXT')
+  ensureColumn(database, 'posts', 'storage_synced_at', 'INTEGER')
 
   // posts 表索引
   database.exec(`CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id)`)
@@ -206,6 +210,7 @@ export function initDatabase(): void {
   `)
 
   initAiSchema(database)
+  initStorageSchema(database)
 
   // 初始化默认设置
   const defaultSettings = [

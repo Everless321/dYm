@@ -34,7 +34,7 @@ import { MediaViewer } from '@/components/media/MediaViewer'
 import { VideoDownloadDialog } from '@/components/media/VideoDownloadDialog'
 import { SortSelect } from '@/components/common/SortSelect'
 import { getInitialSort } from '@/lib/post-sort'
-import { getMergedTags } from '@/lib/utils'
+import { getMergedTags, toMediaSrc } from '@/lib/utils'
 import { AddTagsDialog } from '@/pages/tags/AddTagsDialog'
 import { formatPostDate } from '@/lib/format'
 
@@ -369,7 +369,7 @@ export default function BrowsePage() {
   const getCoverUrl = (post: DbPost) => {
     const path = coverPaths[post.aweme_id]
     if (!path) return null
-    return `local://file${path}`
+    return toMediaSrc(path)
   }
 
   const handlePostClick = useCallback((post: DbPost) => {

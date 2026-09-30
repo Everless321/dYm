@@ -10,7 +10,7 @@ import {
   VolumeX,
   Download
 } from 'lucide-react'
-import { getMergedTags } from '@/lib/utils'
+import { getMergedTags, toMediaSrc } from '@/lib/utils'
 
 // xgplayer 体积大，只在真正播放视频时才加载
 const VideoPlayer = lazy(() => import('./VideoPlayer').then((m) => ({ default: m.VideoPlayer })))
@@ -275,8 +275,8 @@ export function MediaViewer({
                   (currentImageVideo ? (
                     <video
                       key={currentImageVideo}
-                      src={`local://file${currentImageVideo}`}
-                      poster={`local://file${images[currentIndex]}`}
+                      src={toMediaSrc(currentImageVideo)}
+                      poster={toMediaSrc(images[currentIndex])}
                       className="max-w-full max-h-full object-contain"
                       autoPlay
                       loop
@@ -285,7 +285,7 @@ export function MediaViewer({
                     />
                   ) : (
                     <img
-                      src={`local://file${images[currentIndex]}`}
+                      src={toMediaSrc(images[currentIndex])}
                       alt={`Image ${currentIndex + 1}`}
                       className="max-w-full max-h-full object-contain"
                     />
@@ -321,7 +321,7 @@ export function MediaViewer({
                 )}
                 {media.music && (
                   <>
-                    <audio ref={audioRef} src={`local://file${media.music}`} loop muted={isMuted} />
+                    <audio ref={audioRef} src={toMediaSrc(media.music)} loop muted={isMuted} />
                     <button
                       className="absolute bottom-4 right-4 w-8 h-8 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center text-white transition-colors"
                       onClick={() => {
@@ -342,7 +342,7 @@ export function MediaViewer({
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
                 }
               >
-                <VideoPlayer url={`local://file${media.video}`} className="w-full h-full" />
+                <VideoPlayer url={toMediaSrc(media.video)} className="w-full h-full" />
               </Suspense>
             ) : (
               <div className="text-white text-center">
@@ -446,7 +446,7 @@ export function MediaViewer({
                     <div className="w-[70px] h-[70px] rounded-lg bg-[#F2F2F4] overflow-hidden flex-shrink-0">
                       {recommendCovers.get(rec.id) ? (
                         <img
-                          src={`local://file${recommendCovers.get(rec.id)}`}
+                          src={toMediaSrc(recommendCovers.get(rec.id)!)}
                           alt=""
                           className="w-full h-full object-cover"
                         />

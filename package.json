@@ -12,6 +12,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "test": "vitest run",
     "start": "electron-vite preview",
     "ffmpeg:fetch": "node scripts/download-ffmpeg.mjs",
     "dev": "node scripts/console-utf8.mjs && npm run ffmpeg:fetch && electron-vite dev",
@@ -65,6 +66,8 @@
     "xgplayer": "^3.0.26"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1142.0",
+    "@aws-sdk/s3-request-presigner": "^3.1142.0",
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",
     "@electron-toolkit/eslint-config-ts": "^3.1.0",
     "@electron-toolkit/tsconfig": "^2.0.0",
@@ -94,6 +97,7 @@
     "typescript": "^5.9.3",
     "vite": "^7.2.6",
     "vitepress": "^1.6.4",
+    "vitest": "^3.2.7",
     "wrangler": "^4.123.0"
   }
 }

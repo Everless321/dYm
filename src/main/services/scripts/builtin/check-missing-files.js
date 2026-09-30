@@ -12,8 +12,10 @@ exports.meta = {
 }
 
 exports.run = async (api) => {
+  // 已上传到对象存储的作品本地被清理是正常的，不算失效
   const posts = api.db.query(
-    'SELECT id, aweme_id, sec_uid, nickname, folder_name FROM posts ORDER BY id'
+    `SELECT id, aweme_id, sec_uid, nickname, folder_name FROM posts
+     WHERE aweme_id NOT IN (SELECT aweme_id FROM post_objects) ORDER BY id`
   )
 
   api.log(`共 ${posts.length} 条作品记录，开始比对本地文件夹…`)

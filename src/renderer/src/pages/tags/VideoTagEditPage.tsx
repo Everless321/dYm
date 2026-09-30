@@ -15,7 +15,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MediaViewer } from '@/components/media/MediaViewer'
-import { parseTags } from '@/lib/utils'
+import { parseTags, toMediaSrc } from '@/lib/utils'
 import { PageHeader, BackLink } from '@/components/layout/PageHeader'
 import { parseTagFilters, stripNavMarkers } from './filters'
 import { AnalysisDetailCard } from './components/AnalysisDetailCard'
@@ -277,7 +277,7 @@ export default function VideoTagEditPage(): React.JSX.Element {
               onClick={() => setViewerOpen(true)}
             >
               {cover ? (
-                <img src={`local://file${cover}`} className="w-full h-full object-cover" alt="" />
+                <img src={toMediaSrc(cover)} className="w-full h-full object-cover" alt="" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-white/40">
                   无封面

@@ -2,6 +2,14 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
+  MigrationStatus,
+  PrunePreview,
+  StorageConfigInput,
+  StorageConfigView,
+  StorageQueueStats,
+  StorageTestResult
+} from '../shared/storage'
+import type {
   AiModelInfo,
   AiProviderInput,
   AiProviderView,
@@ -435,6 +443,23 @@ const scriptsAPI = {
   }
 }
 
+const storageAPI = {
+  getConfig: (): Promise<StorageConfigView> => ipcRenderer.invoke('storage:getConfig'),
+  saveConfig: (input: StorageConfigInput): Promise<StorageConfigView> =>
+    ipcRenderer.invoke('storage:saveConfig', input),
+  test: (): Promise<StorageTestResult> => ipcRenderer.invoke('storage:test'),
+  getStats: (): Promise<StorageQueueStats> => ipcRenderer.invoke('storage:getStats'),
+  enqueueAll: (): Promise<number> => ipcRenderer.invoke('storage:enqueueAll'),
+  retryFailed: (): Promise<number> => ipcRenderer.invoke('storage:retryFailed'),
+  getMigrationStatus: (): Promise<MigrationStatus> =>
+    ipcRenderer.invoke('storage:getMigrationStatus'),
+  startVerify: (): Promise<void> => ipcRenderer.invoke('storage:startVerify'),
+  previewPrune: (fraction: number): Promise<PrunePreview> =>
+    ipcRenderer.invoke('storage:previewPrune', fraction),
+  startPrune: (fraction: number): Promise<void> =>
+    ipcRenderer.invoke('storage:startPrune', fraction)
+}
+
 const api = {
   db: dbAPI,
   settings: settingsAPI,
@@ -459,7 +484,8 @@ const api = {
   clipboard: clipboardAPI,
   files: filesAPI,
   dashboard: dashboardAPI,
-  scripts: scriptsAPI
+  scripts: scriptsAPI,
+  storage: storageAPI
 }
 
 if (process.contextIsolated) {

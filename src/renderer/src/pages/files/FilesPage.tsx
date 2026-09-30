@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/context-menu'
 import { MediaViewer } from '@/components/media/MediaViewer'
 import { formatBytes, formatPostDate } from '@/lib/format'
+import { toMediaSrc } from '@/lib/utils'
 
 const IMAGE_AWEME_TYPE = 68
 const PAGE_SIZE = 50
@@ -507,7 +508,7 @@ export default function FilesPage() {
 
   const getCoverUrl = (post: DbPost) => {
     const path = coverPaths[post.aweme_id]
-    return path ? `local://file${path}` : null
+    return path ? toMediaSrc(path) : null
   }
 
   const handleScanBroken = async () => {

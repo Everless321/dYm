@@ -16,9 +16,11 @@ import {
   batchReplacePaths,
   getPostsByUserIdAll,
   deletePostByAwemeId,
+  getAwemeIdsWithCloudCopy,
   type PostFilters,
   type PostSortConfig
 } from '../database'
+import { deleteCloudCopy, forgetCloudCopy } from '../services/storage/lifecycle'
 import { findCoverFile, findMediaFiles, getDownloadPath } from '../services/media'
 import { assertFolderName, assertSecUid } from '../utils/path-segment'
 import { checkPostFileIntegrity, cleanupFailedDownload } from '../services/download/validator'
@@ -143,6 +145,7 @@ export function registerPostIpc(): void {
       const folderPath = join(getDownloadPath(), post.sec_uid, post.folder_name)
       await rm(folderPath, { recursive: true, force: true })
     }
+    await deleteCloudCopy(post.aweme_id)
     deletePost(postId)
     return true
   })
@@ -159,6 +162,9 @@ export function registerPostIpc(): void {
         }
       }
     }
+    for (const post of getPostsByUserIdAll(userId)) {
+      await deleteCloudCopy(post.aweme_id)
+    }
     return deletePostsByUserId(userId)
   })
 
@@ -173,10 +179,13 @@ export function registerPostIpc(): void {
       reason: string
     }[] = []
 
+    // 有云端副本的作品本地缺文件是正常的（已清理），不算损坏，否则「批量重下」会把它们全删了重下
+    const withCloudCopy = getAwemeIdsWithCloudCopy()
     const users = getAllUsers()
     for (const user of users) {
       const posts = getPostsByUserIdAll(user.id)
       for (const post of posts) {
+        if (withCloudCopy.has(post.aweme_id)) continue
         const folderPath = join(downloadPath, user.sec_uid, post.folder_name)
         const { valid, reason } = checkPostFileIntegrity(folderPath, post.aweme_type)
         if (!valid) {
@@ -196,6 +205,7 @@ export function registerPostIpc(): void {
   ipcMain.handle('post:redownload', async (_event, awemeId: string) => {
     const post = deletePostByAwemeId(awemeId)
     if (!post) throw new Error('作品记录不存在')
+    await forgetCloudCopy(awemeId)
 
     if (post.video_path) {
       cleanupFailedDownload(post.video_path)
@@ -222,6 +232,7 @@ export function registerPostIpc(): void {
           failed++
           continue
         }
+        await forgetCloudCopy(awemeId)
 
         if (post.video_path) {
           cleanupFailedDownload(post.video_path)

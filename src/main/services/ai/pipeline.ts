@@ -18,6 +18,7 @@ import type { RateLimiter } from './rate-limit'
 import { probeMedia } from './ffmpeg'
 import { planAnalysis, type AnalysisPlan, type AnalysisWindow, type PlanOptions } from './plan'
 import { extractWindowFrames, findVideoFile, loadGalleryImages, type FrameSet } from './frames'
+import { ensureLocalMedia } from '../storage/cache'
 import {
   transcribeWindow,
   transcriptText,
@@ -181,6 +182,9 @@ export async function analyzePost(post: DbPost, options: PipelineOptions): Promi
   }
 
   // ---- 图集：没有时间轴，直接单次理解 ----
+  // 本地已清理到只剩封面的作品，先从对象存储取回原文件到缓存
+  await ensureLocalMedia(post)
+
   if (post.aweme_type === 68) {
     options.onStage?.('frames')
     const images = await loadGalleryImages(post, options.plan.framesShort)

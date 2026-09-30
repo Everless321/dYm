@@ -14,6 +14,13 @@ export function getAvatarUrl(user: { avatar?: string; avatar_path?: string }): s
   return user.avatar || undefined
 }
 
+/**
+ * 媒体地址：本地路径走 local:// 协议；已迁到对象存储的作品主进程直接给 https 地址，原样使用。
+ */
+export function toMediaSrc(path: string): string {
+  return /^https?:\/\//.test(path) ? path : `local://file${path}`
+}
+
 /** 解析标签 JSON 字符串，容错：失败返回 [] */
 export function parseTags(s: string | null | undefined): string[] {
   if (!s) return []
