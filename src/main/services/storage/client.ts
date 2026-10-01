@@ -11,6 +11,11 @@ const UPLOAD_URL_TTL = 3600
 const MIN_UPLOAD_TIMEOUT_MS = 120_000
 const WORST_CASE_BYTES_PER_MS = 100
 
+/** 上传超时：按最差 100 KB/s 估算、至少 2 分钟。必须取整，AbortSignal.timeout 遇到小数会直接抛错 */
+export function uploadTimeoutMs(size: number): number {
+  return Math.ceil(Math.max(MIN_UPLOAD_TIMEOUT_MS, size / WORST_CASE_BYTES_PER_MS))
+}
+
 function presignNow(
   config: StorageConfig,
   method: 'PUT' | 'HEAD' | 'GET' | 'DELETE',
@@ -116,7 +121,7 @@ export async function putObject(
     body: Readable.toWeb(createReadStream(obj.path)) as ReadableStream,
     // Node fetch 流式请求体必须声明 half duplex
     duplex: 'half',
-    signal: AbortSignal.timeout(Math.max(MIN_UPLOAD_TIMEOUT_MS, obj.size / WORST_CASE_BYTES_PER_MS))
+    signal: AbortSignal.timeout(uploadTimeoutMs(obj.size))
   } as RequestInit)
   if (!res.ok) {
     throw new Error(
