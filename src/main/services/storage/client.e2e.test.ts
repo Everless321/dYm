@@ -4,6 +4,7 @@
  *   STORAGE_E2E_ENV=/path/to/r2.env npx vitest run src/main/services/storage/client.e2e.test.ts
  *
  * r2.env 格式：R2_ENDPOINT= / R2_ACCESS_KEY_ID= / R2_SECRET_ACCESS_KEY= / R2_BUCKET=
+ * 可选 STORAGE_E2E_RELAY_URL / STORAGE_E2E_RELAY_TOKEN：经上传中转写入。
  * 只写 _dym-selftest/ 前缀，结束时删除。
  */
 import { afterAll, describe, expect, it } from 'vitest'
@@ -50,7 +51,13 @@ function loadConfig(path: string): StorageConfig {
       secretAccessKey: env.R2_SECRET_ACCESS_KEY
     },
     publicBaseUrl: '',
-    relay: null,
+    // 可选：STORAGE_E2E_RELAY_URL / STORAGE_E2E_RELAY_TOKEN 给了就经中转上传
+    relay: process.env.STORAGE_E2E_RELAY_URL
+      ? {
+          url: process.env.STORAGE_E2E_RELAY_URL,
+          token: process.env.STORAGE_E2E_RELAY_TOKEN ?? ''
+        }
+      : null,
     concurrency: 1,
     localPolicy: 'keep',
     graceDays: 0,
