@@ -5,6 +5,7 @@ import type { LocalObject, ObjectStore } from './sync-post'
 import { MAX_ATTEMPTS } from './sync-post'
 import { alignedSigningWindow, presignUrl } from './sigv4'
 import type { StorageTestResult } from '../../../shared/storage'
+import { describeNetworkError } from '../../utils/network-error'
 
 const UPLOAD_URL_TTL = 3600
 // 家宽上行按 100 KB/s 兜底估算超时，最少 2 分钟，避免大文件被误判超时、小文件又挂太久
@@ -31,6 +32,15 @@ function presignNow(
   })
 }
 
+/** fetch 本身抛错（网络层）时，把「fetch failed」展开成具体原因，并标明是哪一步 */
+async function send(label: string, url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init)
+  } catch (error) {
+    throw new Error(`${label} 失败：${describeNetworkError(error)}`)
+  }
+}
+
 async function describeFailure(res: Response): Promise<string> {
   const body = await res.text().catch(() => '')
   const code = /<Code>([^<]+)<\/Code>/.exec(body)?.[1]
@@ -38,7 +48,7 @@ async function describeFailure(res: Response): Promise<string> {
 }
 
 export async function headObject(config: StorageConfig, key: string): Promise<number | null> {
-  const res = await fetch(presignNow(config, 'HEAD', key), {
+  const res = await send(`HEAD ${key}`, presignNow(config, 'HEAD', key), {
     method: 'HEAD',
     signal: AbortSignal.timeout(30_000)
   })
@@ -68,7 +78,7 @@ export async function listObjects(
   do {
     const query: Record<string, string> = { 'list-type': '2', prefix }
     if (token) query['continuation-token'] = token
-    const res = await fetch(presignNow(config, 'GET', null, query), {
+    const res = await send(`列出 ${prefix}`, presignNow(config, 'GET', null, query), {
       signal: AbortSignal.timeout(30_000)
     })
     if (!res.ok) throw new Error(`列出 ${prefix} 失败：${await describeFailure(res)}`)
@@ -88,7 +98,7 @@ export async function listObjects(
 
 /** 删除对象；不存在也算成功（S3 语义本来就是幂等的） */
 export async function deleteObject(config: StorageConfig, key: string): Promise<void> {
-  const res = await fetch(presignNow(config, 'DELETE', key), {
+  const res = await send(`删除 ${key}`, presignNow(config, 'DELETE', key), {
     method: 'DELETE',
     signal: AbortSignal.timeout(30_000)
   })
@@ -115,7 +125,8 @@ export async function putObject(
   }
   if (viaRelay) headers.authorization = `Bearer ${config.relay!.token}`
 
-  const res = await fetch(url, {
+  const route = viaRelay ? `中转 ${config.relay!.url}` : '直连'
+  const res = await send(`PUT ${obj.key}（${route}）`, url, {
     method: 'PUT',
     headers,
     body: Readable.toWeb(createReadStream(obj.path)) as ReadableStream,
@@ -124,9 +135,7 @@ export async function putObject(
     signal: AbortSignal.timeout(uploadTimeoutMs(obj.size))
   } as RequestInit)
   if (!res.ok) {
-    throw new Error(
-      `${viaRelay ? 'relay' : 'direct'}: PUT ${obj.key} ${await describeFailure(res)}`
-    )
+    throw new Error(`PUT ${obj.key}（${route}）失败：${await describeFailure(res)}`)
   }
 }
 
@@ -150,7 +159,7 @@ export async function testStorageConnection(config: StorageConfig): Promise<Stor
     if (res.status === 404) return { ok: false, message: `bucket 不存在（${reason}）` }
     return { ok: false, message: `连接失败：${reason}` }
   } catch (error) {
-    return { ok: false, message: `无法连接 Endpoint：${(error as Error).message}` }
+    return { ok: false, message: `无法连接 Endpoint：${describeNetworkError(error)}` }
   }
 }
 

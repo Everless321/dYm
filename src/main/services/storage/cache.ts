@@ -5,6 +5,7 @@ import { join } from 'path'
 import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
 import { getPostObjects } from '../../database'
+import { describeNetworkError } from '../../utils/network-error'
 import { resolvePostFolder } from '../media'
 import { remoteObjectUrl } from './client'
 import { loadStorageConfig } from './config'
@@ -44,7 +45,12 @@ export function resolveMediaFolder(
 }
 
 async function download(url: string, dest: string): Promise<void> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(10 * 60_000) })
+  let res: Response
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(10 * 60_000) })
+  } catch (error) {
+    throw new Error(`下载 ${dest} 失败：${describeNetworkError(error)}`)
+  }
   if (!res.ok || !res.body) throw new Error(`下载 ${dest} 失败：HTTP ${res.status}`)
   const tmp = `${dest}.tmp`
   await pipeline(Readable.fromWeb(res.body as never), createWriteStream(tmp))
