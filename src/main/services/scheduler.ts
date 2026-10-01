@@ -6,6 +6,7 @@ import {
   getLiveRecordUsers,
   getScriptSchedules,
   getScriptSchedule,
+  getSetting,
   getUserById,
   getTaskById,
   updateTaskLastSyncAt,
@@ -21,6 +22,7 @@ import { isCollectSyncEnabled, getCollectCron, pullCollectedItems } from './down
 import { checkAndRecordUser, isRecordingLive, stopLiveRecording } from './live/recorder'
 import { runScript, isScriptRunning } from './scripts/runner'
 import { getScriptName } from './scripts/loader'
+import { SyncQueue } from './sync-queue'
 
 export interface SchedulerLog {
   timestamp: number
@@ -81,6 +83,69 @@ interface ScheduledDownloadTask {
 const scheduledUserTasks: Map<number, ScheduledUserTask> = new Map()
 const scheduledDownloadTasks: Map<number, ScheduledDownloadTask> = new Map()
 const scheduledLiveTasks: Map<number, ScheduledUserTask> = new Map()
+
+// 定时同步排队：到点的作者统一进队列，按并发数逐个跑，跑完间隔一段（±50% 抖动）再开下一个，
+// 避免同一整点的几十个作者同时请求抖音被风控
+const DEFAULT_SCHEDULE_CONCURRENCY = 1
+const MAX_SCHEDULE_CONCURRENCY = 5
+const DEFAULT_SCHEDULE_GAP_SECONDS = 15
+const MAX_SCHEDULE_GAP_SECONDS = 600
+
+function readIntSetting(key: string, fallback: number, min: number, max: number): number {
+  const raw = getSetting(key)
+  if (raw === null || raw.trim() === '') return fallback
+  const n = Math.trunc(Number(raw))
+  return Number.isFinite(n) ? Math.min(Math.max(n, min), max) : fallback
+}
+
+const userSyncQueue = new SyncQueue({
+  concurrency: () =>
+    readIntSetting(
+      'schedule_sync_concurrency',
+      DEFAULT_SCHEDULE_CONCURRENCY,
+      1,
+      MAX_SCHEDULE_CONCURRENCY
+    ),
+  gapMs: () =>
+    readIntSetting(
+      'schedule_sync_gap_seconds',
+      DEFAULT_SCHEDULE_GAP_SECONDS,
+      0,
+      MAX_SCHEDULE_GAP_SECONDS
+    ) * 1000,
+  run: async (userId) => {
+    // 排队期间作者可能被删除或关掉了自动同步，以执行时的最新状态为准
+    const user = getUserById(userId)
+    if (!user || !user.auto_sync) return
+    await executeUserSync(user)
+  }
+})
+
+function enqueueScheduledSync(user: DbUser): void {
+  if (isUserSyncing(user.id)) {
+    sendSchedulerLog({
+      level: 'warn',
+      message: '用户正在同步中，跳过',
+      type: 'user',
+      targetName: user.nickname
+    })
+    return
+  }
+  const ahead = userSyncQueue.pendingCount
+  if (!userSyncQueue.enqueue(user.id)) return // 已在队列里，本轮不重复排
+  if (ahead > 0) {
+    sendSchedulerLog({
+      level: 'info',
+      message: `到点，已加入同步队列（前面还有 ${ahead} 个）`,
+      type: 'user',
+      targetName: user.nickname
+    })
+  }
+}
+
+export function getUserSyncQueueSize(): number {
+  return userSyncQueue.pendingCount
+}
 
 function isValidCron(expression: string): boolean {
   return cron.validate(expression)
@@ -158,7 +223,7 @@ export function scheduleUser(user: DbUser): void {
   }
 
   const task = cron.schedule(user.sync_cron, () => {
-    executeUserSync(user)
+    enqueueScheduledSync(user)
   })
 
   scheduledUserTasks.set(user.id, { userId: user.id, task })
@@ -659,6 +724,7 @@ export function stopScheduler(): void {
     unscheduleScript(scriptId)
   }
   unscheduleCollectSync()
+  userSyncQueue.clear()
   sendSchedulerLog({ level: 'info', message: '所有定时任务已停止', type: 'system' })
 }
 

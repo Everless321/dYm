@@ -217,6 +217,9 @@ export function initDatabase(): void {
     { key: 'douyin_cookie', value: '' },
     { key: 'download_path', value: '' },
     { key: 'max_download_count', value: '50' },
+    // 定时同步排队：同时几个、每个之间隔多少秒（带 ±50% 抖动）
+    { key: 'schedule_sync_concurrency', value: '1' },
+    { key: 'schedule_sync_gap_seconds', value: '15' },
     { key: 'web_server_port', value: '38595' },
     // 分析相关设置（提供方 / 模型在 ai_providers 表里）
     { key: 'analysis_concurrency', value: String(ANALYSIS_DEFAULTS.concurrency) },

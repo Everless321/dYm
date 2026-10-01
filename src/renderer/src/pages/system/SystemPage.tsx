@@ -28,6 +28,8 @@ export default function SystemPage() {
   const [downloadPath, setDownloadPath] = useState('')
   const [maxDownloadCount, setMaxDownloadCount] = useState('0')
   const [videoDownloadConcurrency, setVideoDownloadConcurrency] = useState('3')
+  const [scheduleConcurrency, setScheduleConcurrency] = useState('1')
+  const [scheduleGapSeconds, setScheduleGapSeconds] = useState('15')
   const [convertToJpg, setConvertToJpg] = useState(false)
   const [downloadPostOnAddUser, setDownloadPostOnAddUser] = useState(true)
   const originalDownloadPath = useRef('')
@@ -101,6 +103,8 @@ export default function SystemPage() {
       originalDownloadPath.current = savedPath
       setMaxDownloadCount(settings.max_download_count || '0')
       setVideoDownloadConcurrency(settings.video_download_concurrency || '3')
+      setScheduleConcurrency(settings.schedule_sync_concurrency || '1')
+      setScheduleGapSeconds(settings.schedule_sync_gap_seconds || '15')
       setConvertToJpg(settings.convert_images_to_jpg === 'true')
       setDownloadPostOnAddUser(settings.download_post_on_add_user !== 'false')
       setCollectEnabled(settings.collect_sync_enabled === 'true')
@@ -227,6 +231,8 @@ export default function SystemPage() {
     await window.api.settings.set('download_path', downloadPath)
     await window.api.settings.set('max_download_count', maxDownloadCount)
     await window.api.settings.set('video_download_concurrency', videoDownloadConcurrency)
+    await window.api.settings.set('schedule_sync_concurrency', scheduleConcurrency)
+    await window.api.settings.set('schedule_sync_gap_seconds', scheduleGapSeconds)
     await window.api.settings.set('convert_images_to_jpg', convertToJpg ? 'true' : 'false')
     await window.api.settings.set(
       'download_post_on_add_user',
@@ -482,6 +488,37 @@ export default function SystemPage() {
                     min="1"
                     className="w-20 h-9 px-3 rounded-md bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono text-center focus:outline-none focus:border-[#0A84FF]"
                   />
+                </div>
+                {/* Scheduled sync queue */}
+                <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-sm text-[#1D1D1F]">定时同步排队</p>
+                    <p className="text-xs text-[#A1A1A6] mt-1">
+                      到点的作者排队逐个同步，避免整点同时请求被风控。同时同步数建议
+                      1，间隔会随机浮动 ±50%
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-[#6E6E73]">
+                    同时
+                    <input
+                      type="number"
+                      value={scheduleConcurrency}
+                      onChange={(e) => setScheduleConcurrency(e.target.value)}
+                      min="1"
+                      max="5"
+                      className="w-20 h-9 px-3 rounded-md bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono text-center focus:outline-none focus:border-[#0A84FF]"
+                    />
+                    个，间隔
+                    <input
+                      type="number"
+                      value={scheduleGapSeconds}
+                      onChange={(e) => setScheduleGapSeconds(e.target.value)}
+                      min="0"
+                      max="600"
+                      className="w-20 h-9 px-3 rounded-md bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono text-center focus:outline-none focus:border-[#0A84FF]"
+                    />
+                    秒
+                  </div>
                 </div>
                 {/* Convert Images to JPG */}
                 <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
