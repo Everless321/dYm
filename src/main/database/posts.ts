@@ -176,6 +176,8 @@ export interface PostFilters {
   maxContentLevel?: number
   analyzedOnly?: boolean
   keyword?: string
+  /** 管理端要看到全部作者，不受「首页显示」限制 */
+  includeHidden?: boolean
 }
 
 export type PostSortField =
@@ -213,11 +215,14 @@ export function getAllPosts(
   const database = getDatabase()
   const offset = (page - 1) * pageSize
 
-  const hasVisible = database
-    .prepare('SELECT 1 AS ok FROM users WHERE show_in_home = 1 LIMIT 1')
-    .get() as { ok: number } | undefined
-  if (!hasVisible) {
-    return { posts: [], total: 0, authors: [] }
+  const includeHidden = filters?.includeHidden === true
+  if (!includeHidden) {
+    const hasVisible = database
+      .prepare('SELECT 1 AS ok FROM users WHERE show_in_home = 1 LIMIT 1')
+      .get() as { ok: number } | undefined
+    if (!hasVisible) {
+      return { posts: [], total: 0, authors: [] }
+    }
   }
 
   // 下拉以 users 当前昵称为准、一人一条。posts.nickname 是下载时的快照，
@@ -225,13 +230,20 @@ export function getAllPosts(
   // 会让筛选列表重复，find() 还可能显示成改名前的名字。
   const authors = database
     .prepare(
-      `SELECT u.sec_uid, u.nickname
-       FROM users u
-       WHERE u.show_in_home = 1
-         AND u.sec_uid != ''
-         AND u.nickname IS NOT NULL AND u.nickname != ''
-         AND EXISTS (SELECT 1 FROM posts p WHERE p.sec_uid = u.sec_uid)
-       ORDER BY u.nickname`
+      includeHidden
+        ? `SELECT u.sec_uid, u.nickname
+           FROM users u
+           WHERE u.sec_uid != ''
+             AND u.nickname IS NOT NULL AND u.nickname != ''
+             AND EXISTS (SELECT 1 FROM posts p WHERE p.sec_uid = u.sec_uid)
+           ORDER BY u.nickname`
+        : `SELECT u.sec_uid, u.nickname
+           FROM users u
+           WHERE u.show_in_home = 1
+             AND u.sec_uid != ''
+             AND u.nickname IS NOT NULL AND u.nickname != ''
+             AND EXISTS (SELECT 1 FROM posts p WHERE p.sec_uid = u.sec_uid)
+           ORDER BY u.nickname`
     )
     .all() as PostAuthor[]
   const nameBySec = new Map(authors.map((a) => [a.sec_uid, a.nickname]))
@@ -239,7 +251,9 @@ export function getAllPosts(
   // 构建查询（子查询代替把全部 sec_uid 展开成 IN (?,?,…)，可见用户上千时会顶变量上限）。
   // 一元 + 让规划器不要用 idx_posts_sec_uid 再全表临时排序，而是沿排序列索引扫到 LIMIT 即停：
   // 3 万条时首页从 ~11ms 降到 <1ms
-  const conditions: string[] = [`+sec_uid IN (SELECT sec_uid FROM users WHERE show_in_home = 1)`]
+  const conditions: string[] = includeHidden
+    ? []
+    : [`+sec_uid IN (SELECT sec_uid FROM users WHERE show_in_home = 1)`]
   const params: unknown[] = []
 
   if (filters?.secUid) {
@@ -279,7 +293,7 @@ export function getAllPosts(
     )
   }
 
-  const whereClause = `WHERE ${conditions.join(' AND ')}`
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
   const rows = database
     .prepare(`SELECT * FROM posts ${whereClause} ${buildOrderBy(sort)} LIMIT ? OFFSET ?`)

@@ -52,6 +52,7 @@ import {
   stopWebBrowserServer
 } from './services/web/server'
 import { registerIpcHandlers } from './ipc'
+import { applyPanelRuntime, stopPanelRuntime } from './services/panel/host'
 
 // 放开 Node fetch(undici)的 TLS 证书校验。
 // 原因：本地 HTTPS 代理（如 Surge）开启 MITM 解密时会注入自签名根证书，
@@ -405,6 +406,10 @@ async function bootstrap(): Promise<void> {
     console.error('[Web] Failed to start video browser server:', error)
   }
 
+  void applyPanelRuntime().catch((error) => {
+    console.error('[Panel] 启动失败:', error)
+  })
+
   // 补扫未转换的历史录制（异常退出/转换失败遗留的 FLV），后台串行转换。
   // 延后几秒：转封装是磁盘密集操作，别和首屏加载抢 IO
   setTimeout(() => {
@@ -481,6 +486,9 @@ app.on('before-quit', (event) => {
 })
 
 function finishQuitCleanup(): void {
+  void stopPanelRuntime().catch((error) => {
+    console.error('[Panel] 退出时关闭管理端失败:', error)
+  })
   void stopWebBrowserServer().catch((error) => {
     console.error('[Web] Failed to stop video browser server:', error)
   })

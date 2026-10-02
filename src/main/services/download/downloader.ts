@@ -23,6 +23,7 @@ import { getDownloadPath } from '../media'
 import { diagnoseUserPost } from '../douyin/client'
 import { fetchUserPostPages } from '../douyin/user-post'
 import { runWithConcurrency } from '../../utils/concurrency'
+import { emitPanelProgress } from '../panel/progress'
 
 /** 下载任务触发来源：手动点开始 / 定时调度 */
 export type DownloadSource = 'manual' | 'schedule'
@@ -61,6 +62,12 @@ function sendProgress(progress: DownloadProgress): void {
   const windows = BrowserWindow.getAllWindows()
   for (const win of windows) {
     win.webContents.send('download:progress', progress)
+  }
+  // 管理端节点把同一份进度转发出去；这里失败不能影响下载本身
+  try {
+    emitPanelProgress('download', progress)
+  } catch (error) {
+    console.error('[Downloader] 转发进度失败:', error)
   }
 }
 

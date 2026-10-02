@@ -5,6 +5,8 @@ directories:
 extraResources:
   - from: resources/web
     to: web
+  - from: src/panel/public
+    to: panel
   - from: resources/ffmpeg
     to: ffmpeg
 files:
