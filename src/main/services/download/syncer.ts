@@ -15,6 +15,7 @@ import { track } from '../telemetry'
 import { getDownloadPath } from '../media'
 import { diagnoseUserPost } from '../douyin/client'
 import { fetchUserPostPages } from '../douyin/user-post'
+import { emitPanelProgress } from '../panel/progress'
 
 /** 同步触发来源：手动 / 定时调度 */
 export type SyncSource = 'manual' | 'schedule'
@@ -48,6 +49,11 @@ function sendProgress(progress: SyncProgress): void {
   const windows = BrowserWindow.getAllWindows()
   for (const win of windows) {
     win.webContents.send('sync:progress', progress)
+  }
+  try {
+    emitPanelProgress('sync', progress)
+  } catch (error) {
+    console.error('[Syncer] 转发进度失败:', error)
   }
 }
 

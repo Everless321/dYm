@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { emitDeveloperModeChange } from '@/lib/developer-mode'
 import { StorageSettingsCard } from './StorageSettingsCard'
+import { PanelSettingsCard } from './PanelSettingsCard'
 
 export default function SystemPage() {
   // Cookie
@@ -576,6 +577,8 @@ export default function SystemPage() {
             </div>
           </div>
         </Section>
+
+        <PanelSettingsCard />
 
         <Section eyebrow="自动化" title="收藏同步">
           <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-6">

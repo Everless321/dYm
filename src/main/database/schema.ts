@@ -221,6 +221,15 @@ export function initDatabase(): void {
     { key: 'schedule_sync_concurrency', value: '1' },
     { key: 'schedule_sync_gap_seconds', value: '15' },
     { key: 'web_server_port', value: '38595' },
+    // 网络管理端：内置服务默认关闭，节点也默认不注册
+    { key: 'panel_embed_enabled', value: 'false' },
+    { key: 'panel_embed_port', value: '38600' },
+    { key: 'panel_embed_lan', value: 'false' },
+    { key: 'panel_admin_token', value: '' },
+    { key: 'panel_node_enabled', value: 'false' },
+    { key: 'panel_node_url', value: '' },
+    { key: 'panel_node_api_key', value: '' },
+    { key: 'panel_node_name', value: '' },
     // 分析相关设置（提供方 / 模型在 ai_providers 表里）
     { key: 'analysis_concurrency', value: String(ANALYSIS_DEFAULTS.concurrency) },
     { key: 'analysis_rpm', value: String(ANALYSIS_DEFAULTS.rpm) },

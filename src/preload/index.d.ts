@@ -702,6 +702,22 @@ declare global {
     urls: string[]
   }
 
+  interface PanelRuntimeStatus {
+    embedStarted: boolean
+    port: number
+    host: string
+    urls: string[]
+    adminToken: string
+    agent: 'off' | 'connecting' | 'online' | 'error'
+    agentError: string | null
+  }
+
+  interface PanelAPI {
+    status: () => Promise<PanelRuntimeStatus>
+    apply: () => Promise<PanelRuntimeStatus>
+    issueLocalKey: () => Promise<{ apiKey: string; url: string }>
+  }
+
   interface SystemAPI {
     getResourceUsage: () => Promise<SystemResourceInfo>
     getWebServerInfo: () => Promise<WebServerInfo>
@@ -838,6 +854,7 @@ declare global {
     dashboard: DashboardAPI
     scripts: ScriptsAPI
     storage: StorageAPI
+    panel: PanelAPI
   }
 
   interface Window {

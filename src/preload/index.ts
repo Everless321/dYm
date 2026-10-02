@@ -325,6 +325,13 @@ const videoAPI = {
     ipcRenderer.invoke('video:downloadToFolder', info)
 }
 
+const panelAPI = {
+  status: (): Promise<PanelRuntimeStatus> => ipcRenderer.invoke('panel:status'),
+  apply: (): Promise<PanelRuntimeStatus> => ipcRenderer.invoke('panel:apply'),
+  issueLocalKey: (): Promise<{ apiKey: string; url: string }> =>
+    ipcRenderer.invoke('panel:issueLocalKey')
+}
+
 const systemAPI = {
   getResourceUsage: (): Promise<SystemResourceInfo> =>
     ipcRenderer.invoke('system:getResourceUsage'),
@@ -485,7 +492,8 @@ const api = {
   files: filesAPI,
   dashboard: dashboardAPI,
   scripts: scriptsAPI,
-  storage: storageAPI
+  storage: storageAPI,
+  panel: panelAPI
 }
 
 if (process.contextIsolated) {
