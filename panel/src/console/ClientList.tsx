@@ -160,16 +160,16 @@ export function ClientList({
                         </span>
                       </span>
                     </span>
-                    <span className="client-facts">
-                      <span>
+                    <div className="client-facts">
+                      <div>
                         <span>用户</span>
                         <strong>{formatCount(node.counts?.users)}</strong>
-                      </span>
-                      <span>
+                      </div>
+                      <div>
                         <span>作品</span>
                         <strong>{formatCount(node.counts?.posts)}</strong>
-                      </span>
-                    </span>
+                      </div>
+                    </div>
                     <LoginBadge login={node.login} />
                     <StatusBadge online={node.online} />
                     <span className="btn">进入</span>
