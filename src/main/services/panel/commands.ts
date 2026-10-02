@@ -6,6 +6,9 @@ import { isPanelMethod } from '../../../shared/panel'
 import {
   createTask,
   deleteTask,
+  updateTask,
+  updateTaskUsers,
+  type UpdateTaskInput,
   deleteUser,
   getAllPosts,
   getAllTags,
@@ -104,6 +107,8 @@ export async function dispatchPanelCommand(method: string, params: unknown): Pro
       return { tasks: getAllTasks().map(toTask) }
     case 'tasks.create':
       return toTask(createDownloadTask(input))
+    case 'tasks.update':
+      return updateDownloadTask(input)
     case 'tasks.delete':
       return removeTask(asId(input.id))
     case 'tasks.start':
@@ -250,7 +255,43 @@ function createDownloadTask(input: Record<string, unknown>): DbTaskWithUsers {
   if (input.userIds.length > 500) throw new Error('一次最多选择 500 个用户')
   const userIds = input.userIds.map((id) => asId(id))
   const concurrency = clampInt(input.concurrency, 1, 8, 3)
-  return createTask({ name, user_ids: userIds, concurrency })
+  const schedule = readSchedule(input)
+  return createTask({
+    name,
+    user_ids: userIds,
+    concurrency,
+    auto_sync: schedule.autoSync,
+    sync_cron: schedule.syncCron
+  })
+}
+
+function updateDownloadTask(input: Record<string, unknown>): ReturnType<typeof toTask> {
+  const id = asId(input.id)
+  if (!getTaskById(id)) throw new Error('任务不存在')
+  const patch: UpdateTaskInput = {}
+  if (typeof input.name === 'string') patch.name = requireText(input.name, '请填写任务名称', 80)
+  if (input.concurrency !== undefined) patch.concurrency = clampInt(input.concurrency, 1, 8, 3)
+  if (typeof input.autoSync === 'boolean') patch.auto_sync = input.autoSync ? 1 : 0
+  if (typeof input.syncCron === 'string') patch.sync_cron = readSchedule(input).syncCron
+  let task = updateTask(id, patch)
+  if (Array.isArray(input.userIds)) {
+    if (input.userIds.length === 0) throw new Error('请选择至少一个用户')
+    if (input.userIds.length > 500) throw new Error('一次最多选择 500 个用户')
+    task = updateTaskUsers(
+      id,
+      input.userIds.map((value) => asId(value))
+    )
+  }
+  if (!task) throw new Error('任务不存在')
+  return toTask(task)
+}
+
+function readSchedule(input: Record<string, unknown>): { autoSync: boolean; syncCron: string } {
+  const syncCron = typeof input.syncCron === 'string' ? input.syncCron.trim().slice(0, 100) : ''
+  if (syncCron && !validateCronExpression(syncCron)) {
+    throw new Error('同步计划不是合法的 Cron 表达式')
+  }
+  return { autoSync: input.autoSync === true, syncCron }
 }
 
 function removeTask(id: number): { ok: true } {

@@ -114,41 +114,41 @@ function AuthedShell({ onLogout }: { onLogout: () => void }): React.JSX.Element 
 
   return (
     <AppShell
+      mode={route.name === 'list' ? 'board' : 'client'}
       crumb={crumb}
       status={status}
       onLogout={() => void logout()}
       nav={
-        <>
-          <p className="nav-label">总览</p>
-          <NavItem href="#/" icon={<IconNodes />} label="客户端" active={route.name === 'list'} />
-          {route.name === 'node' && activeNode ? (
-            <>
-              <p className="nav-label">当前客户端</p>
-              <div className="nav-current">
-                <strong>{activeNode.name}</strong>
-                <span>{activeNode.online ? '在线' : '离线'}</span>
-              </div>
-              <NavItem
-                href={`#/n/${encodeURIComponent(activeNode.id)}/posts`}
-                icon={<IconPosts />}
-                label="作品"
-                active={route.tab === 'posts'}
-              />
-              <NavItem
-                href={`#/n/${encodeURIComponent(activeNode.id)}/users`}
-                icon={<IconUsers />}
-                label="用户"
-                active={route.tab === 'users'}
-              />
-              <NavItem
-                href={`#/n/${encodeURIComponent(activeNode.id)}/tasks`}
-                icon={<IconTasks />}
-                label="下载任务"
-                active={route.tab === 'tasks'}
-              />
-            </>
-          ) : null}
-        </>
+        route.name === 'node' ? (
+          <>
+            <a className="nav-item" href="#/">
+              <IconNodes />
+              <span>返回客户端</span>
+            </a>
+            <div className="nav-current">
+              <strong>{activeNode ? activeNode.name : activeNode === null ? '未找到' : '…'}</strong>
+              <span>{activeNode ? (activeNode.online ? '在线' : '离线') : '这台客户端'}</span>
+            </div>
+            <NavItem
+              href={`#/n/${encodeURIComponent(route.id)}/posts`}
+              icon={<IconPosts />}
+              label="作品"
+              active={route.tab === 'posts'}
+            />
+            <NavItem
+              href={`#/n/${encodeURIComponent(route.id)}/users`}
+              icon={<IconUsers />}
+              label="用户"
+              active={route.tab === 'users'}
+            />
+            <NavItem
+              href={`#/n/${encodeURIComponent(route.id)}/tasks`}
+              icon={<IconTasks />}
+              label="下载任务"
+              active={route.tab === 'tasks'}
+            />
+          </>
+        ) : null
       }
     >
       {route.name === 'list' ? (

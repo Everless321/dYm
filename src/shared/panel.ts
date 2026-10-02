@@ -82,6 +82,7 @@ export const PANEL_METHODS = [
   'tags.list',
   'tasks.list',
   'tasks.create',
+  'tasks.update',
   'tasks.delete',
   'tasks.start',
   'tasks.stop',

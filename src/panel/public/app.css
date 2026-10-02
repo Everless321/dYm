@@ -189,10 +189,23 @@ select:focus-visible {
 }
 
 #loginForm {
-  width: min(380px, 100%);
+  width: min(400px, 100%);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 22px;
+}
+
+#loginForm .field {
+  gap: 8px;
+}
+
+#loginForm input {
+  height: 44px;
+}
+
+#loginForm .primary.block {
+  height: 44px;
+  margin-top: 14px;
 }
 
 #loginForm h2 {

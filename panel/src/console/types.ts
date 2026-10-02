@@ -71,15 +71,22 @@ export interface PanelUser {
   syncCron: string
   maxDownloadCount: number
   showInHome: boolean
+  homepageUrl?: string
+  lastSyncAt?: number | null
+  signature?: string
 }
 
 export interface PanelTask {
   id: number
   name: string
   status: string
+  concurrency?: number
   totalVideos: number
   downloadedVideos: number
   running: boolean
+  autoSync?: boolean
+  syncCron?: string
+  lastSyncAt?: number | null
   users: Array<{ id: number; nickname: string }>
   progress: { message?: string; status?: string } | null
 }
