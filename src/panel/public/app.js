@@ -723,24 +723,28 @@ async function renderPosts(pane, node, refocus = false) {
   })
 }
 
+let galleryTimer = 0
+let galleryKeyHandler = null
+
+function stopGallery() {
+  if (galleryTimer) window.clearInterval(galleryTimer)
+  galleryTimer = 0
+  if (galleryKeyHandler) {
+    window.removeEventListener('keydown', galleryKeyHandler)
+    galleryKeyHandler = null
+  }
+}
+
 function openPost(nodeId, post) {
   if (!post) return
+  stopGallery()
   const video = mediaUrl(nodeId, post.video)
   const cover = mediaUrl(nodeId, post.cover)
   const images = (post.images || []).map((image) => mediaUrl(nodeId, image)).filter(Boolean)
-  const body = post.isImagePost
-    ? images.map((src) => `<img alt="" data-src="${esc(src)}" />`).join('') ||
-      (cover ? `<img alt="" data-src="${esc(cover)}" />` : '<p class="muted">没有可显示的图片</p>')
-    : video
-      ? `<video controls autoplay data-src="${esc(video)}"></video>`
-      : cover
-        ? `<img alt="" data-src="${esc(cover)}" />`
-        : '<p class="muted">没有可播放的文件</p>'
+  const clips = (post.imageVideos || []).map((item) => mediaUrl(nodeId, item))
+  const music = mediaUrl(nodeId, post.music)
   const tags = (post.analysis?.tags || []).map((tag) => `<em>${esc(tag)}</em>`).join('')
-  openModal(
-    `<div class="viewer">
-      <div class="viewer-stage">${body}</div>
-      <div class="viewer-copy">
+  const copy = `<div class="viewer-copy">
         <div class="spread">
           <div>
             <p class="eyebrow">${esc(post.author?.nickname || '未知作者')}</p>
@@ -751,20 +755,160 @@ function openPost(nodeId, post) {
         ${post.analysis?.summary ? `<p>${esc(post.analysis.summary)}</p>` : '<p class="muted">还没有分析摘要</p>'}
         ${tags ? `<div class="chips">${tags}</div>` : ''}
         <p class="muted">作品 ${esc(post.awemeId)}</p>
-      </div>
-    </div>`,
-    { wide: true }
-  )
-  modal.querySelectorAll('[data-src]').forEach((el) => {
-    el.addEventListener('error', () => {
-      const note = document.createElement('p')
-      note.className = 'muted'
-      note.textContent = '文件无法显示'
-      el.replaceWith(note)
+      </div>`
+  if (post.isImagePost) {
+    const sources = images.length ? images : cover ? [cover] : []
+    openModal(`<div class="viewer"><div class="viewer-stage gallery"></div>${copy}</div>`, {
+      wide: true,
+      onDismiss: stopGallery
     })
-    el.src = el.dataset.src
-  })
+    mountImageGallery(modal.querySelector('.viewer-stage'), {
+      images: sources,
+      clips: images.length ? clips : [],
+      music
+    })
+  } else {
+    const body = video
+      ? `<video controls autoplay data-src="${esc(video)}"></video>`
+      : cover
+        ? `<img alt="" data-src="${esc(cover)}" />`
+        : '<p class="muted">没有可播放的文件</p>'
+    openModal(`<div class="viewer"><div class="viewer-stage">${body}</div>${copy}</div>`, {
+      wide: true
+    })
+    modal.querySelectorAll('[data-src]').forEach((el) => {
+      el.addEventListener('error', () => {
+        const note = document.createElement('p')
+        note.className = 'muted'
+        note.textContent = '文件无法显示'
+        el.replaceWith(note)
+      })
+      el.src = el.dataset.src
+    })
+  }
   document.querySelector('#closeModal').addEventListener('click', closeModal)
+}
+
+function mountImageGallery(stage, { images, clips, music }) {
+  if (!stage) return
+  if (!images.length) {
+    stage.innerHTML = '<p class="muted">没有可显示的图片</p>'
+    return
+  }
+  const frame = document.createElement('div')
+  frame.className = 'stage-frame'
+  stage.appendChild(frame)
+  let index = 0
+  let manual = false
+  const dots = []
+  const show = () => {
+    frame.replaceChildren()
+    const clip = clips[index] || ''
+    if (clip) {
+      const videoEl = document.createElement('video')
+      videoEl.className = 'stage-slide'
+      videoEl.autoplay = true
+      videoEl.loop = true
+      videoEl.muted = true
+      videoEl.playsInline = true
+      videoEl.poster = images[index]
+      videoEl.src = clip
+      frame.appendChild(videoEl)
+    } else {
+      const img = document.createElement('img')
+      img.className = 'stage-slide'
+      img.alt = ''
+      img.src = images[index]
+      img.addEventListener('error', () => {
+        const note = document.createElement('p')
+        note.className = 'muted'
+        note.textContent = '文件无法显示'
+        img.replaceWith(note)
+      })
+      frame.appendChild(img)
+    }
+    dots.forEach((dot, dotIndex) => dot.classList.toggle('on', dotIndex === index))
+  }
+  const step = (delta) => {
+    manual = true
+    index = (index + delta + images.length) % images.length
+    show()
+  }
+  if (images.length > 1) {
+    const prev = document.createElement('button')
+    prev.className = 'stage-nav prev'
+    prev.type = 'button'
+    prev.setAttribute('aria-label', '上一张')
+    prev.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M15 6 9 12l6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    prev.addEventListener('click', () => step(-1))
+    const next = document.createElement('button')
+    next.className = 'stage-nav next'
+    next.type = 'button'
+    next.setAttribute('aria-label', '下一张')
+    next.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    next.addEventListener('click', () => step(1))
+    const dotRow = document.createElement('div')
+    dotRow.className = 'stage-dots'
+    images.forEach((_, dotIndex) => {
+      const dot = document.createElement('button')
+      dot.className = 'stage-dot'
+      dot.type = 'button'
+      dot.setAttribute('aria-label', `第 ${dotIndex + 1} 张`)
+      dot.addEventListener('click', () => {
+        manual = true
+        index = dotIndex
+        show()
+      })
+      dots.push(dot)
+      dotRow.appendChild(dot)
+    })
+    stage.append(prev, next, dotRow)
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (!reduce) {
+      galleryTimer = window.setInterval(() => {
+        if (manual) return
+        index = (index + 1) % images.length
+        show()
+      }, 3000)
+    }
+    galleryKeyHandler = (event) => {
+      const el = event.target
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable))
+        return
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+      event.preventDefault()
+      step(event.key === 'ArrowLeft' ? -1 : 1)
+    }
+    window.addEventListener('keydown', galleryKeyHandler)
+  }
+  if (music) {
+    const audio = document.createElement('audio')
+    audio.src = music
+    audio.loop = true
+    audio.autoplay = true
+    stage.appendChild(audio)
+    audio.play().catch(() => undefined)
+    const sound = document.createElement('button')
+    sound.className = 'stage-sound'
+    sound.type = 'button'
+    sound.setAttribute('aria-label', '静音')
+    const paint = () => {
+      sound.setAttribute('aria-label', audio.muted ? '开声' : '静音')
+      sound.innerHTML = audio.muted
+        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="m17 9 4 6M21 9l-4 6" stroke-linecap="round"/></svg>'
+        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" stroke-linecap="round"/></svg>'
+    }
+    sound.addEventListener('click', () => {
+      audio.muted = !audio.muted
+      if (audio.paused) audio.play().catch(() => undefined)
+      paint()
+    })
+    paint()
+    stage.appendChild(sound)
+  }
+  show()
 }
 
 async function renderUsers(pane, node) {
