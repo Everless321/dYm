@@ -3,6 +3,41 @@
 import { useEffect, useState } from 'react'
 import type { LiveSync, PanelLogin, PanelTask, PanelUser } from './types'
 
+const SYNC_CRON_PRESETS: { label: string; value: string }[] = [
+  { label: '每小时', value: '0 * * * *' },
+  { label: '每 3 小时', value: '0 */3 * * *' },
+  { label: '每 6 小时', value: '0 */6 * * *' },
+  { label: '每 12 小时', value: '0 */12 * * *' },
+  { label: '每天 8:00', value: '0 8 * * *' },
+  { label: '每天 12:00', value: '0 12 * * *' },
+  { label: '每天 0:00', value: '0 0 * * *' },
+  { label: '每周一 8:00', value: '0 8 * * 1' }
+]
+
+export function CronPresets({
+  value,
+  onPick
+}: {
+  value: string
+  onPick: (cron: string) => void
+}): React.JSX.Element {
+  return (
+    <div className="presets">
+      {SYNC_CRON_PRESETS.map((preset) => (
+        <button
+          key={preset.value}
+          type="button"
+          title={preset.value}
+          className={value.trim() === preset.value ? 'preset active' : 'preset'}
+          onClick={() => onPick(preset.value)}
+        >
+          {preset.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export function Loading({ text }: { text: string }): React.JSX.Element {
   return (
     <div className="loading">

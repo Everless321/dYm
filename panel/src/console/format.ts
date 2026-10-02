@@ -14,6 +14,20 @@ export function formatExact(value: number | null | undefined): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
+function toMillis(value: number): number {
+  return value < 1_000_000_000_000 ? value * 1000 : value
+}
+
+export function formatUnixAgo(value: number | null | undefined): string {
+  if (!value) return ''
+  return formatAgo(toMillis(value))
+}
+
+export function formatUnixExact(value: number | null | undefined): string {
+  if (!value) return ''
+  return formatExact(toMillis(value))
+}
+
 export function formatAgo(value: number | null | undefined): string {
   if (!value) return '尚未连接'
   const delta = Date.now() - value

@@ -50,7 +50,7 @@ export function LoginScreen({ onSuccess }: { onSuccess: () => void }): React.JSX
         </div>
       </section>
       <section className="login-main">
-        <form onSubmit={(event) => void onSubmit(event)}>
+        <form id="loginForm" onSubmit={(event) => void onSubmit(event)}>
           <p className="eyebrow">管理员</p>
           <h2>登录</h2>
           <p className="lede">使用这台管理端的口令。这不是节点密钥。</p>

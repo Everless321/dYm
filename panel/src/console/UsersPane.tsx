@@ -4,9 +4,16 @@ import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { rpc } from './api'
 import { useFeedback } from './feedback'
-import { errorMessage, formatCount, initials, mediaUrl } from './format'
+import {
+  errorMessage,
+  formatCount,
+  formatUnixAgo,
+  formatUnixExact,
+  initials,
+  mediaUrl
+} from './format'
 import type { LiveSync, PanelUser } from './types'
-import { EmptyState, Loading, MediaImage, Modal, SyncBadge } from './widgets'
+import { CronPresets, EmptyState, Loading, MediaImage, Modal, SyncBadge } from './widgets'
 
 export function UsersPane({
   nodeId,
@@ -23,6 +30,7 @@ export function UsersPane({
   const [url, setUrl] = useState('')
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<PanelUser | null>(null)
+  const [keyword, setKeyword] = useState('')
   const [localReload, setLocalReload] = useState(0)
 
   const closeSettings = useCallback((): void => setEditing(null), [])
@@ -73,6 +81,15 @@ export function UsersPane({
     }
   }
 
+  async function onStop(id: number): Promise<void> {
+    try {
+      await rpc(nodeId, 'users.stopSync', { id })
+      toast('已请求停止')
+    } catch (err) {
+      toast(errorMessage(err))
+    }
+  }
+
   async function onRefresh(id: number): Promise<void> {
     try {
       await rpc(nodeId, 'users.refresh', { id })
@@ -107,6 +124,14 @@ export function UsersPane({
     }
   }
 
+  const query = keyword.trim().toLowerCase()
+  const shown = (users || []).filter((user) => {
+    if (!query) return true
+    return [user.nickname, user.uniqueId, user.remark, user.signature]
+      .filter(Boolean)
+      .some((part) => String(part).toLowerCase().includes(query))
+  })
+
   return (
     <section className="surface">
       <form className="composer" onSubmit={(event) => void onAdd(event)}>
@@ -123,9 +148,22 @@ export function UsersPane({
           {adding ? '正在添加' : '添加'}
         </button>
       </form>
+      {users && users.length ? (
+        <div className="composer">
+          <label className="field grow">
+            搜索
+            <input
+              value={keyword}
+              placeholder="昵称、抖音号或备注"
+              autoComplete="off"
+              onChange={(event) => setKeyword(event.target.value)}
+            />
+          </label>
+        </div>
+      ) : null}
       {users === null && !error ? <Loading text="正在读取用户" /> : null}
       {error ? <EmptyState title="读取失败" body={error} /> : null}
-      {users && users.length ? (
+      {users && users.length && shown.length ? (
         <div className="table-scroll">
           <table className="data">
             <thead>
@@ -145,11 +183,19 @@ export function UsersPane({
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => {
+              {shown.map((user) => {
                 const avatar = mediaUrl(nodeId, user.avatar)
-                const meta = [user.uniqueId ? `@${user.uniqueId}` : '', user.remark]
+                const home =
+                  user.homepageUrl && /^https:\/\//.test(user.homepageUrl) ? user.homepageUrl : ''
+                const meta = [
+                  user.uniqueId ? `@${user.uniqueId}` : '',
+                  user.remark,
+                  user.lastSyncAt ? `上次同步 ${formatUnixAgo(user.lastSyncAt)}` : ''
+                ]
                   .filter(Boolean)
                   .join(' · ')
+                const syncing =
+                  user.syncing || user.syncStatus === 'syncing' || Boolean(sync[user.id])
                 return (
                   <tr key={user.id}>
                     <td>
@@ -161,7 +207,14 @@ export function UsersPane({
                         )}
                         <div>
                           <strong>{user.nickname || '未命名'}</strong>
-                          <div className="sub">{meta || '—'}</div>
+                          <div className="sub" title={formatUnixExact(user.lastSyncAt)}>
+                            {meta || '—'}
+                          </div>
+                          {home ? (
+                            <a className="sub" href={home} target="_blank" rel="noreferrer">
+                              打开主页
+                            </a>
+                          ) : null}
                         </div>
                       </div>
                     </td>
@@ -184,9 +237,23 @@ export function UsersPane({
                     </td>
                     <td className="actions">
                       <div className="row-actions">
-                        <button className="text" type="button" onClick={() => void onSync(user.id)}>
-                          同步
-                        </button>
+                        {syncing ? (
+                          <button
+                            className="text"
+                            type="button"
+                            onClick={() => void onStop(user.id)}
+                          >
+                            停止
+                          </button>
+                        ) : (
+                          <button
+                            className="text"
+                            type="button"
+                            onClick={() => void onSync(user.id)}
+                          >
+                            同步
+                          </button>
+                        )}
                         <button
                           className="text"
                           type="button"
@@ -212,6 +279,9 @@ export function UsersPane({
             </tbody>
           </table>
         </div>
+      ) : null}
+      {users && users.length && !shown.length && !error ? (
+        <EmptyState title="没有匹配的用户" body="换一个昵称、抖音号或备注再搜。" />
       ) : null}
       {users && !users.length && !error ? (
         <EmptyState title="还没有用户" body="粘贴用户主页或作品链接，添加到这台客户端。" />
@@ -308,6 +378,7 @@ function UserSettings({
             placeholder="留空表示不定时，例如 0 8 * * *"
             onChange={(event) => setSyncCron(event.target.value)}
           />
+          <CronPresets value={syncCron} onPick={setSyncCron} />
         </label>
         <div className="stack">
           <label className="checkline">

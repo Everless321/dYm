@@ -136,91 +136,53 @@ export function ClientList({
             <Metric label="用户" value={formatCount(users)} hint="各客户端上次上报" />
             <Metric label="作品" value={formatCount(posts)} hint="各客户端上次上报" />
           </section>
-          <section className="surface">
-            <div className="surface-head">
-              <div>
-                <h2>全部客户端</h2>
-                <p>点进一台之后，后续操作只作用于这一台。</p>
-              </div>
-              <span className="count-chip">{formatCount(nodes.length)} 台</span>
-            </div>
+          <section className="client-board" aria-label="全部客户端">
             {nodes.length ? (
-              <div className="table-scroll">
-                <table className="data">
-                  <thead>
-                    <tr>
-                      <th scope="col">客户端</th>
-                      <th scope="col">状态</th>
-                      <th scope="col">主机</th>
-                      <th scope="col">版本</th>
-                      <th scope="col">抖音</th>
-                      <th scope="col" className="num">
-                        用户
-                      </th>
-                      <th scope="col" className="num">
-                        作品
-                      </th>
-                      <th scope="col">最近心跳</th>
-                      <th scope="col" className="actions">
-                        操作
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {nodes.map((node) => {
-                      const host = [node.hostname || '未知主机', platformText(node.platform)]
-                        .filter(Boolean)
-                        .join(' · ')
-                      return (
-                        <tr key={node.id}>
-                          <td>
-                            <a className="entity" href={`#/n/${encodeURIComponent(node.id)}/posts`}>
-                              <span className={`mono t${tone(node.name)}`}>
-                                {initials(node.name)}
-                              </span>
-                              <span>
-                                <strong>{node.name}</strong>
-                                <span className="sub">
-                                  {node.keyPrefix ? `密钥 ${node.keyPrefix}…` : '未关联密钥'}
-                                </span>
-                              </span>
-                            </a>
-                          </td>
-                          <td>
-                            <StatusBadge online={node.online} />
-                          </td>
-                          <td className="clip" title={host}>
-                            {host}
-                          </td>
-                          <td>
-                            {node.version ? (
-                              <span className="code">{node.version}</span>
-                            ) : (
-                              <span className="muted">—</span>
-                            )}
-                          </td>
-                          <td>
-                            <LoginBadge login={node.login} />
-                          </td>
-                          <td className="num">{formatCount(node.counts?.users)}</td>
-                          <td className="num">{formatCount(node.counts?.posts)}</td>
-                          <td title={formatExact(node.lastSeen)}>{formatAgo(node.lastSeen)}</td>
-                          <td className="actions">
-                            <a className="btn" href={`#/n/${encodeURIComponent(node.id)}/posts`}>
-                              进入
-                            </a>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              nodes.map((node) => {
+                const host = [
+                  node.hostname || '未知主机',
+                  platformText(node.platform),
+                  node.version || ''
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
+                const href = `#/n/${encodeURIComponent(node.id)}/posts`
+                return (
+                  <a className="client-row" key={node.id} href={href}>
+                    <span className="entity">
+                      <span className={`mono t${tone(node.name)}`}>{initials(node.name)}</span>
+                      <span>
+                        <strong>{node.name}</strong>
+                        <span className="sub" title={formatExact(node.lastSeen)}>
+                          {host}
+                          {node.keyPrefix ? ` · 密钥 ${node.keyPrefix}…` : ''}
+                          {` · ${formatAgo(node.lastSeen)}`}
+                        </span>
+                      </span>
+                    </span>
+                    <span className="client-facts">
+                      <span>
+                        <span>用户</span>
+                        <strong>{formatCount(node.counts?.users)}</strong>
+                      </span>
+                      <span>
+                        <span>作品</span>
+                        <strong>{formatCount(node.counts?.posts)}</strong>
+                      </span>
+                    </span>
+                    <LoginBadge login={node.login} />
+                    <StatusBadge online={node.online} />
+                    <span className="btn">进入</span>
+                  </a>
+                )
+              })
             ) : (
-              <EmptyState
-                title="还没有客户端"
-                body="在下方签发密钥，填进对应电脑的 dYm。客户端会自己连到这里。"
-              />
+              <section className="surface">
+                <EmptyState
+                  title="还没有客户端"
+                  body="在下方签发密钥，填进对应电脑的 dYm。客户端会自己连到这里。"
+                />
+              </section>
             )}
           </section>
           <section className="surface">

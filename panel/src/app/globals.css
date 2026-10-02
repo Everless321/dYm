@@ -189,10 +189,23 @@ select:focus-visible {
 }
 
 #loginForm {
-  width: min(380px, 100%);
+  width: min(400px, 100%);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 22px;
+}
+
+#loginForm .field {
+  gap: 8px;
+}
+
+#loginForm input {
+  height: 44px;
+}
+
+#loginForm .primary.block {
+  height: 44px;
+  margin-top: 14px;
 }
 
 #loginForm h2 {
@@ -231,6 +244,58 @@ select:focus-visible {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
+}
+
+.shell.board {
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+}
+
+.board-bar {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 64px;
+  padding: 0 28px;
+  background: var(--sidebar);
+  color: #e8eef8;
+}
+
+.board-bar .brand {
+  padding: 0;
+}
+
+.board-meta {
+  margin-left: auto;
+  color: #c5d0e0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.board-bar .side-logout {
+  width: auto;
+  padding: 0 14px;
+}
+
+.board-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.shell.board .page {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  padding: 32px 28px 56px;
+  gap: 18px;
+}
+
+.shell.board .page-head h1 {
+  font-size: 30px;
+  letter-spacing: -0.03em;
 }
 
 .sidebar {
@@ -622,6 +687,69 @@ select:focus-visible {
   min-width: 180px;
 }
 
+.client-board {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.client-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) auto auto auto auto;
+  align-items: center;
+  gap: 18px 24px;
+  min-height: 96px;
+  padding: 18px 22px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: inherit;
+}
+
+.client-row:hover {
+  border-color: #9ec5f0;
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.06);
+}
+
+.client-row .mono {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  font-size: 18px;
+}
+
+.client-row .entity {
+  min-width: 0;
+}
+
+.client-row .entity strong {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.client-facts {
+  display: flex;
+  gap: 22px;
+}
+
+.client-facts div {
+  display: flex;
+  flex-direction: column;
+  min-width: 52px;
+}
+
+.client-facts span {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.client-facts strong {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
 .entity strong,
 .who strong {
   display: block;
@@ -638,6 +766,10 @@ select:focus-visible {
 .entity .sub,
 .who .sub {
   margin-top: 1px;
+}
+
+a.sub {
+  color: var(--accent);
 }
 
 .clip {
@@ -927,6 +1059,36 @@ input::placeholder {
   color: var(--text);
   font-size: 13px;
   font-weight: 500;
+}
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.preset {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong);
+  background: #fff;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.preset:hover,
+.preset.active {
+  border-color: #9ec5f0;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px;
+  gap: 12px;
 }
 
 input[type='checkbox'] {
@@ -1369,6 +1531,28 @@ input[type='checkbox'] {
   }
 
   .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .shell.board {
+    display: flex;
+  }
+
+  .board-bar {
+    padding: 0 16px;
+    gap: 10px;
+  }
+
+  .board-meta {
+    display: none;
+  }
+
+  .client-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .form-grid {
     grid-template-columns: 1fr;
   }
 
