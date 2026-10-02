@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto'
 import { createReadStream, existsSync, statSync } from 'fs'
-import { createServer, type IncomingMessage, type ServerResponse } from 'http'
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http'
 import { resolve } from 'path'
 import { WebSocketServer } from 'ws'
 import { isPanelMethod } from '../shared/panel'
@@ -33,31 +33,197 @@ export interface RunningPanel {
   close: () => Promise<void>
 }
 
-export async function createPanelServer(options: PanelServerOptions): Promise<RunningPanel> {
+export interface PanelGateway {
+  handle(request: IncomingMessage, response: ServerResponse): Promise<boolean>
+  attach(server: Server): void
+  issueKey: (name: string) => { id: string; key: string; name: string; nodeId: string }
+  close: () => Promise<void>
+}
+
+/** 协议处理可以挂到已有 HTTP 服务上。页面不归这里管时，未识别的请求返回 false。 */
+export function createPanelGateway(options: {
+  dataDir: string
+  adminToken: string
+  publicDir?: string
+}): PanelGateway {
   const store = new PanelStore(options.dataDir)
   const hub = new PanelHub(store)
   const sessions = new Map<string, number>()
-  const publicDir = resolve(options.publicDir)
-
-  const server = createServer((request, response) => {
-    void handle(request, response).catch((error) => {
-      if (response.headersSent || response.writableEnded) {
-        if (!response.destroyed) response.destroy()
-        return
-      }
-      if (error instanceof PanelHttpError) {
-        sendJson(response, error.status, { error: error.message })
-        return
-      }
-      const message = error instanceof Error ? error.message : '内部错误'
-      console.error('[Panel] 请求失败:', error)
-      sendJson(response, 502, { error: message || '内部错误' })
-    })
-  })
-
-  const wss = new WebSocketServer({ server, path: '/agent', maxPayload: 2 * 1024 * 1024 })
+  const publicDir = options.publicDir ? resolve(options.publicDir) : ''
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024 })
   wss.on('connection', (ws) => hub.handleSocket(ws))
   wss.on('error', (error) => console.error('[Panel] WebSocket 错误:', error))
+
+  async function handle(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
+    const method = request.method ?? 'GET'
+    const url = new URL(request.url ?? '/', `http://${request.headers.host ?? '127.0.0.1'}`)
+    const pathname = decodeURIComponent(url.pathname)
+
+    if (publicDir && method === 'GET' && STATIC_FILES[pathname]) {
+      serveStatic(response, publicDir, STATIC_FILES[pathname])
+      return true
+    }
+
+    if (pathname === '/api/login' && method === 'POST') {
+      requirePanelHeader(request)
+      const body = await readJson(request)
+      const token = typeof body.token === 'string' ? body.token : ''
+      if (!token || !secretsEqual(token, options.adminToken)) {
+        sendJson(response, 401, { error: '口令不正确' })
+        return true
+      }
+      const session = randomBytes(32).toString('base64url')
+      sessions.set(session, Date.now())
+      response.setHeader(
+        'Set-Cookie',
+        `${SESSION_COOKIE}=${session}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE}`
+      )
+      sendJson(response, 200, { ok: true })
+      return true
+    }
+
+    if (pathname.startsWith('/api/')) {
+      const session = readCookie(request, SESSION_COOKIE)
+      if (!session || !sessions.has(session)) {
+        sendJson(response, 401, { error: '请先登录' })
+        return true
+      }
+      if (method === 'POST') requirePanelHeader(request)
+    }
+
+    if (pathname === '/api/logout' && method === 'POST') {
+      const session = readCookie(request, SESSION_COOKIE)
+      if (session) sessions.delete(session)
+      response.setHeader('Set-Cookie', `${SESSION_COOKIE}=; HttpOnly; Path=/; Max-Age=0`)
+      sendJson(response, 200, { ok: true })
+      return true
+    }
+
+    if (pathname === '/api/me' && method === 'GET') {
+      sendJson(response, 200, { ok: true })
+      return true
+    }
+
+    if (pathname === '/api/nodes' && method === 'GET') {
+      sendJson(response, 200, { nodes: hub.listNodes() })
+      return true
+    }
+
+    if (pathname === '/api/keys' && method === 'GET') {
+      sendJson(response, 200, { keys: hub.listKeys() })
+      return true
+    }
+
+    if (pathname === '/api/keys' && method === 'POST') {
+      const body = await readJson(request)
+      const name = typeof body.name === 'string' ? body.name : ''
+      const issued = hub.issueKey(name)
+      sendJson(response, 200, issued)
+      return true
+    }
+
+    const keyMatch = pathname.match(/^\/api\/keys\/([^/]+)$/)
+    if (keyMatch && method === 'DELETE') {
+      hub.revokeKey(decodeURIComponent(keyMatch[1]))
+      sendJson(response, 200, { ok: true })
+      return true
+    }
+
+    const nodeMatch = pathname.match(/^\/api\/nodes\/([^/]+)(?:\/([^/]+))?$/)
+    if (nodeMatch) {
+      const nodeId = decodeURIComponent(nodeMatch[1])
+      const action = nodeMatch[2] ?? ''
+      if (!hub.listNodes().some((node) => node.id === nodeId)) {
+        sendJson(response, 404, { error: '客户端不存在' })
+        return true
+      }
+      if (!action && method === 'GET') {
+        sendJson(response, 200, { node: hub.listNodes().find((node) => node.id === nodeId) })
+        return true
+      }
+      if (action === 'rpc' && method === 'POST') {
+        const body = await readJson(request)
+        const rpcMethod = typeof body.method === 'string' ? body.method : ''
+        if (!isPanelMethod(rpcMethod)) {
+          sendJson(response, 400, { error: '不支持的操作' })
+          return true
+        }
+        const timeout = SLOW_METHODS.has(rpcMethod) ? 120_000 : 20_000
+        const result = await hub.rpc(nodeId, rpcMethod, body.params ?? {}, timeout)
+        sendJson(response, 200, { result })
+        return true
+      }
+      if (action === 'events' && method === 'GET') {
+        serveEvents(response, hub, nodeId)
+        return true
+      }
+      if (action === 'media' && method === 'GET') {
+        await serveMedia(request, response, hub, nodeId, url.searchParams.get('token') ?? '')
+        return true
+      }
+    }
+
+    if (pathname.startsWith('/api/')) {
+      sendJson(response, 404, { error: '没有这个接口' })
+      return true
+    }
+    return false
+  }
+
+  return {
+    handle,
+    attach(server) {
+      server.on('upgrade', (request, socket, head) => {
+        let pathname = ''
+        try {
+          pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname
+        } catch {
+          socket.destroy()
+          return
+        }
+        if (pathname !== '/agent') return
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit('connection', ws, request)
+        })
+      })
+    },
+    issueKey: (name) => hub.issueKey(name),
+    close: () =>
+      new Promise((resolveClose, rejectClose) => {
+        hub.closeAll()
+        wss.close((error) => {
+          if (error) rejectClose(error)
+          else resolveClose()
+        })
+      })
+  }
+}
+
+export async function createPanelServer(options: PanelServerOptions): Promise<RunningPanel> {
+  const gateway = createPanelGateway(options)
+  const server = createServer((request, response) => {
+    void gateway.handle(request, response).then(
+      (handled) => {
+        if (!handled && !response.writableEnded) {
+          sendJson(response, 404, { error: '没有这个接口' })
+        }
+      },
+      (error: unknown) => {
+        if (response.headersSent || response.writableEnded) {
+          if (!response.destroyed) response.destroy()
+          return
+        }
+        if (error instanceof PanelHttpError) {
+          sendJson(response, error.status, { error: error.message })
+          return
+        }
+        const message = error instanceof Error ? error.message : '内部错误'
+        console.error('[Panel] 请求失败:', error)
+        sendJson(response, 502, { error: message || '内部错误' })
+      }
+    )
+  })
+  gateway.attach(server)
 
   await new Promise<void>((resolveListen, rejectListen) => {
     const fail = (error: Error): void => {
@@ -79,133 +245,21 @@ export async function createPanelServer(options: PanelServerOptions): Promise<Ru
 
   const address = server.address()
   const port = address && typeof address === 'object' ? address.port : options.port
-
-  async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    const method = request.method ?? 'GET'
-    const url = new URL(request.url ?? '/', `http://${request.headers.host ?? '127.0.0.1'}`)
-    const pathname = decodeURIComponent(url.pathname)
-
-    if (method === 'GET' && STATIC_FILES[pathname]) {
-      serveStatic(response, publicDir, STATIC_FILES[pathname])
-      return
-    }
-
-    if (pathname === '/api/login' && method === 'POST') {
-      requirePanelHeader(request)
-      const body = await readJson(request)
-      const token = typeof body.token === 'string' ? body.token : ''
-      if (!token || !secretsEqual(token, options.adminToken)) {
-        sendJson(response, 401, { error: '口令不正确' })
-        return
-      }
-      const session = randomBytes(32).toString('base64url')
-      sessions.set(session, Date.now())
-      response.setHeader(
-        'Set-Cookie',
-        `${SESSION_COOKIE}=${session}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE}`
-      )
-      sendJson(response, 200, { ok: true })
-      return
-    }
-
-    if (pathname.startsWith('/api/')) {
-      const session = readCookie(request, SESSION_COOKIE)
-      if (!session || !sessions.has(session)) {
-        sendJson(response, 401, { error: '请先登录' })
-        return
-      }
-      if (method === 'POST') requirePanelHeader(request)
-    }
-
-    if (pathname === '/api/logout' && method === 'POST') {
-      const session = readCookie(request, SESSION_COOKIE)
-      if (session) sessions.delete(session)
-      response.setHeader('Set-Cookie', `${SESSION_COOKIE}=; HttpOnly; Path=/; Max-Age=0`)
-      sendJson(response, 200, { ok: true })
-      return
-    }
-
-    if (pathname === '/api/me' && method === 'GET') {
-      sendJson(response, 200, { ok: true })
-      return
-    }
-
-    if (pathname === '/api/nodes' && method === 'GET') {
-      sendJson(response, 200, { nodes: hub.listNodes() })
-      return
-    }
-
-    if (pathname === '/api/keys' && method === 'GET') {
-      sendJson(response, 200, { keys: hub.listKeys() })
-      return
-    }
-
-    if (pathname === '/api/keys' && method === 'POST') {
-      const body = await readJson(request)
-      const name = typeof body.name === 'string' ? body.name : ''
-      const issued = hub.issueKey(name)
-      sendJson(response, 200, issued)
-      return
-    }
-
-    const keyMatch = pathname.match(/^\/api\/keys\/([^/]+)$/)
-    if (keyMatch && method === 'DELETE') {
-      hub.revokeKey(decodeURIComponent(keyMatch[1]))
-      sendJson(response, 200, { ok: true })
-      return
-    }
-
-    const nodeMatch = pathname.match(/^\/api\/nodes\/([^/]+)(?:\/([^/]+))?$/)
-    if (nodeMatch) {
-      const nodeId = decodeURIComponent(nodeMatch[1])
-      const action = nodeMatch[2] ?? ''
-      if (!hub.listNodes().some((node) => node.id === nodeId)) {
-        sendJson(response, 404, { error: '客户端不存在' })
-        return
-      }
-      if (!action && method === 'GET') {
-        sendJson(response, 200, { node: hub.listNodes().find((node) => node.id === nodeId) })
-        return
-      }
-      if (action === 'rpc' && method === 'POST') {
-        const body = await readJson(request)
-        const rpcMethod = typeof body.method === 'string' ? body.method : ''
-        if (!isPanelMethod(rpcMethod)) {
-          sendJson(response, 400, { error: '不支持的操作' })
-          return
-        }
-        const timeout = SLOW_METHODS.has(rpcMethod) ? 120_000 : 20_000
-        const result = await hub.rpc(nodeId, rpcMethod, body.params ?? {}, timeout)
-        sendJson(response, 200, { result })
-        return
-      }
-      if (action === 'events' && method === 'GET') {
-        serveEvents(response, hub, nodeId)
-        return
-      }
-      if (action === 'media' && method === 'GET') {
-        await serveMedia(request, response, hub, nodeId, url.searchParams.get('token') ?? '')
-        return
-      }
-    }
-
-    sendJson(response, 404, { error: '没有这个接口' })
-  }
-
   return {
     port,
     host: options.host,
-    issueKey: (name) => hub.issueKey(name),
+    issueKey: (name) => gateway.issueKey(name),
     close: () =>
-      new Promise((resolveClose, rejectClose) => {
-        hub.closeAll()
-        wss.close()
-        server.close((error) => {
-          if (error) rejectClose(error)
-          else resolveClose()
-        })
-        server.closeAllConnections()
-      })
+      gateway.close().then(
+        () =>
+          new Promise((resolveClose, rejectClose) => {
+            server.close((error) => {
+              if (error) rejectClose(error)
+              else resolveClose()
+            })
+            server.closeAllConnections()
+          })
+      )
   }
 }
 

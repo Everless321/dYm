@@ -3,30 +3,107 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>dYm 管理端</title>
+    <meta name="theme-color" content="#0b1220" />
+    <title>dYm 管理控制台</title>
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
+    <noscript><p class="noscript">需要启用 JavaScript 才能使用管理端。</p></noscript>
+
     <div id="login" class="login" hidden>
-      <form id="loginForm" class="card login-card">
-        <p class="brand">dYm</p>
-        <h1>管理端</h1>
-        <p class="muted">输入这台管理端的管理员口令。</p>
-        <label>
-          口令
-          <input id="tokenInput" type="password" autocomplete="current-password" required />
-        </label>
-        <p id="loginError" class="error" hidden></p>
-        <button class="primary" type="submit">进入</button>
-      </form>
+      <section class="login-aside">
+        <div class="login-aside-inner">
+          <div class="brand-lockup">
+            <span class="mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16">
+                <rect x="2" y="2" width="8" height="8" rx="1.6" fill="currentColor" />
+                <rect
+                  x="14"
+                  y="2"
+                  width="8"
+                  height="8"
+                  rx="1.6"
+                  fill="currentColor"
+                  opacity="0.45"
+                />
+                <rect
+                  x="2"
+                  y="14"
+                  width="8"
+                  height="8"
+                  rx="1.6"
+                  fill="currentColor"
+                  opacity="0.45"
+                />
+                <rect x="14" y="14" width="8" height="8" rx="1.6" fill="currentColor" />
+              </svg>
+            </span>
+            <span>dYm</span>
+          </div>
+          <h1>管理控制台</h1>
+          <p class="login-lead">
+            查看并操作已经注册的客户端。进入一台之后，作品、用户和下载任务都只属于这一台。
+          </p>
+          <ul class="login-points">
+            <li>客户端填写地址和密钥后主动连入</li>
+            <li>抖音登录只在对应电脑的 dYm 窗口里完成</li>
+            <li>管理员口令与节点密钥分开保管</li>
+          </ul>
+        </div>
+      </section>
+      <section class="login-main">
+        <form id="loginForm">
+          <p class="eyebrow">管理员</p>
+          <h2>登录</h2>
+          <p class="lede">使用这台管理端的口令。这不是节点密钥。</p>
+          <div class="field">
+            <label for="tokenInput">口令</label>
+            <div class="secret">
+              <input
+                id="tokenInput"
+                type="password"
+                autocomplete="current-password"
+                required
+                spellcheck="false"
+              />
+              <button id="toggleToken" type="button">显示</button>
+            </div>
+          </div>
+          <p id="loginError" class="error" hidden></p>
+          <button class="primary block" type="submit">进入控制台</button>
+        </form>
+        <p class="login-foot">口令不会下发到客户端。</p>
+      </section>
     </div>
 
-    <div id="shell" hidden>
-      <header class="top">
-        <a class="brand" href="#/">dYm 管理端</a>
-        <button id="logoutButton" class="ghost" type="button">退出</button>
-      </header>
-      <main id="view"></main>
+    <div id="shell" class="shell" hidden>
+      <aside class="sidebar">
+        <a class="brand" href="#/">
+          <span class="mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16">
+              <rect x="2" y="2" width="8" height="8" rx="1.6" fill="currentColor" />
+              <rect x="14" y="2" width="8" height="8" rx="1.6" fill="currentColor" opacity="0.45" />
+              <rect x="2" y="14" width="8" height="8" rx="1.6" fill="currentColor" opacity="0.45" />
+              <rect x="14" y="14" width="8" height="8" rx="1.6" fill="currentColor" />
+            </svg>
+          </span>
+          <span class="brand-copy">
+            <strong>dYm</strong>
+            <small>管理控制台</small>
+          </span>
+        </a>
+        <nav id="sideNav" class="side-nav" aria-label="主导航"></nav>
+        <div class="side-foot">
+          <button id="logoutButton" class="side-logout" type="button">退出登录</button>
+        </div>
+      </aside>
+      <div class="workspace">
+        <header class="topbar">
+          <nav id="crumb" class="crumb" aria-label="当前位置"></nav>
+          <div id="topStatus" class="top-status"></div>
+        </header>
+        <main id="view"></main>
+      </div>
     </div>
 
     <div id="toast" class="toast" hidden></div>

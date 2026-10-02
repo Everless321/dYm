@@ -1,0 +1,25 @@
+{
+  "name": "dym-panel",
+  "private": true,
+  "version": "3.2.0",
+  "description": "可单独部署的 dYm 管理端",
+  "scripts": {
+    "dev": "node scripts/start.mjs",
+    "build": "next build",
+    "start": "NODE_ENV=production node scripts/start.mjs"
+  },
+  "dependencies": {
+    "next": "^15.5.4",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@types/ws": "^8.18.2",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.9.3"
+  }
+}

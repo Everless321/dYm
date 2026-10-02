@@ -26,7 +26,8 @@
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
     "docs:deploy": "npm run docs:build && wrangler deploy --config docs/wrangler.jsonc",
-    "panel": "node scripts/run-panel.mjs"
+    "panel": "node panel/scripts/start.mjs",
+    "panel:build": "npm run build --prefix panel"
   },
   "dependencies": {
     "@aptabase/electron": "^0.3.1",
