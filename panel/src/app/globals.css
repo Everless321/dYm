@@ -1177,6 +1177,10 @@ input[type='checkbox'] {
   gap: 10px;
 }
 
+.boot {
+  min-height: 100vh;
+}
+
 .bar {
   width: 14px;
   height: 14px;
