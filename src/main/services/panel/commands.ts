@@ -51,7 +51,10 @@ const MIME: Record<string, string> = {
   '.webp': 'image/webp',
   '.gif': 'image/gif',
   '.mp3': 'audio/mpeg',
-  '.m4a': 'audio/mp4'
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg'
 }
 
 export function readLocalLogin(): PanelLogin {
@@ -427,6 +430,8 @@ interface PanelPostView {
   cover: PanelMediaRef | null
   video: PanelMediaRef | null
   images: PanelMediaRef[]
+  imageVideos: Array<PanelMediaRef | null>
+  music: PanelMediaRef | null
   analysis: {
     tags: string[]
     category: string | null
@@ -451,6 +456,8 @@ function toPost(post: DbPost): PanelPostView {
     cover: toMediaRef(media?.cover ?? null),
     video: toMediaRef(media?.video ?? null),
     images: (media?.images ?? []).map((image) => toMediaRef(image)).filter(isMedia),
+    imageVideos: (media?.imageVideos ?? []).map((file) => toMediaRef(file)),
+    music: toMediaRef(media?.music ?? null),
     analysis: {
       tags: mergeTags(post.analysis_tags, post.manual_tags),
       category: post.analysis_category,

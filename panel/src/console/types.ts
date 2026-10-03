@@ -50,6 +50,8 @@ export interface PanelPost {
   cover: MediaRef | null
   video: MediaRef | null
   images: MediaRef[]
+  imageVideos?: Array<MediaRef | null>
+  music?: MediaRef | null
   analysis?: {
     tags?: string[]
     summary?: string | null

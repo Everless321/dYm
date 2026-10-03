@@ -226,6 +226,8 @@ function PostDialog({
   onClose: () => void
 }): React.JSX.Element {
   const images = (post?.images || []).map((image) => mediaUrl(nodeId, image)).filter(Boolean)
+  const clips = (post?.imageVideos || []).map((item) => mediaUrl(nodeId, item))
+  const music = post ? mediaUrl(nodeId, post.music) : ''
   const video = post ? mediaUrl(nodeId, post.video) : ''
   const cover = post ? mediaUrl(nodeId, post.cover) : ''
   const tags = post?.analysis?.tags || []
@@ -234,7 +236,15 @@ function PostDialog({
       {post ? (
         <div className="viewer">
           <div className="viewer-stage">
-            <PostStage post={post} images={images} video={video} cover={cover} />
+            <PostStage
+              key={post.id}
+              post={post}
+              images={images}
+              clips={clips}
+              music={music}
+              video={video}
+              cover={cover}
+            />
           </div>
           <div className="viewer-copy">
             <div className="spread">
@@ -269,28 +279,211 @@ function PostDialog({
 function PostStage({
   post,
   images,
+  clips,
+  music,
   video,
   cover
 }: {
   post: PanelPost
   images: string[]
+  clips: string[]
+  music: string
   video: string
   cover: string
 }): React.JSX.Element {
   if (post.isImagePost) {
     const sources = images.length ? images : cover ? [cover] : []
     if (!sources.length) return <p className="muted">没有可显示的图片</p>
-    return (
-      <>
-        {sources.map((src) => (
-          <StageMedia key={src} src={src} />
-        ))}
-      </>
-    )
+    return <ImageGallery images={sources} clips={images.length ? clips : []} music={music} />
   }
   if (video) return <StageMedia src={video} video />
   if (cover) return <StageMedia src={cover} />
   return <p className="muted">没有可播放的文件</p>
+}
+
+const IMAGE_AUTO_INTERVAL = 3000
+
+function ImageGallery({
+  images,
+  clips,
+  music
+}: {
+  images: string[]
+  clips: string[]
+  music: string
+}): React.JSX.Element {
+  const [index, setIndex] = useState(0)
+  const [muted, setMuted] = useState(false)
+  const [manual, setManual] = useState(false)
+  const [failed, setFailed] = useState('')
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const count = images.length
+  const current = images[index] || images[0] || ''
+  const clip = clips[index] || ''
+
+  useEffect(() => {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (manual || count < 2 || reduce) return
+    const timer = window.setInterval(() => {
+      setIndex((prev) => (prev + 1) % count)
+    }, IMAGE_AUTO_INTERVAL)
+    return () => window.clearInterval(timer)
+  }, [manual, count])
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio || !music) return
+    audio.muted = muted
+    void audio.play().catch(() => undefined)
+  }, [music, muted])
+
+  useEffect(() => {
+    if (count < 2) return
+    const onKey = (event: KeyboardEvent): void => {
+      const el = event.target
+      if (
+        el instanceof HTMLElement &&
+        (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+      ) {
+        return
+      }
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+      event.preventDefault()
+      setManual(true)
+      const delta = event.key === 'ArrowLeft' ? -1 : 1
+      setIndex((prev) => (prev + delta + count) % count)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [count])
+
+  function step(delta: number): void {
+    setManual(true)
+    setIndex((prev) => (prev + delta + count) % count)
+  }
+
+  function toggleSound(): void {
+    const next = !muted
+    setMuted(next)
+    const audio = audioRef.current
+    if (!audio) return
+    audio.muted = next
+    if (audio.paused) void audio.play().catch(() => undefined)
+  }
+
+  return (
+    <>
+      <div className="stage-frame">
+        {failed === (clip || current) ? (
+          <p className="muted">文件无法显示</p>
+        ) : clip ? (
+          <video
+            key={clip}
+            className="stage-slide"
+            src={clip}
+            poster={current}
+            autoPlay
+            loop
+            muted
+            playsInline
+            onError={() => setFailed(clip)}
+          />
+        ) : (
+          <img
+            key={current}
+            className="stage-slide"
+            alt=""
+            src={current}
+            onError={() => setFailed(current)}
+          />
+        )}
+      </div>
+      {count > 1 ? (
+        <>
+          <button
+            className="stage-nav prev"
+            type="button"
+            aria-label="上一张"
+            onClick={() => step(-1)}
+          >
+            <Chevron dir="left" />
+          </button>
+          <button
+            className="stage-nav next"
+            type="button"
+            aria-label="下一张"
+            onClick={() => step(1)}
+          >
+            <Chevron dir="right" />
+          </button>
+          <div className="stage-dots">
+            {images.map((src, dot) => (
+              <button
+                key={src}
+                type="button"
+                className={dot === index ? 'stage-dot on' : 'stage-dot'}
+                aria-label={`第 ${dot + 1} 张`}
+                onClick={() => {
+                  setManual(true)
+                  setIndex(dot)
+                }}
+              />
+            ))}
+          </div>
+        </>
+      ) : null}
+      {music ? (
+        <>
+          <audio ref={audioRef} src={music} loop autoPlay />
+          <button
+            className="stage-sound"
+            type="button"
+            aria-label={muted ? '开声' : '静音'}
+            onClick={toggleSound}
+          >
+            <VolumeIcon muted={muted} />
+          </button>
+        </>
+      ) : null}
+    </>
+  )
+}
+
+function Chevron({ dir }: { dir: 'left' | 'right' }): React.JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      aria-hidden="true"
+    >
+      <path
+        d={dir === 'left' ? 'M15 6 9 12l6 6' : 'M9 6l6 6-6 6'}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function VolumeIcon({ muted }: { muted: boolean }): React.JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      aria-hidden="true"
+    >
+      <path d="M11 5 6 9H3v6h3l5 4V5z" strokeLinejoin="round" />
+      {muted ? (
+        <path d="m17 9 4 6M21 9l-4 6" strokeLinecap="round" />
+      ) : (
+        <path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" strokeLinecap="round" />
+      )}
+    </svg>
+  )
 }
 
 function StageMedia({ src, video }: { src: string; video?: boolean }): React.JSX.Element {
