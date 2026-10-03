@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#0b1220" />
+    <meta name="theme-color" content="#f5f5f7" />
     <title>dYm 管理控制台</title>
     <link rel="stylesheet" href="/app.css" />
   </head>
@@ -11,69 +11,71 @@
     <noscript><p class="noscript">需要启用 JavaScript 才能使用管理端。</p></noscript>
 
     <div id="login" class="login" hidden>
-      <section class="login-aside">
-        <div class="login-aside-inner">
-          <div class="brand-lockup">
-            <span class="mark" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="16" height="16">
-                <rect x="2" y="2" width="8" height="8" rx="1.6" fill="currentColor" />
-                <rect
-                  x="14"
-                  y="2"
-                  width="8"
-                  height="8"
-                  rx="1.6"
-                  fill="currentColor"
-                  opacity="0.45"
-                />
-                <rect
-                  x="2"
-                  y="14"
-                  width="8"
-                  height="8"
-                  rx="1.6"
-                  fill="currentColor"
-                  opacity="0.45"
-                />
-                <rect x="14" y="14" width="8" height="8" rx="1.6" fill="currentColor" />
-              </svg>
-            </span>
-            <span>dYm</span>
-          </div>
-          <h1>管理控制台</h1>
-          <p class="login-lead">
-            查看并操作已经注册的客户端。进入一台之后，作品、用户和下载任务都只属于这一台。
-          </p>
-          <ul class="login-points">
-            <li>客户端填写地址和密钥后主动连入</li>
-            <li>抖音登录只在对应电脑的 dYm 窗口里完成</li>
-            <li>管理员口令与节点密钥分开保管</li>
-          </ul>
-        </div>
-      </section>
-      <section class="login-main">
-        <form id="loginForm">
-          <p class="eyebrow">管理员</p>
-          <h2>登录</h2>
-          <p class="lede">使用这台管理端的口令。这不是节点密钥。</p>
-          <div class="field">
-            <label for="tokenInput">口令</label>
-            <div class="secret">
-              <input
-                id="tokenInput"
-                type="password"
-                autocomplete="current-password"
-                required
-                spellcheck="false"
-              />
-              <button id="toggleToken" type="button">显示</button>
+      <div class="login-card">
+        <section class="login-aside">
+          <div class="login-aside-inner">
+            <div class="brand-lockup">
+              <span class="mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="16" height="16">
+                  <rect x="2" y="2" width="8" height="8" rx="1.6" fill="currentColor" />
+                  <rect
+                    x="14"
+                    y="2"
+                    width="8"
+                    height="8"
+                    rx="1.6"
+                    fill="currentColor"
+                    opacity="0.45"
+                  />
+                  <rect
+                    x="2"
+                    y="14"
+                    width="8"
+                    height="8"
+                    rx="1.6"
+                    fill="currentColor"
+                    opacity="0.45"
+                  />
+                  <rect x="14" y="14" width="8" height="8" rx="1.6" fill="currentColor" />
+                </svg>
+              </span>
+              <span>dYm</span>
             </div>
+            <h1>管理控制台</h1>
+            <p class="login-lead">
+              查看并操作已经注册的客户端。进入一台之后，作品、用户和下载任务都只属于这一台。
+            </p>
+            <ul class="login-points">
+              <li>客户端填写地址和密钥后主动连入</li>
+              <li>抖音登录只在对应电脑的 dYm 窗口里完成</li>
+              <li>管理员口令与节点密钥分开保管</li>
+            </ul>
           </div>
-          <p id="loginError" class="error" hidden></p>
-          <button class="primary block" type="submit">进入控制台</button>
-        </form>
-        <p class="login-foot">口令不会下发到客户端。</p>
-      </section>
+        </section>
+        <section class="login-main">
+          <form id="loginForm">
+            <p class="eyebrow">管理员</p>
+            <h2>登录</h2>
+            <p class="lede">使用这台管理端的口令。这不是节点密钥。</p>
+            <div class="field">
+              <label for="tokenInput">口令</label>
+              <div class="secret">
+                <input
+                  id="tokenInput"
+                  type="password"
+                  autocomplete="current-password"
+                  required
+                  spellcheck="false"
+                />
+                <button id="toggleToken" type="button">显示</button>
+              </div>
+            </div>
+            <p id="loginError" class="error" hidden></p>
+            <button class="primary block" type="submit">进入控制台</button>
+          </form>
+          <p class="login-foot">口令不会下发到客户端。</p>
+        </section>
+      </div>
     </div>
 
     <div id="shell" class="shell" hidden>
