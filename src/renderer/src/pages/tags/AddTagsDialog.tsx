@@ -75,7 +75,7 @@ export function AddTagsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-[560px] rounded-lg">
         <DialogHeader>
           <DialogTitle>{isBatch ? '批量添加标签' : '添加标签'}</DialogTitle>
           <DialogDescription>

@@ -103,8 +103,9 @@ export default function AnalysisPage(): React.JSX.Element {
   return (
     <Page>
       <PageHeader
-        title="AI 视频分析"
-        description="结合画面、语音转写和文案理解整条视频，输出总结、章节与结构化标签"
+        title="分析队列"
+        description="管理分析作业、提供方与语音转写"
+        meta={activeCount ? `${activeCount} 个作业进行中` : undefined}
         actions={
           <button
             onClick={() => setNewJobOpen(true)}
@@ -116,7 +117,7 @@ export default function AnalysisPage(): React.JSX.Element {
         }
       />
 
-      <PageBody>
+      <PageBody fill={tab === 'queue'} width={tab === 'queue' ? 'full' : 'default'}>
         <div className="inline-flex h-9 items-center rounded-lg bg-[#F2F2F4] p-1">
           {TABS.map((t) => {
             const Icon = t.icon
@@ -144,7 +145,7 @@ export default function AnalysisPage(): React.JSX.Element {
           })}
         </div>
 
-        <div>
+        <div className={tab === 'queue' ? 'min-h-0 flex-1' : ''}>
           {tab === 'queue' && (
             <JobsPanel jobs={jobs} totals={totals} onCreate={() => setNewJobOpen(true)} />
           )}
