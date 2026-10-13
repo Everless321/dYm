@@ -1,0 +1,427 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Play,
+  X,
+  Plus,
+  Sparkles,
+  Loader2,
+  RotateCw,
+  Hand
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { MediaViewer } from '@/legacy/components/media/MediaViewer'
+import { parseTags, toMediaSrc } from '@/lib/utils'
+import { PageHeader, BackLink } from '@/components/layout/PageHeader'
+import { parseTagFilters, stripNavMarkers } from '@/pages/tags/filters'
+import { AnalysisDetailCard } from '@/pages/tags/components/AnalysisDetailCard'
+
+export default function VideoTagEditPage(): React.JSX.Element {
+  const { postId = '' } = useParams()
+  const [searchParams] = useSearchParams()
+  const id = Number(postId)
+  const navigate = useNavigate()
+  const [post, setPost] = useState<DbPost | null>(null)
+  const [cover, setCover] = useState<string | null>(null)
+  const [viewerOpen, setViewerOpen] = useState(false)
+  const [input, setInput] = useState('')
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  // 记录哪条作品正在等待重新分析结果；切换作品后自然不再显示「分析中」
+  const [reanalyzingId, setReanalyzingId] = useState<number | null>(null)
+  const reanalyzing = reanalyzingId === id
+  const [siblings, setSiblings] = useState<number[]>([])
+  const [status, setStatus] = useState<'loading' | 'ready' | 'notFound' | 'error'>('loading')
+  const [errorMessage, setErrorMessage] = useState('')
+  // 重新分析完成后 bump，让「AI 理解」卡片重新拉取结构化结果
+  const [detailKey, setDetailKey] = useState(0)
+  // 上/下一条切换很快时，旧请求可能晚于新请求返回，用序号丢弃过期结果
+  const loadSeqRef = useRef(0)
+
+  const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current
+    try {
+      const p = await window.api.tag.getPost(id)
+      if (seq !== loadSeqRef.current) return
+      if (!p) {
+        setPost(null)
+        setStatus('notFound')
+        return
+      }
+      setPost(p)
+      setStatus('ready')
+      try {
+        const c = await window.api.post.getCoverPath(p.sec_uid, p.folder_name)
+        if (seq !== loadSeqRef.current) return
+        setCover(c)
+      } catch (error) {
+        console.error('[VideoTagEditPage] 获取封面失败:', error)
+      }
+    } catch (error) {
+      if (seq !== loadSeqRef.current) return
+      setErrorMessage((error as Error).message)
+      setStatus('error')
+    }
+  }, [id])
+
+  useEffect(() => {
+    // 换作品时清掉上一条的封面和内容，避免短暂显示旧数据
+    setStatus('loading')
+    setPost(null)
+    setCover(null)
+    load()
+    window.api.tag
+      .getTagsWithFrequency()
+      .then((list) => {
+        setSuggestions(list.slice(0, 24).map((t) => t.tag))
+      })
+      .catch((error) => {
+        console.error('[VideoTagEditPage] 获取推荐标签失败:', error)
+      })
+  }, [load])
+
+  // 本页发起的重新分析在队列里跑；等到这条作品完成再刷新（别的页面发起的也会命中）。
+  // 作业被取消 / 整体失败时不会有 itemDone，所以还要盯着作业本身的状态收尾。
+  const reanalyzeJobRef = useRef<number | null>(null)
+  useEffect(() => {
+    const unsub = window.api.analysis.onQueue((event) => {
+      const done = event.itemDone
+      if (done && done.postId === id) {
+        reanalyzeJobRef.current = null
+        setReanalyzingId((prev) => (prev === id ? null : prev))
+        if (done.ok) {
+          load()
+          setDetailKey((k) => k + 1)
+        } else toast.error(`重新分析失败: ${done.error || '未知错误'}`)
+        return
+      }
+      const jobId = reanalyzeJobRef.current
+      if (jobId === null) return
+      const job = event.jobs.find((j) => j.id === jobId)
+      const active =
+        job && (job.status === 'queued' || job.status === 'running' || job.status === 'paused')
+      if (active) return
+      reanalyzeJobRef.current = null
+      setReanalyzingId((prev) => (prev === id ? null : prev))
+      if (job?.error) toast.error(`重新分析未完成: ${job.error}`)
+      else if (job?.status === 'cancelled') toast.info('重新分析已取消')
+    })
+    return unsub
+  }, [id, load])
+
+  // 上/下一条沿工作台传来的队列走：带 query 就用同一套筛选条件解析
+  //（无筛选时只有 FROM_LIST 标记，解析出来是默认值，即全库）。
+  // 完全不带 query 的入口（视频浏览右键进来）才退化为「同作者全部作品」。
+  const search = searchParams.toString()
+  const backSearch = stripNavMarkers(search)
+  const backTo = `/tags${backSearch ? `?${backSearch}` : ''}`
+  // secUid 只在没有 query 时才参与，否则换作者会让队列白重查一次
+  const queueSecUid = search ? null : (post?.sec_uid ?? null)
+
+  useEffect(() => {
+    const filters: TagPostFilters | null = search
+      ? parseTagFilters(new URLSearchParams(search))
+      : queueSecUid
+        ? { secUid: queueSecUid }
+        : null
+    if (!filters) return
+    window.api.tag
+      .queryPostIds(filters)
+      .then(setSiblings)
+      .catch((error) => {
+        console.error('[VideoTagEditPage] 获取作品队列失败:', error)
+      })
+  }, [search, queueSecUid])
+
+  const idx = siblings.indexOf(id)
+  const prevId = idx > 0 ? siblings[idx - 1] : null
+  const nextId = idx >= 0 && idx < siblings.length - 1 ? siblings[idx + 1] : null
+  const go = useCallback(
+    (target: number) => navigate(`/tags/video/${target}${search ? `?${search}` : ''}`),
+    [navigate, search]
+  )
+
+  /**
+   * ↑/↓ 恒为「切换作品」；←/→ 只在播放器关着时才切。
+   * 播放器打开时 ←/→ 属于当前这条内容自己 —— 图集翻页或视频快进快退，
+   * 页面不能再抢，否则会出现「快进着突然跳到下一个作品」。
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const el = e.target as HTMLElement | null
+      if (el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA' || el?.isContentEditable) return
+      const toPrev = e.key === 'ArrowUp' || (!viewerOpen && e.key === 'ArrowLeft')
+      const toNext = e.key === 'ArrowDown' || (!viewerOpen && e.key === 'ArrowRight')
+      if (!toPrev && !toNext) return
+      e.preventDefault() // ↑/↓ 默认会滚动页面
+      if (toPrev && prevId) go(prevId)
+      else if (toNext && nextId) go(nextId)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [prevId, nextId, go, viewerOpen])
+
+  if (status === 'loading') {
+    return <div className="p-10 text-sm text-[#A1A1A6]">加载中…</div>
+  }
+
+  if (status === 'notFound' || status === 'error' || !post) {
+    return (
+      <div className="flex flex-col h-full">
+        <PageHeader left={<BackLink label="返回列表" onClick={() => navigate(backTo)} />} />
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center">
+          <p className="text-sm text-[#6E6E73]">
+            {status === 'error' ? `加载失败: ${errorMessage}` : '作品不存在'}
+          </p>
+          <div className="flex items-center gap-2">
+            {status === 'error' && (
+              <Button variant="outline" onClick={load}>
+                重试
+              </Button>
+            )}
+            <Button onClick={() => navigate(backTo)}>返回列表</Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const aiTags = parseTags(post.analysis_tags)
+  const manualTags = parseTags(post.manual_tags)
+
+  const save = async (input: { aiTags?: string[]; manualTags?: string[] }): Promise<boolean> => {
+    try {
+      await window.api.tag.setPostTags(id, input)
+      load()
+      return true
+    } catch (error) {
+      toast.error(`保存标签失败: ${(error as Error).message}`)
+      return false
+    }
+  }
+
+  const removeAi = (t: string): Promise<boolean> => save({ aiTags: aiTags.filter((x) => x !== t) })
+  const removeManual = (t: string): Promise<boolean> =>
+    save({ manualTags: manualTags.filter((x) => x !== t) })
+  const addManual = async (t: string): Promise<void> => {
+    const tag = t.trim()
+    if (!tag) return
+    if (manualTags.includes(tag) || aiTags.includes(tag)) {
+      toast.info('标签已存在')
+      return
+    }
+    const ok = await save({ manualTags: [...manualTags, tag] })
+    if (ok) setInput('')
+  }
+
+  const handleReanalyze = async (): Promise<void> => {
+    setReanalyzingId(id)
+    try {
+      const job = await window.api.analysis.createJob({
+        kind: 'reanalyze',
+        postIds: [id],
+        priority: true
+      })
+      reanalyzeJobRef.current = job.id
+      toast.info('已加入分析队列，完成后自动刷新')
+    } catch (error) {
+      setReanalyzingId((prev) => (prev === id ? null : prev))
+      toast.error(`重新分析失败: ${(error as Error).message}`)
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <PageHeader
+        left={<BackLink label="返回列表" onClick={() => navigate(backTo)} />}
+        actions={
+          idx >= 0 && siblings.length > 1 ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[#A1A1A6] tabular-nums mr-1">
+                {idx + 1} / {siblings.length}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!prevId}
+                onClick={() => prevId && go(prevId)}
+                title="上一条（↑ 或 ←）"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                上一条
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!nextId}
+                onClick={() => nextId && go(nextId)}
+                title="下一条（↓ 或 →）"
+              >
+                下一条
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : undefined
+        }
+      />
+
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex gap-8 max-w-5xl">
+          {/* Left: preview */}
+          <div className="w-80 shrink-0 space-y-4">
+            <div
+              className="relative aspect-[3/4] rounded-2xl overflow-hidden bg-[#1D1D1F] cursor-pointer group shadow-sm"
+              onClick={() => setViewerOpen(true)}
+            >
+              {cover ? (
+                <img src={toMediaSrc(cover)} className="w-full h-full object-cover" alt="" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-white/40">
+                  无封面
+                </div>
+              )}
+              <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Play className="h-12 w-12 text-white" />
+              </div>
+            </div>
+            <div className="rounded-xl border border-[#E5E5E7] bg-white p-4 space-y-2">
+              <p className="text-sm text-[#1D1D1F] leading-relaxed">
+                {post.desc || post.caption || '无描述'}
+              </p>
+            </div>
+          </div>
+
+          {/* Right: tag editing */}
+          <div className="flex-1 space-y-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-[#1D1D1F]">标签编辑</h2>
+              <Button variant="outline" onClick={handleReanalyze} disabled={reanalyzing}>
+                {reanalyzing ? (
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                ) : (
+                  <RotateCw className="h-4 w-4 mr-1.5" />
+                )}
+                {reanalyzing ? '分析中…' : '重新分析'}
+              </Button>
+            </div>
+
+            <TagSection
+              title="AI 标签"
+              icon={<Sparkles className="h-4 w-4 text-[#0A84FF]" />}
+              tags={aiTags}
+              color="#0A84FF"
+              bg="#E8F0FE"
+              onRemove={removeAi}
+              empty="暂无 AI 标签，可点击「重新分析」生成"
+            />
+
+            <TagSection
+              title="手动标签"
+              icon={<Hand className="h-4 w-4 text-[#34C759]" />}
+              tags={manualTags}
+              color="#34C759"
+              bg="#E8F8EE"
+              onRemove={removeManual}
+              empty="暂无手动标签"
+            />
+
+            <AnalysisDetailCard
+              postId={id}
+              refreshKey={detailKey}
+              fallbackSummary={post.analysis_summary}
+            />
+
+            {/* Add + suggestions */}
+            <div className="rounded-xl border border-[#E5E5E7] bg-white p-5 space-y-4">
+              <div className="flex gap-2">
+                <Input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addManual(input)}
+                  placeholder="输入标签后回车添加"
+                  className="flex-1"
+                />
+                <Button onClick={() => addManual(input)}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  添加
+                </Button>
+              </div>
+              {suggestions.length > 0 && (
+                <div className="space-y-2.5">
+                  <p className="text-xs text-[#A1A1A6]">推荐标签（点击采纳）</p>
+                  <div className="flex flex-wrap gap-2">
+                    {suggestions
+                      .filter((t) => !aiTags.includes(t) && !manualTags.includes(t))
+                      .map((t) => (
+                        <button
+                          key={t}
+                          onClick={() => addManual(t)}
+                          className="px-3 py-1.5 rounded-full text-xs bg-[#F5F5F7] text-[#6E6E73] hover:bg-[#E8F0FE] hover:text-[#0A84FF] transition-colors"
+                        >
+                          + {t}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <MediaViewer post={post} open={viewerOpen} onOpenChange={setViewerOpen} />
+    </div>
+  )
+}
+
+function TagSection({
+  title,
+  icon,
+  tags,
+  color,
+  bg,
+  onRemove,
+  empty
+}: {
+  title: string
+  icon?: React.ReactNode
+  tags: string[]
+  color: string
+  bg: string
+  onRemove: (t: string) => void
+  empty: string
+}): React.JSX.Element {
+  return (
+    <div className="rounded-xl border border-[#E5E5E7] bg-white p-5">
+      <div className="flex items-center gap-2 mb-4">
+        {icon}
+        <span className="text-sm font-medium text-[#1D1D1F]">{title}</span>
+        <span className="text-xs text-[#A1A1A6]">({tags.length})</span>
+      </div>
+      {tags.length === 0 ? (
+        <p className="text-xs text-[#C7C7CC]">{empty}</p>
+      ) : (
+        <div className="flex flex-wrap gap-2.5">
+          {tags.map((t) => (
+            <span
+              key={t}
+              className="inline-flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-full text-xs font-medium"
+              style={{ color, backgroundColor: bg }}
+            >
+              {t}
+              <button
+                onClick={() => onRemove(t)}
+                className="rounded-full p-0.5 hover:bg-black/10 transition-colors"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

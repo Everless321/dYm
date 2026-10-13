@@ -16,12 +16,14 @@ import {
   RotateCcw
 } from 'lucide-react'
 import { emitDeveloperModeChange } from '@/lib/developer-mode'
+import { getUiVersion, setUiVersion, type UiVersion } from '@/lib/ui-version'
 import { StorageSettingsCard } from './StorageSettingsCard'
 import { PanelSettingsCard } from './PanelSettingsCard'
 
 export default function SystemPage() {
   // Cookie
   const [cookie, setCookie] = useState('')
+  const [uiVersion, setUiVersionState] = useState<UiVersion>('new')
   const [fetchingCookie, setFetchingCookie] = useState(false)
   const [resettingBrowser, setResettingBrowser] = useState(false)
 
@@ -116,6 +118,7 @@ export default function SystemPage() {
       setLiveMaxDuration(settings.live_max_duration || '0')
       setTelemetryEnabled(settings.telemetry_enabled !== 'false')
       setDeveloperMode(settings.developer_mode === 'true')
+      setUiVersionState((await getUiVersion()) ?? 'new')
       setAllowShell(settings.scripts_allow_shell === 'true')
       setSettingsLoaded(true)
     } catch (error) {
@@ -853,6 +856,30 @@ export default function SystemPage() {
                     <Database className="h-4 w-4" />
                     打开目录
                   </button>
+                </div>
+
+                <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-sm text-[#1D1D1F]">界面版本</p>
+                    <p className="text-xs text-[#A1A1A6] mt-1">
+                      在新版界面与经典界面之间切换，切换后立即生效
+                    </p>
+                  </div>
+                  <div className="flex rounded-lg bg-[#F2F2F4] p-0.5">
+                    {(['new', 'legacy'] as const).map((version) => (
+                      <button
+                        key={version}
+                        onClick={() => void setUiVersion(version)}
+                        className={`px-4 py-1.5 rounded-md text-sm transition-colors ${
+                          uiVersion === version
+                            ? 'bg-white text-[#1D1D1F] shadow-sm'
+                            : 'text-[#6E6E73] hover:text-[#1D1D1F]'
+                        }`}
+                      >
+                        {version === 'new' ? '新版界面' : '经典界面'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
