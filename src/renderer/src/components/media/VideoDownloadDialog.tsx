@@ -173,11 +173,7 @@ export function VideoDownloadDialog({
 
               <div className="flex gap-3 rounded-lg bg-[#F5F5F7] p-3">
                 <div className="relative h-[171px] w-24 shrink-0 overflow-hidden rounded-lg bg-[#E5E5E7]">
-                  <img
-                    src={videoInfo.coverUrl}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
+                  <img src={videoInfo.coverUrl} alt="" className="h-full w-full object-cover" />
                   <div className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
                     {videoInfo.type === 'images' ? (
                       <>
@@ -211,8 +207,7 @@ export function VideoDownloadDialog({
                     {videoInfo.desc || '无标题'}
                   </p>
                   <p className="flex items-center gap-1 text-xs text-[#6E6E73]">
-                    <UserRound className="h-3.5 w-3.5 text-[#A1A1A6]" />
-                    @{videoInfo.nickname}
+                    <UserRound className="h-3.5 w-3.5 text-[#A1A1A6]" />@{videoInfo.nickname}
                   </p>
                   {videoInfo.type === 'images' && (videoInfo.imageUrls?.length ?? 0) > 0 && (
                     <div className="mt-auto flex gap-1 overflow-hidden">
@@ -234,9 +229,7 @@ export function VideoDownloadDialog({
               <Link2 className="h-6 w-6 text-[#A1A1A6]" />
               <p className="text-[13px] text-[#6E6E73]">解析后显示作品预览</p>
               {!error && (
-                <p className="text-[11px] text-[#A1A1A6]">
-                  打开窗口时会尝试读取剪贴板中的链接
-                </p>
+                <p className="text-[11px] text-[#A1A1A6]">打开窗口时会尝试读取剪贴板中的链接</p>
               )}
             </div>
           )}

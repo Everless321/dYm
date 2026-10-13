@@ -451,117 +451,115 @@ export default function BrowsePage(): React.JSX.Element {
 
       <div className="shrink-0 border-b border-[#E5E5E7] bg-white px-6">
         <div className="flex h-11 items-center justify-between border-b border-[#E5E5E7]">
-            <div className="flex items-center gap-3">
-              {/* Author Filter */}
-              <div className="relative" ref={authorDropdownRef}>
+          <div className="flex items-center gap-3">
+            {/* Author Filter */}
+            <div className="relative" ref={authorDropdownRef}>
+              <button
+                onClick={() => setShowAuthorDropdown(!showAuthorDropdown)}
+                className="flex h-8 items-center gap-2 rounded-md px-2.5 text-[13px] text-[#1D1D1F] transition-colors hover:bg-[#F2F2F4]"
+              >
+                <span className="text-xs text-[#A1A1A6]">作者</span>
+                <span>{selectedAuthor?.nickname || '全部作者'}</span>
+                <ChevronDown
+                  className={`h-4 w-4 text-[#6E6E73] transition-transform ${showAuthorDropdown ? 'rotate-180' : ''}`}
+                />
+              </button>
+              {selectedSecUid && (
                 <button
-                  onClick={() => setShowAuthorDropdown(!showAuthorDropdown)}
-                  className="flex h-8 items-center gap-2 rounded-md px-2.5 text-[13px] text-[#1D1D1F] transition-colors hover:bg-[#F2F2F4]"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setSelectedSecUid('')
+                  }}
+                  className="absolute -right-2 -top-2 h-5 w-5 flex items-center justify-center rounded-full bg-[#0A84FF] text-white"
                 >
-                  <span className="text-xs text-[#A1A1A6]">作者</span>
-                  <span>{selectedAuthor?.nickname || '全部作者'}</span>
-                  <ChevronDown
-                    className={`h-4 w-4 text-[#6E6E73] transition-transform ${showAuthorDropdown ? 'rotate-180' : ''}`}
-                  />
+                  <X className="h-3 w-3" />
                 </button>
-                {selectedSecUid && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setSelectedSecUid('')
-                    }}
-                    className="absolute -right-2 -top-2 h-5 w-5 flex items-center justify-center rounded-full bg-[#0A84FF] text-white"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-                {/* Author Dropdown */}
-                {showAuthorDropdown && (
-                  <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-[#E5E5E7] rounded-lg shadow-md z-50 overflow-hidden">
-                    {/* Search */}
-                    <div className="p-2 border-b border-[#E5E5E7]">
-                      <div className="relative">
-                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#A1A1A6]" />
-                        <input
-                          ref={authorSearchInputRef}
-                          type="text"
-                          defaultValue=""
-                          onInput={(e) => {
-                            setAuthorSearch((e.target as HTMLInputElement).value)
-                          }}
-                          placeholder="搜索作者..."
-                          className="w-full h-8 pl-7 pr-2 rounded-md bg-[#F2F2F4] text-sm text-[#1D1D1F] placeholder:text-[#A1A1A6] focus:outline-none focus:ring-1 focus:ring-[#0A84FF]"
-                          autoFocus
-                        />
-                      </div>
+              )}
+              {/* Author Dropdown */}
+              {showAuthorDropdown && (
+                <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-[#E5E5E7] rounded-lg shadow-md z-50 overflow-hidden">
+                  {/* Search */}
+                  <div className="p-2 border-b border-[#E5E5E7]">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#A1A1A6]" />
+                      <input
+                        ref={authorSearchInputRef}
+                        type="text"
+                        defaultValue=""
+                        onInput={(e) => {
+                          setAuthorSearch((e.target as HTMLInputElement).value)
+                        }}
+                        placeholder="搜索作者..."
+                        className="w-full h-8 pl-7 pr-2 rounded-md bg-[#F2F2F4] text-sm text-[#1D1D1F] placeholder:text-[#A1A1A6] focus:outline-none focus:ring-1 focus:ring-[#0A84FF]"
+                        autoFocus
+                      />
                     </div>
-                    {/* Options */}
-                    <div className="max-h-60 overflow-y-auto">
+                  </div>
+                  {/* Options */}
+                  <div className="max-h-60 overflow-y-auto">
+                    <button
+                      onClick={() => {
+                        setSelectedSecUid('')
+                        setShowAuthorDropdown(false)
+                        setAuthorSearch('')
+                        if (authorSearchInputRef.current) {
+                          authorSearchInputRef.current.value = ''
+                        }
+                      }}
+                      className={`w-full h-10 px-3 flex items-center gap-2 text-sm hover:bg-[#F2F2F4] transition-colors ${!selectedSecUid ? 'bg-[#E8F0FE] text-[#0A84FF]' : 'text-[#1D1D1F]'}`}
+                    >
+                      全部作者
+                    </button>
+                    {filteredAuthors.map((author) => (
                       <button
+                        key={author.sec_uid}
                         onClick={() => {
-                          setSelectedSecUid('')
+                          setSelectedSecUid(author.sec_uid)
                           setShowAuthorDropdown(false)
                           setAuthorSearch('')
                           if (authorSearchInputRef.current) {
                             authorSearchInputRef.current.value = ''
                           }
                         }}
-                        className={`w-full h-10 px-3 flex items-center gap-2 text-sm hover:bg-[#F2F2F4] transition-colors ${!selectedSecUid ? 'bg-[#E8F0FE] text-[#0A84FF]' : 'text-[#1D1D1F]'}`}
+                        className={`w-full h-10 px-3 flex items-center gap-2 text-sm hover:bg-[#F2F2F4] transition-colors ${selectedSecUid === author.sec_uid ? 'bg-[#E8F0FE] text-[#0A84FF]' : 'text-[#1D1D1F]'}`}
                       >
-                        全部作者
+                        <span className="truncate">{author.nickname}</span>
                       </button>
-                      {filteredAuthors.map((author) => (
-                        <button
-                          key={author.sec_uid}
-                          onClick={() => {
-                            setSelectedSecUid(author.sec_uid)
-                            setShowAuthorDropdown(false)
-                            setAuthorSearch('')
-                            if (authorSearchInputRef.current) {
-                              authorSearchInputRef.current.value = ''
-                            }
-                          }}
-                          className={`w-full h-10 px-3 flex items-center gap-2 text-sm hover:bg-[#F2F2F4] transition-colors ${selectedSecUid === author.sec_uid ? 'bg-[#E8F0FE] text-[#0A84FF]' : 'text-[#1D1D1F]'}`}
-                        >
-                          <span className="truncate">{author.nickname}</span>
-                        </button>
-                      ))}
-                      {filteredAuthors.length === 0 && (
-                        <div className="py-4 text-center text-sm text-[#A1A1A6]">
-                          未找到匹配作者
-                        </div>
-                      )}
-                    </div>
+                    ))}
+                    {filteredAuthors.length === 0 && (
+                      <div className="py-4 text-center text-sm text-[#A1A1A6]">未找到匹配作者</div>
+                    )}
                   </div>
-                )}
-              </div>
-
-              {/* Tag Filter */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowFilters(!showFilters)}
-                  className="flex h-8 items-center gap-2 rounded-md px-2.5 text-[13px] text-[#1D1D1F] transition-colors hover:bg-[#F2F2F4]"
-                >
-                  <span className="text-xs text-[#6E6E73]">内容分级</span>
-                  <Flame className="h-3.5 w-3.5 text-[#6E6E73]" />
-                  <span className="font-mono text-xs text-[#0A84FF]">
-                    {sexyLevelRange[0]}–{sexyLevelRange[1]}
-                  </span>
-                  <ChevronDown className="h-3.5 w-3.5 text-[#6E6E73]" />
-                </button>
-              </div>
-
-              {hasActiveFilters && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearFilters}
-                  className="h-7 px-2 text-xs text-[#0A84FF] hover:bg-[#E8F0FE] hover:text-[#0060D5]"
-                >
-                  清除筛选
-                </Button>
+                </div>
               )}
             </div>
+
+            {/* Tag Filter */}
+            <div className="relative">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex h-8 items-center gap-2 rounded-md px-2.5 text-[13px] text-[#1D1D1F] transition-colors hover:bg-[#F2F2F4]"
+              >
+                <span className="text-xs text-[#6E6E73]">内容分级</span>
+                <Flame className="h-3.5 w-3.5 text-[#6E6E73]" />
+                <span className="font-mono text-xs text-[#0A84FF]">
+                  {sexyLevelRange[0]}–{sexyLevelRange[1]}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 text-[#6E6E73]" />
+              </button>
+            </div>
+
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+                className="h-7 px-2 text-xs text-[#0A84FF] hover:bg-[#E8F0FE] hover:text-[#0060D5]"
+              >
+                清除筛选
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="flex h-10 items-center gap-2 overflow-x-auto">
@@ -604,119 +602,119 @@ export default function BrowsePage(): React.JSX.Element {
           )}
         </div>
 
-          {/* Extended Filter Panel */}
-          {showFilters && (
-            <div className="border-t border-[#E5E5E7] px-5 py-4 space-y-4">
-              {/* Sexy Level Filter */}
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 min-w-[100px]">
-                  <Flame className="h-4 w-4 text-orange-500" />
-                  <span className="text-sm font-medium text-[#1D1D1F]">内容分级</span>
-                </div>
-                <div className="flex-1 max-w-md flex items-center gap-4">
-                  <span className="text-sm text-[#6E6E73] w-6">{sexyLevelRange[0]}</span>
-                  <Slider
-                    value={sexyLevelRange}
-                    onValueChange={(v) => setSexyLevelRange(v as [number, number])}
-                    min={0}
-                    max={10}
-                    step={1}
-                    className="flex-1"
-                  />
-                  <span className="text-sm text-[#6E6E73] w-6">{sexyLevelRange[1]}</span>
-                </div>
-                <label className="flex items-center gap-2 text-sm text-[#6E6E73]">
-                  <input
-                    type="checkbox"
-                    checked={analyzedOnly}
-                    onChange={(e) => setAnalyzedOnly(e.target.checked)}
-                    className="rounded border-[#E5E5E7]"
-                  />
-                  仅显示已分析
-                </label>
+        {/* Extended Filter Panel */}
+        {showFilters && (
+          <div className="border-t border-[#E5E5E7] px-5 py-4 space-y-4">
+            {/* Sexy Level Filter */}
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 min-w-[100px]">
+                <Flame className="h-4 w-4 text-orange-500" />
+                <span className="text-sm font-medium text-[#1D1D1F]">内容分级</span>
               </div>
+              <div className="flex-1 max-w-md flex items-center gap-4">
+                <span className="text-sm text-[#6E6E73] w-6">{sexyLevelRange[0]}</span>
+                <Slider
+                  value={sexyLevelRange}
+                  onValueChange={(v) => setSexyLevelRange(v as [number, number])}
+                  min={0}
+                  max={10}
+                  step={1}
+                  className="flex-1"
+                />
+                <span className="text-sm text-[#6E6E73] w-6">{sexyLevelRange[1]}</span>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-[#6E6E73]">
+                <input
+                  type="checkbox"
+                  checked={analyzedOnly}
+                  onChange={(e) => setAnalyzedOnly(e.target.checked)}
+                  className="rounded border-[#E5E5E7]"
+                />
+                仅显示已分析
+              </label>
+            </div>
 
-              {/* Tag Filter */}
-              {allTags.length > 0 && (
-                <div className="flex items-start gap-4">
-                  <div className="flex items-center gap-2 min-w-[100px] pt-1">
-                    <Tag className="h-4 w-4 text-blue-500" />
-                    <span className="text-sm font-medium text-[#1D1D1F]">标签筛选</span>
-                  </div>
-                  <div className="flex-1">
-                    {/* 搜索框 + 展开/收起按钮 */}
-                    <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
-                      <div className="relative flex-1 max-w-[200px]">
-                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#A1A1A6]" />
-                        <input
-                          type="text"
-                          value={tagSearch}
-                          onChange={(e) => setTagSearch(e.target.value)}
-                          placeholder="搜索标签..."
-                          className="w-full h-7 pl-7 pr-2 rounded-md bg-[#F2F2F4] text-xs text-[#1D1D1F] placeholder:text-[#A1A1A6] focus:outline-none focus:ring-1 focus:ring-[#0A84FF]"
-                        />
-                      </div>
-                      {allTags.length > 20 && !tagSearch && (
-                        <button
-                          onClick={() => setShowAllTags(!showAllTags)}
-                          className="flex items-center gap-1 text-xs text-[#6E6E73] hover:text-[#0A84FF] transition-colors"
-                        >
-                          {showAllTags ? (
-                            <>
-                              <ChevronUp className="h-3 w-3" />
-                              收起
-                            </>
-                          ) : (
-                            <>
-                              <ChevronDown className="h-3 w-3" />
-                              展开 ({allTags.length})
-                            </>
-                          )}
-                        </button>
-                      )}
-                      {selectedTags.length > 0 && (
-                        <button
-                          onClick={() => setSelectedTags([])}
-                          className="flex items-center gap-1 text-xs text-[#0A84FF] hover:text-[#0060D5] transition-colors"
-                        >
-                          <X className="h-3 w-3" />
-                          清除 ({selectedTags.length})
-                        </button>
-                      )}
+            {/* Tag Filter */}
+            {allTags.length > 0 && (
+              <div className="flex items-start gap-4">
+                <div className="flex items-center gap-2 min-w-[100px] pt-1">
+                  <Tag className="h-4 w-4 text-blue-500" />
+                  <span className="text-sm font-medium text-[#1D1D1F]">标签筛选</span>
+                </div>
+                <div className="flex-1">
+                  {/* 搜索框 + 展开/收起按钮 */}
+                  <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
+                    <div className="relative flex-1 max-w-[200px]">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#A1A1A6]" />
+                      <input
+                        type="text"
+                        value={tagSearch}
+                        onChange={(e) => setTagSearch(e.target.value)}
+                        placeholder="搜索标签..."
+                        className="w-full h-7 pl-7 pr-2 rounded-md bg-[#F2F2F4] text-xs text-[#1D1D1F] placeholder:text-[#A1A1A6] focus:outline-none focus:ring-1 focus:ring-[#0A84FF]"
+                      />
                     </div>
-                    {/* 标签列表（可滚动） */}
-                    <div
-                      className={`flex flex-wrap gap-2 ${showAllTags || tagSearch ? 'max-h-32 overflow-y-auto' : ''}`}
-                    >
-                      {(() => {
-                        let displayTags = allTags
-                        if (tagSearch) {
-                          const search = tagSearch.toLowerCase()
-                          displayTags = allTags.filter((t) => t.toLowerCase().includes(search))
-                        } else if (!showAllTags) {
-                          displayTags = allTags.slice(0, 20)
-                        }
-                        return displayTags.length > 0 ? (
-                          displayTags.map((tag) => (
-                            <Badge
-                              key={tag}
-                              variant={selectedTags.includes(tag) ? 'default' : 'outline'}
-                              className={`cursor-pointer transition-colors ${selectedTags.includes(tag) ? 'hover:bg-[#0A84FF]/80' : 'hover:bg-[#F2F2F4] hover:border-[#C7C7CC]'}`}
-                              onClick={() => toggleTag(tag)}
-                            >
-                              {tag}
-                            </Badge>
-                          ))
+                    {allTags.length > 20 && !tagSearch && (
+                      <button
+                        onClick={() => setShowAllTags(!showAllTags)}
+                        className="flex items-center gap-1 text-xs text-[#6E6E73] hover:text-[#0A84FF] transition-colors"
+                      >
+                        {showAllTags ? (
+                          <>
+                            <ChevronUp className="h-3 w-3" />
+                            收起
+                          </>
                         ) : (
-                          <span className="text-xs text-[#A1A1A6]">未找到匹配标签</span>
-                        )
-                      })()}
-                    </div>
+                          <>
+                            <ChevronDown className="h-3 w-3" />
+                            展开 ({allTags.length})
+                          </>
+                        )}
+                      </button>
+                    )}
+                    {selectedTags.length > 0 && (
+                      <button
+                        onClick={() => setSelectedTags([])}
+                        className="flex items-center gap-1 text-xs text-[#0A84FF] hover:text-[#0060D5] transition-colors"
+                      >
+                        <X className="h-3 w-3" />
+                        清除 ({selectedTags.length})
+                      </button>
+                    )}
+                  </div>
+                  {/* 标签列表（可滚动） */}
+                  <div
+                    className={`flex flex-wrap gap-2 ${showAllTags || tagSearch ? 'max-h-32 overflow-y-auto' : ''}`}
+                  >
+                    {(() => {
+                      let displayTags = allTags
+                      if (tagSearch) {
+                        const search = tagSearch.toLowerCase()
+                        displayTags = allTags.filter((t) => t.toLowerCase().includes(search))
+                      } else if (!showAllTags) {
+                        displayTags = allTags.slice(0, 20)
+                      }
+                      return displayTags.length > 0 ? (
+                        displayTags.map((tag) => (
+                          <Badge
+                            key={tag}
+                            variant={selectedTags.includes(tag) ? 'default' : 'outline'}
+                            className={`cursor-pointer transition-colors ${selectedTags.includes(tag) ? 'hover:bg-[#0A84FF]/80' : 'hover:bg-[#F2F2F4] hover:border-[#C7C7CC]'}`}
+                            onClick={() => toggleTag(tag)}
+                          >
+                            {tag}
+                          </Badge>
+                        ))
+                      ) : (
+                        <span className="text-xs text-[#A1A1A6]">未找到匹配标签</span>
+                      )
+                    })()}
                   </div>
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex h-[50px] shrink-0 items-center gap-3 border-b border-[#E5E5E7] bg-white px-6">
