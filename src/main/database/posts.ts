@@ -19,6 +19,9 @@ export interface DbPost {
   video_path: string | null
   music_path: string | null
   downloaded_at: number
+  duration?: number | null
+  width?: number | null
+  height?: number | null
   // 分析结果
   analysis_tags: string | null
   analysis_category: string | null

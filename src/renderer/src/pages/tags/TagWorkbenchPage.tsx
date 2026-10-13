@@ -18,6 +18,7 @@ import {
   type FilterSectionId,
   type PanelPrefs
 } from './panel-prefs'
+import TagWorkbenchPrototype from './TagWorkbenchPrototype'
 
 const PAGE_SIZE = 60
 const LEVEL_MIN = 1
@@ -47,7 +48,7 @@ const SORT_OPTIONS: { key: TagPostSort; label: string }[] = [
   { key: 'level', label: '内容评级' }
 ]
 
-export default function TagWorkbenchPage(): React.JSX.Element {
+export function LegacyTagWorkbenchPage(): React.JSX.Element {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
 
@@ -90,24 +91,20 @@ export default function TagWorkbenchPage(): React.JSX.Element {
   // 列表请求序号。筛选切换很快时，慢的旧请求可能晚于新请求返回，用它丢弃过期结果
   const requestIdRef = useRef(0)
 
-  // 筛选栏的顺序/折叠属于个人偏好，存本地；本页会因为进详情页而卸载，放组件 state 留不住
   const [panelPrefs, setPanelPrefs] = useState<PanelPrefs>(readPanelPrefs)
-
   const updatePanelPrefs = useCallback((next: PanelPrefs) => {
     setPanelPrefs(next)
     writePanelPrefs(next)
   }, [])
-
   const toggleSection = useCallback(
     (id: FilterSectionId) => {
       const collapsed = panelPrefs.collapsed.includes(id)
-        ? panelPrefs.collapsed.filter((x) => x !== id)
+        ? panelPrefs.collapsed.filter((item) => item !== id)
         : [...panelPrefs.collapsed, id]
       updatePanelPrefs({ ...panelPrefs, collapsed })
     },
     [panelPrefs, updatePanelPrefs]
   )
-
   const moveSection = useCallback(
     (id: FilterSectionId, delta: -1 | 1) => {
       const from = panelPrefs.order.indexOf(id)
@@ -120,8 +117,6 @@ export default function TagWorkbenchPage(): React.JSX.Element {
     },
     [panelPrefs, updatePanelPrefs]
   )
-
-  /** 每个分组都要的公共 props：展开状态 + 到顶/到底时禁用移动 */
   const sectionProps = (
     id: FilterSectionId
   ): {
@@ -1021,4 +1016,8 @@ function FilterChip({
       </button>
     </span>
   )
+}
+
+export default function TagWorkbenchPage(): React.JSX.Element {
+  return <TagWorkbenchPrototype />
 }

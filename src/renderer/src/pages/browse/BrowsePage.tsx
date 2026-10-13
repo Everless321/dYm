@@ -36,6 +36,7 @@ import { MediaViewer } from '@/components/media/MediaViewer'
 import { VideoDownloadDialog } from '@/components/media/VideoDownloadDialog'
 import { getInitialSort } from '@/lib/post-sort'
 import { getMergedTags, toMediaSrc } from '@/lib/utils'
+import BrowsePrototype from './BrowsePrototype'
 
 const IMAGE_AWEME_TYPE = 68
 const PAGE_SIZE = 50
@@ -197,7 +198,7 @@ const PostCard = memo(function PostCard({
   )
 })
 
-export default function BrowsePage(): React.JSX.Element {
+export function LegacyBrowsePage(): React.JSX.Element {
   const navigate = useNavigate()
   const [posts, setPosts] = useState<DbPost[]>([])
   const [total, setTotal] = useState(0)
@@ -841,4 +842,8 @@ export default function BrowsePage(): React.JSX.Element {
       <VideoDownloadDialog open={downloadDialogOpen} onOpenChange={setDownloadDialogOpen} />
     </Page>
   )
+}
+
+export default function BrowsePage(): React.JSX.Element {
+  return <BrowsePrototype />
 }

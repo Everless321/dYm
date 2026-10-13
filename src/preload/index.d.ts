@@ -425,6 +425,9 @@ declare global {
     video_path: string | null
     music_path: string | null
     downloaded_at: number
+    duration?: number | null
+    width?: number | null
+    height?: number | null
     analysis_tags: string | null
     analysis_category: string | null
     analysis_summary: string | null
