@@ -83,11 +83,7 @@ export function AppLayout(): React.JSX.Element {
   return (
     <div className="flex h-screen min-h-0 overflow-hidden bg-[var(--bg)] text-[var(--text-primary)]">
       <WelcomeDialog />
-      <Sidebar
-        developerMode={developerMode === true}
-        onAddLink={(link) => void addLink(link)}
-        adding={adding}
-      />
+      <Sidebar developerMode={developerMode === true} />
       <main className="min-w-0 flex-1 overflow-hidden">
         <Outlet />
       </main>

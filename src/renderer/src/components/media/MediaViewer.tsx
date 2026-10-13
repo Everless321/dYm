@@ -4,13 +4,14 @@ import {
   ChevronRight,
   X,
   Play,
-  Heart,
-  MessageCircle,
   Volume2,
   VolumeX,
-  Download
+  Download,
+  UserRound,
+  LibraryBig
 } from 'lucide-react'
 import { getMergedTags, toMediaSrc } from '@/lib/utils'
+import { formatPostDate } from '@/lib/format'
 
 // xgplayer 体积大，只在真正播放视频时才加载
 const VideoPlayer = lazy(() => import('./VideoPlayer').then((m) => ({ default: m.VideoPlayer })))
@@ -23,6 +24,8 @@ interface MediaViewerProps {
   onSelectPost?: (post: DbPost) => void
   /** 传入后作者名可点击，用于跳转查看该作者的全部作品 */
   onAuthorClick?: (secUid: string) => void
+  onAnnotate?: (postId: number) => void
+  onViewCreator?: (secUid: string) => void
 }
 
 const IMAGE_AUTO_INTERVAL = 3000
@@ -33,8 +36,10 @@ export function MediaViewer({
   onOpenChange,
   allPosts = [],
   onSelectPost,
-  onAuthorClick
-}: MediaViewerProps) {
+  onAuthorClick,
+  onAnnotate,
+  onViewCreator
+}: MediaViewerProps): React.JSX.Element | null {
   const [media, setMedia] = useState<MediaFiles | null>(null)
   const [loading, setLoading] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -127,7 +132,7 @@ export function MediaViewer({
 
   // 加载推荐视频的封面
   useEffect(() => {
-    const loadCovers = async () => {
+    const loadCovers = async (): Promise<void> => {
       const covers = new Map<number, string>()
       for (const rec of recommendations) {
         try {
@@ -147,7 +152,7 @@ export function MediaViewer({
     }
   }, [open, recommendations])
 
-  const loadMedia = async () => {
+  const loadMedia = async (): Promise<void> => {
     if (!post) return
     const seq = ++mediaRequestSeq.current
     setMedia(null)
@@ -173,6 +178,13 @@ export function MediaViewer({
   const imageVideos = media?.imageVideos || []
   const currentImageVideo = imageVideos[currentIndex] || null
   const hasMultipleImages = images.length > 1
+  const postPosition = post ? allPosts.findIndex((item) => item.id === post.id) : -1
+
+  const selectAdjacentPost = (offset: number): void => {
+    if (!onSelectPost || postPosition < 0 || allPosts.length < 2) return
+    const nextPosition = (postPosition + offset + allPosts.length) % allPosts.length
+    onSelectPost(allPosts[nextPosition])
+  }
 
   useEffect(() => {
     if (autoTimerRef.current) {
@@ -201,7 +213,7 @@ export function MediaViewer({
     setCurrentIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0))
   }, [images.length])
 
-  const handleSelectIndex = (idx: number) => {
+  const handleSelectIndex = (idx: number): void => {
     setManualOverride(true)
     setCurrentIndex(idx)
   }
@@ -234,7 +246,7 @@ export function MediaViewer({
     return () => window.removeEventListener('keydown', onKey)
   }, [open, isImages, hasMultipleImages, handlePrev, handleNext, onOpenChange])
 
-  const handleDownload = async () => {
+  const handleDownload = async (): Promise<void> => {
     if (!post) return
     try {
       await window.api.post.openFolder(post.sec_uid, post.folder_name)
@@ -243,7 +255,7 @@ export function MediaViewer({
     }
   }
 
-  const handleSelectRecommend = (rec: DbPost) => {
+  const handleSelectRecommend = (rec: DbPost): void => {
     if (onSelectPost) {
       onSelectPost(rec)
     }
@@ -256,128 +268,173 @@ export function MediaViewer({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0B0F]/70 p-5"
       onClick={() => onOpenChange(false)}
     >
       <div
-        className="flex bg-white rounded-2xl overflow-hidden shadow-xl border border-[#E5E5E7]"
-        style={{ width: 780, height: 520 }}
+        className="flex overflow-hidden rounded-[14px] border border-[#E5E5E7] bg-white shadow-xl"
+        style={{
+          width: 'min(1168px, calc(100vw - 40px))',
+          height: 'min(860px, calc(100vh - 40px))'
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* 左侧 - 视频/图片区域 */}
-        <div className="relative bg-black flex items-center justify-center" style={{ width: 380 }}>
-          {loading ? (
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
-          ) : media ? (
-            isImages ? (
-              <>
-                {images.length > 0 &&
-                  (currentImageVideo ? (
-                    <video
-                      key={currentImageVideo}
-                      src={toMediaSrc(currentImageVideo)}
-                      poster={toMediaSrc(images[currentIndex])}
-                      className="max-w-full max-h-full object-contain"
-                      autoPlay
-                      loop
-                      muted
-                      playsInline
-                    />
-                  ) : (
-                    <img
-                      src={toMediaSrc(images[currentIndex])}
-                      alt={`Image ${currentIndex + 1}`}
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  ))}
-                {hasMultipleImages && (
-                  <>
-                    <button
-                      className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center text-white transition-colors"
-                      onClick={handlePrev}
-                    >
-                      <ChevronLeft className="h-5 w-5" />
-                    </button>
-                    <button
-                      className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center text-white transition-colors"
-                      onClick={handleNext}
-                    >
-                      <ChevronRight className="h-5 w-5" />
-                    </button>
-                    {/* 图片指示器 */}
-                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5">
-                      {images.map((_, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => handleSelectIndex(idx)}
-                          className={`w-1.5 h-1.5 rounded-full transition-colors ${
-                            idx === currentIndex ? 'bg-white' : 'bg-white/40 hover:bg-white/70'
-                          }`}
-                          aria-label={`第 ${idx + 1} 张`}
-                        />
-                      ))}
-                    </div>
-                  </>
-                )}
-                {media.music && (
-                  <>
-                    <audio ref={audioRef} src={toMediaSrc(media.music)} loop muted={isMuted} />
-                    <button
-                      className="absolute bottom-4 right-4 w-8 h-8 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center text-white transition-colors"
-                      onClick={() => {
-                        setIsMuted(!isMuted)
-                        if (audioRef.current) {
-                          audioRef.current.muted = !isMuted
-                        }
-                      }}
-                    >
-                      {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-                    </button>
-                  </>
-                )}
-              </>
-            ) : media.video ? (
-              <Suspense
-                fallback={
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
-                }
+        <div className="flex min-w-0 flex-1 flex-col bg-[#0E0E11] text-white">
+          <div className="flex h-[50px] shrink-0 items-center gap-3 border-b border-white/10 px-4">
+            <span className="text-[13px] font-medium">播放详情</span>
+            <span className="font-mono text-[11px] text-white/50">
+              {postPosition >= 0 ? `${postPosition + 1} / ${allPosts.length}` : ''}
+            </span>
+            <div className="ml-auto flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => selectAdjacentPost(-1)}
+                disabled={postPosition < 0 || allPosts.length < 2}
+                className="flex h-7 items-center gap-1 rounded px-2 text-xs text-white/70 hover:bg-white/10 disabled:opacity-40"
               >
-                <VideoPlayer url={toMediaSrc(media.video)} className="w-full h-full" />
-              </Suspense>
+                <ChevronLeft className="h-3.5 w-3.5" />
+                上一个
+              </button>
+              <button
+                type="button"
+                onClick={() => selectAdjacentPost(1)}
+                disabled={postPosition < 0 || allPosts.length < 2}
+                className="flex h-7 items-center gap-1 rounded px-2 text-xs text-white/70 hover:bg-white/10 disabled:opacity-40"
+              >
+                下一个
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+          <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+            {loading ? (
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
+            ) : media ? (
+              isImages ? (
+                <>
+                  {images.length > 0 &&
+                    (currentImageVideo ? (
+                      <video
+                        key={currentImageVideo}
+                        src={toMediaSrc(currentImageVideo)}
+                        poster={toMediaSrc(images[currentIndex])}
+                        className="max-h-full max-w-full object-contain"
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                      />
+                    ) : (
+                      <img
+                        src={toMediaSrc(images[currentIndex])}
+                        alt={`Image ${currentIndex + 1}`}
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    ))}
+                  {hasMultipleImages && (
+                    <>
+                      <button
+                        className="absolute left-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/70"
+                        onClick={handlePrev}
+                      >
+                        <ChevronLeft className="h-5 w-5" />
+                      </button>
+                      <button
+                        className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/70"
+                        onClick={handleNext}
+                      >
+                        <ChevronRight className="h-5 w-5" />
+                      </button>
+                      <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-1.5">
+                        {images.map((_, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => handleSelectIndex(idx)}
+                            className={`h-1.5 w-1.5 rounded-full transition-colors ${
+                              idx === currentIndex ? 'bg-white' : 'bg-white/40 hover:bg-white/70'
+                            }`}
+                            aria-label={`第 ${idx + 1} 张`}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {media.music && (
+                    <>
+                      <audio ref={audioRef} src={toMediaSrc(media.music)} loop muted={isMuted} />
+                      <button
+                        className="absolute bottom-4 right-4 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/70"
+                        onClick={() => {
+                          setIsMuted(!isMuted)
+                          if (audioRef.current) audioRef.current.muted = !isMuted
+                        }}
+                      >
+                        {isMuted ? (
+                          <VolumeX className="h-4 w-4" />
+                        ) : (
+                          <Volume2 className="h-4 w-4" />
+                        )}
+                      </button>
+                    </>
+                  )}
+                </>
+              ) : media.video ? (
+                <Suspense
+                  fallback={
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
+                  }
+                >
+                  <VideoPlayer url={toMediaSrc(media.video)} className="h-full w-full" />
+                </Suspense>
+              ) : (
+                <div className="text-center text-white">
+                  <p>视频文件未找到</p>
+                </div>
+              )
             ) : (
-              <div className="text-white text-center">
-                <p>视频文件未找到</p>
+              <div className="text-center text-white">
+                <p>无法加载媒体文件</p>
               </div>
-            )
-          ) : (
-            <div className="text-white text-center">
-              <p>无法加载媒体文件</p>
+            )}
+          </div>
+          {isImages && images.length > 0 && (
+            <div className="flex h-8 shrink-0 items-center justify-center text-[11px] text-white/60">
+              第 {currentIndex + 1} / {images.length} 张
             </div>
           )}
         </div>
 
         {/* 右侧 - 内容区域 */}
-        <div className="flex flex-col" style={{ width: 400, padding: 20 }}>
+        <div
+          className="flex min-w-[320px] flex-col overflow-y-auto bg-white p-5"
+          style={{ width: 380 }}
+        >
           {/* 标题行 */}
           <div className="flex items-start justify-between gap-3">
-            <h3 className="text-base font-medium text-[#1D1D1F] leading-tight line-clamp-2 flex-1">
+            <h3 className="flex-1 text-[18px] font-semibold leading-[26px] text-[#1D1D1F] line-clamp-2">
               {post?.desc || post?.caption || '无标题'}
             </h3>
             <button
               onClick={() => onOpenChange(false)}
-              className="w-7 h-7 rounded-full bg-[#F2F2F4] hover:bg-[#E5E5E7] flex items-center justify-center flex-shrink-0 transition-colors"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#6E6E73] transition-colors hover:bg-[#F2F2F4]"
             >
               <X className="h-4 w-4 text-[#6E6E73]" />
             </button>
           </div>
+          <p className="mt-1 text-[11px] text-[#A1A1A6]">
+            {post?.aweme_type === 68 ? '图集' : '视频'}
+            {post?.create_time ? ` · 发布于 ${formatPostDate(post.create_time)}` : ''}
+          </p>
 
           {/* 标签行 */}
           {tags.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-3">
+            <div className="mt-4 flex flex-wrap items-center gap-1.5">
+              <span className="mr-1 text-xs text-[#A1A1A6]">标签</span>
               {tags.slice(0, 5).map((tag, idx) => (
                 <span
                   key={idx}
-                  className="px-2.5 py-1 rounded-full text-xs font-medium bg-[#E8F0FE] text-[#0A84FF]"
+                  className="rounded-md border border-[#E5E5E7] px-2 py-1 text-xs text-[#6E6E73]"
                 >
                   #{tag}
                 </span>
@@ -386,64 +443,89 @@ export function MediaViewer({
           )}
 
           {/* 作者行 */}
-          <div className="flex items-center justify-between mt-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-full bg-[#F2F2F4] flex items-center justify-center overflow-hidden">
+          <div className="mt-5 flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#F2F2F4]">
                 <span className="text-sm font-medium text-[#6E6E73]">
                   {post?.nickname?.charAt(0) || 'U'}
                 </span>
               </div>
-              <div>
+              <div className="min-w-0">
                 {onAuthorClick && post ? (
                   <button
                     onClick={() => onAuthorClick(post.sec_uid)}
                     title={`查看 @${post.nickname} 的全部作品`}
-                    className="text-sm font-medium text-[#1D1D1F] hover:text-[#0A84FF] hover:underline transition-colors"
+                    className="block max-w-full truncate text-sm font-medium text-[#1D1D1F] transition-colors hover:text-[#0A84FF] hover:underline"
                   >
                     @{post.nickname}
                   </button>
                 ) : (
                   <p className="text-sm font-medium text-[#1D1D1F]">@{post?.nickname}</p>
                 )}
-                <p className="text-xs text-[#A1A1A6]">粉丝 --</p>
               </div>
             </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1 text-[#6E6E73]">
-                <Heart className="h-4 w-4" />
-                <span className="text-xs">--</span>
-              </div>
-              <div className="flex items-center gap-1 text-[#6E6E73]">
-                <MessageCircle className="h-4 w-4" />
-                <span className="text-xs">--</span>
-              </div>
-            </div>
+            {post && onViewCreator && (
+              <button
+                type="button"
+                onClick={() => onViewCreator(post.sec_uid)}
+                className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-xs text-[#0A84FF] hover:bg-[#E8F0FE]"
+              >
+                <UserRound className="h-3.5 w-3.5" />
+                查看创作者
+              </button>
+            )}
           </div>
 
-          {/* 分割线 */}
-          <div className="h-px bg-[#E5E5E7] my-4" />
+          {post?.analysis_summary && (
+            <div className="mt-5 rounded-lg bg-[#F5F5F7] p-3">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-[#1D1D1F]">AI 摘要</span>
+              </div>
+              <p className="text-xs leading-5 text-[#6E6E73]">{post.analysis_summary}</p>
+              {(post.analysis_category || post.analysis_content_level != null) && (
+                <div className="mt-2 flex items-center gap-2 text-[11px] text-[#A1A1A6]">
+                  {post.analysis_category && <span>分类 · {post.analysis_category}</span>}
+                  {post.analysis_content_level != null && (
+                    <span className="font-mono">评分 · {post.analysis_content_level}/10</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
-          {/* 下载按钮 */}
-          <button
-            onClick={handleDownload}
-            className="w-full h-11 rounded-lg bg-[#0A84FF] hover:bg-[#0060D5] text-white text-sm font-medium flex items-center justify-center gap-2 transition-colors"
-          >
-            <Download className="h-4 w-4" />
-            打开文件夹
-          </button>
+          <div className="mt-5 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => post && onAnnotate?.(post.id)}
+              className="flex h-9 items-center justify-center gap-1.5 rounded-md bg-[#0A84FF] text-xs font-medium text-white transition-colors hover:bg-[#0060D5]"
+            >
+              <LibraryBig className="h-3.5 w-3.5" />
+              在内容库中标注
+            </button>
+            <button
+              onClick={handleDownload}
+              className="flex h-9 items-center justify-center gap-1.5 rounded-md border border-[#E5E5E7] bg-white text-xs font-medium text-[#1D1D1F] transition-colors hover:bg-[#F2F2F4]"
+            >
+              <Download className="h-3.5 w-3.5" />
+              打开文件夹
+            </button>
+          </div>
 
           {/* 相关推荐 */}
-          <div className="mt-4 flex-1 overflow-hidden">
-            <h4 className="text-sm font-medium text-[#1D1D1F] mb-3">相关推荐</h4>
-            <div className="space-y-2.5">
+          <div className="mt-5 flex-1 overflow-hidden">
+            <h4 className="mb-2 flex items-baseline gap-2 text-[13px] font-medium text-[#1D1D1F]">
+              相关推荐
+              <span className="text-[11px] font-normal text-[#A1A1A6]">同作者 · 同标签</span>
+            </h4>
+            <div className="space-y-1.5 overflow-y-auto">
               {recommendations.length > 0 ? (
                 recommendations.map((rec) => (
                   <button
                     key={rec.id}
                     onClick={() => handleSelectRecommend(rec)}
-                    className="w-full flex items-center gap-3 p-1.5 rounded-lg hover:bg-[#F2F2F4] transition-colors text-left"
+                    className="flex w-full items-center gap-2 rounded-md p-1.5 text-left transition-colors hover:bg-[#F2F2F4]"
                   >
-                    <div className="w-[70px] h-[70px] rounded-lg bg-[#F2F2F4] overflow-hidden flex-shrink-0">
+                    <div className="h-14 w-10 shrink-0 overflow-hidden rounded bg-[#F2F2F4]">
                       {recommendCovers.get(rec.id) ? (
                         <img
                           src={toMediaSrc(recommendCovers.get(rec.id)!)}
@@ -457,10 +539,10 @@ export function MediaViewer({
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-[#1D1D1F] line-clamp-2 leading-tight">
+                      <p className="line-clamp-1 text-xs leading-tight text-[#1D1D1F]">
                         {rec.desc || rec.caption || '无标题'}
                       </p>
-                      <p className="text-xs text-[#A1A1A6] mt-1">@{rec.nickname}</p>
+                      <p className="mt-1 truncate text-[11px] text-[#A1A1A6]">@{rec.nickname}</p>
                     </div>
                   </button>
                 ))

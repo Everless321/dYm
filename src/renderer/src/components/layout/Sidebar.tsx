@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
   ChevronLeft,
@@ -14,21 +14,10 @@ import {
   Users
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { VideoDownloadDialog } from '@/components/media/VideoDownloadDialog'
 
 interface SidebarProps {
   developerMode: boolean
-  onAddLink: (link: string) => void
-  adding: boolean
 }
 
 interface NavigationItem {
@@ -39,7 +28,7 @@ interface NavigationItem {
   badge?: number
 }
 
-export function Sidebar({ developerMode, onAddLink, adding }: SidebarProps): React.JSX.Element {
+export function Sidebar({ developerMode }: SidebarProps): React.JSX.Element {
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem('sidebar_collapsed') === '1'
@@ -51,8 +40,6 @@ export function Sidebar({ developerMode, onAddLink, adding }: SidebarProps): Rea
   const [unanalyzedCount, setUnanalyzedCount] = useState<number | null>(null)
   const [cookieConfigured, setCookieConfigured] = useState<boolean | null>(null)
   const [quickAddOpen, setQuickAddOpen] = useState(false)
-  const [link, setLink] = useState('')
-  const linkInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     void Promise.all([
@@ -95,10 +82,6 @@ export function Sidebar({ developerMode, onAddLink, adding }: SidebarProps): Rea
     }
   }, [])
 
-  useEffect(() => {
-    if (quickAddOpen) window.setTimeout(() => linkInputRef.current?.focus(), 0)
-  }, [quickAddOpen])
-
   const toggleCollapsed = (): void => {
     setCollapsed((current) => {
       localStorage.setItem('sidebar_collapsed', current ? '0' : '1')
@@ -130,15 +113,6 @@ export function Sidebar({ developerMode, onAddLink, adding }: SidebarProps): Rea
     }
   ]
   if (developerMode) items.push({ label: '自定义脚本', to: '/scripts', icon: CodeXml })
-
-  const submitLink = (event: React.FormEvent): void => {
-    event.preventDefault()
-    const value = link.trim()
-    if (!value || adding) return
-    onAddLink(value)
-    setLink('')
-    setQuickAddOpen(false)
-  }
 
   return (
     <aside
@@ -273,31 +247,7 @@ export function Sidebar({ developerMode, onAddLink, adding }: SidebarProps): Rea
         {!collapsed && <span className="flex-1">设置</span>}
       </Link>
 
-      <Dialog open={quickAddOpen} onOpenChange={setQuickAddOpen}>
-        <DialogContent className="sm:max-w-[460px]">
-          <DialogHeader>
-            <DialogTitle>添加创作者或视频</DialogTitle>
-            <DialogDescription>粘贴抖音链接，继续使用现有解析与添加流程。</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={submitLink} className="space-y-4">
-            <Input
-              ref={linkInputRef}
-              value={link}
-              onChange={(event) => setLink(event.target.value)}
-              placeholder="粘贴抖音主页或视频链接"
-              autoFocus
-            />
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setQuickAddOpen(false)}>
-                取消
-              </Button>
-              <Button type="submit" disabled={!link.trim() || adding}>
-                {adding ? '添加中…' : '解析并添加'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <VideoDownloadDialog open={quickAddOpen} onOpenChange={setQuickAddOpen} />
     </aside>
   )
 }
