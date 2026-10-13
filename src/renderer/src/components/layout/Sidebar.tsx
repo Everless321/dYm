@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
-  Activity,
   ChevronLeft,
   ChevronRight,
   Clapperboard,
   CodeXml,
+  Download,
   House,
   LibraryBig,
   Link2,
@@ -166,12 +166,12 @@ export function Sidebar({ developerMode, onAddLink, adding }: SidebarProps): Rea
               className="flex items-center gap-2.5 overflow-hidden"
               aria-label="dYm 概览"
             >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--accent)] text-xs font-bold text-white">
-                d
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-white">
+                <Download size={16} />
               </span>
               <span className="flex min-w-0 items-baseline gap-2">
                 <span className="text-base font-semibold tracking-tight">dYm</span>
-                <span className="font-mono text-[10px] text-[var(--text-tertiary)]">v3.2.0</span>
+                <span className="font-mono text-[10px] text-[var(--text-tertiary)]">3.2</span>
               </span>
             </Link>
             <button
@@ -234,10 +234,6 @@ export function Sidebar({ developerMode, onAddLink, adding }: SidebarProps): Rea
 
       {!collapsed && (
         <section className="rounded-lg bg-[var(--surface-muted)] p-3">
-          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
-            <Activity size={14} className="text-[var(--text-secondary)]" />
-            运行状态
-          </div>
           <div className="space-y-2 text-xs text-[var(--text-secondary)]">
             {syncingIds !== null && (
               <StatusLine color="var(--accent)" label={`${syncingCount} 位创作者同步中`} />

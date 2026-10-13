@@ -4,15 +4,12 @@ import {
   Activity,
   AlertCircle,
   ArrowDownToLine,
-  ArrowRight,
+  BellDot,
   CheckCircle2,
   CircleDot,
-  HardDrive,
   Radio,
   RefreshCw,
-  Sparkles,
-  Users,
-  Video
+  Sparkles
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -263,6 +260,15 @@ export default function DashboardPage(): React.JSX.Element {
     (cookieConfigured === false ? 1 : 0) +
     failedTasks.length +
     (unanalyzedCount && unanalyzedCount > 0 ? 1 : 0)
+  const activityErrorCount = activities.filter((item) => item.error).length
+  const todayStart = new Date()
+  todayStart.setHours(0, 0, 0, 0)
+  const yesterdayStart = new Date(todayStart)
+  yesterdayStart.setDate(yesterdayStart.getDate() - 1)
+  const todayActivities = visibleActivities.filter((item) => item.timestamp >= todayStart.getTime())
+  const yesterdayActivities = visibleActivities.filter(
+    (item) => item.timestamp >= yesterdayStart.getTime() && item.timestamp < todayStart.getTime()
+  )
 
   const retryFailedTasks = async (): Promise<void> => {
     try {
@@ -276,6 +282,7 @@ export default function DashboardPage(): React.JSX.Element {
 
   const trendData = trend.map((point) => ({ ...point, label: point.date.slice(5) }))
   const dayLabel = new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
     month: 'long',
     day: 'numeric',
     weekday: 'long'
@@ -284,81 +291,60 @@ export default function DashboardPage(): React.JSX.Element {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex min-h-full w-full max-w-[1600px] flex-col gap-5 px-8 py-7">
-        <header className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-sm text-[var(--text-secondary)]">{dayLabel}</p>
-            <h1 className="mt-1 text-[26px] font-semibold tracking-tight">
-              {greeting()}，今天有{' '}
-              <span className="text-[var(--accent)]">
-                {loading ? '…' : attentionCount === 0 ? '0 件' : `${attentionCount} 件`}
-              </span>{' '}
-              需要处理
+        <header className="flex flex-wrap items-end justify-between gap-8">
+          <div className="min-w-0">
+            <p className="text-[13px] text-[var(--text-secondary)]">{dayLabel}</p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+              {attentionCount === 0 && !loading
+                ? `${greeting()}，一切正常`
+                : `${greeting()}，今天有 ${loading ? '…' : attentionCount} 件事需要你处理`}
             </h1>
           </div>
-          <div className="flex items-center gap-2">
-            <Link
-              to="/browse"
-              className="inline-flex h-9 items-center gap-2 rounded-md bg-[var(--accent)] px-3.5 text-sm font-medium text-white hover:opacity-90"
-            >
-              <Video size={15} />
-              浏览视频
-            </Link>
+          <div className="flex shrink-0 items-center gap-7">
+            {overview && (
+              <>
+                <HeaderStat label="创作者" value={overview.totalUsers.toLocaleString()} />
+                <HeaderStat label="视频" value={overview.totalPosts.toLocaleString()} separated />
+                <HeaderStat
+                  label="已分析"
+                  value={overview.analyzedPosts.toLocaleString()}
+                  suffix={`${analysisPercent}%`}
+                  separated
+                />
+                {storageBytes !== null && (
+                  <HeaderStat
+                    label="占用"
+                    value={formatBytes(storageBytes).replace(/\s*[A-Z]+$/, '')}
+                    suffix={formatBytes(storageBytes).match(/[A-Z]+$/)?.[0]}
+                    separated
+                  />
+                )}
+              </>
+            )}
             <button
               type="button"
               onClick={() => void loadDashboard()}
               disabled={loading}
               aria-label="刷新概览"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] disabled:opacity-50"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--text-tertiary)] hover:bg-[var(--surface-muted)] disabled:opacity-50"
             >
               <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
             </button>
           </div>
         </header>
 
-        {overview && (
-          <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <KpiCard
-              icon={Users}
-              label="创作者"
-              value={overview.totalUsers.toLocaleString()}
-              detail="已关注主页"
-              color="var(--accent)"
-            />
-            <KpiCard
-              icon={Video}
-              label="视频"
-              value={overview.totalPosts.toLocaleString()}
-              detail="已下载作品"
-              color="var(--success)"
-            />
-            <KpiCard
-              icon={Sparkles}
-              label="已分析"
-              value={`${analysisPercent}%`}
-              detail={`${overview.analyzedPosts.toLocaleString()} 条作品`}
-              color="var(--warning)"
-            />
-            {storageBytes !== null && (
-              <KpiCard
-                icon={HardDrive}
-                label="占用"
-                value={formatBytes(storageBytes)}
-                detail="本地媒体文件"
-                color="var(--live)"
-              />
-            )}
-          </section>
-        )}
-
         {attentionCount > 0 && (
-          <section className="rounded-xl border border-[var(--warning-soft)] bg-[var(--warning-soft)]/50 px-5 py-4">
-            <div className="mb-3 flex items-center gap-2">
-              <AlertCircle size={16} className="text-[var(--warning)]" />
-              <h2 className="text-sm font-semibold">需要处理</h2>
+          <section className="flex flex-wrap items-center rounded-[10px] border border-[var(--border)] bg-[var(--surface)]">
+            <div className="flex h-[52px] items-center gap-2 px-4">
+              <BellDot size={16} />
+              <h2 className="text-[13px] font-semibold">需要处理</h2>
             </div>
-            <div className="flex flex-wrap gap-x-8 gap-y-3">
+            <div className="h-6 w-px bg-[var(--border)]" />
+            <div className="flex min-w-0 flex-1 flex-wrap items-center">
               {cookieConfigured === false && (
                 <AttentionItem
+                  icon={AlertCircle}
+                  tone="warning"
                   title="尚未配置 Cookie"
                   description="配置后即可同步 Douyin 内容"
                   action="去设置"
@@ -367,14 +353,18 @@ export default function DashboardPage(): React.JSX.Element {
               )}
               {failedTasks.length > 0 && (
                 <AttentionItem
+                  icon={AlertCircle}
+                  tone="danger"
                   title={`${failedTasks.length} 个下载任务失败`}
                   description="可重新启动失败任务"
-                  action="重试"
+                  action="全部重试"
                   onClick={() => void retryFailedTasks()}
                 />
               )}
               {unanalyzedCount !== null && unanalyzedCount > 0 && (
                 <AttentionItem
+                  icon={Sparkles}
+                  tone="accent"
                   title={`${unanalyzedCount} 条视频待 AI 分析`}
                   description="为尚未分析的作品创建任务"
                   action="开始分析"
@@ -387,92 +377,95 @@ export default function DashboardPage(): React.JSX.Element {
 
         <div className="grid min-h-[540px] grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(380px,0.88fr)]">
           <div className="flex min-w-0 flex-col gap-5">
-            {(recordings.length > 0 || runningTasks.length > 0 || activeJobs.length > 0) && (
-              <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
-                <div className="mb-4 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-sm font-semibold">正在进行</h2>
-                    <p className="mt-1 text-xs text-[var(--text-tertiary)]">实时任务状态</p>
-                  </div>
-                  <Activity size={16} className="text-[var(--text-tertiary)]" />
+            <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-semibold">正在进行</h2>
+                  <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-secondary)]">
+                    {recordings.length + runningTasks.length + activeJobs.length}
+                  </span>
                 </div>
-                <div className="space-y-3">
-                  {recordings.map((user) => (
-                    <div
-                      key={user.id}
-                      className="flex items-center gap-3 rounded-lg bg-[var(--surface-muted)] px-3.5 py-3"
-                    >
-                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--danger-soft)] text-[var(--live)]">
-                        <Radio size={15} />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{user.nickname}</p>
-                        <p className="text-xs text-[var(--text-secondary)]">直播录制中</p>
-                      </div>
-                      <span className="rounded-full bg-[var(--danger-soft)] px-2 py-1 text-[10px] font-medium text-[var(--live)]">
-                        LIVE
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void window.api.live.stop(user.id).then(() => void refreshLive())
-                        }
-                        className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                      >
-                        停止
-                      </button>
+                <Activity size={16} className="text-[var(--text-tertiary)]" />
+              </div>
+              <div className="space-y-3">
+                {recordings.map((user) => (
+                  <div
+                    key={user.id}
+                    className="flex items-center gap-3 rounded-lg bg-[var(--surface-muted)] px-3.5 py-3"
+                  >
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--danger-soft)] text-[var(--live)]">
+                      <Radio size={15} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{user.nickname}</p>
+                      <p className="text-xs text-[var(--text-secondary)]">直播录制中</p>
                     </div>
-                  ))}
-                  {runningTasks.map((task) => {
-                    const progress = downloadProgress.get(task.id)
-                    const done = progress?.downloadedPosts ?? task.downloaded_videos
-                    const total = progress?.totalVideos ?? task.total_videos
-                    const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0
-                    return (
-                      <div
-                        key={task.id}
-                        className="rounded-lg bg-[var(--surface-muted)] px-3.5 py-3"
-                      >
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                          <span className="truncate text-sm font-medium">{task.name}</span>
-                          <span className="font-mono text-xs text-[var(--text-secondary)]">
-                            {total > 0 ? `${percent}%` : '进行中'}
-                          </span>
-                        </div>
-                        <div className="h-1.5 overflow-hidden rounded-full bg-[var(--border)]">
-                          <div
-                            className="h-full rounded-full bg-[var(--accent)] transition-[width]"
-                            style={{ width: `${percent}%` }}
-                          />
-                        </div>
-                        <p className="mt-1.5 text-xs text-[var(--text-tertiary)]">
-                          {progress?.currentUser || `${done} / ${total} 条视频`}
-                        </p>
-                      </div>
-                    )
-                  })}
-                  {activeJobs.map((job) => (
-                    <div key={job.id} className="rounded-lg bg-[var(--surface-muted)] px-3.5 py-3">
+                    <span className="rounded-full bg-[var(--danger-soft)] px-2 py-1 text-[10px] font-medium text-[var(--live)]">
+                      LIVE
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void window.api.live.stop(user.id).then(() => void refreshLive())
+                      }
+                      className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    >
+                      停止
+                    </button>
+                  </div>
+                ))}
+                {runningTasks.map((task) => {
+                  const progress = downloadProgress.get(task.id)
+                  const done = progress?.downloadedPosts ?? task.downloaded_videos
+                  const total = progress?.totalVideos ?? task.total_videos
+                  const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0
+                  return (
+                    <div key={task.id} className="rounded-lg bg-[var(--surface-muted)] px-3.5 py-3">
                       <div className="mb-2 flex items-center justify-between gap-3">
-                        <span className="truncate text-sm font-medium">{job.name}</span>
+                        <span className="truncate text-sm font-medium">{task.name}</span>
                         <span className="font-mono text-xs text-[var(--text-secondary)]">
-                          {jobProgress(job)}%
+                          {total > 0 ? `${percent}%` : '进行中'}
                         </span>
                       </div>
                       <div className="h-1.5 overflow-hidden rounded-full bg-[var(--border)]">
                         <div
-                          className="h-full rounded-full bg-[var(--success)]"
-                          style={{ width: `${jobProgress(job)}%` }}
+                          className="h-full rounded-full bg-[var(--accent)] transition-[width]"
+                          style={{ width: `${percent}%` }}
                         />
                       </div>
-                      <p className="mt-1.5 truncate text-xs text-[var(--text-tertiary)]">
-                        {job.current.slice(0, 2).join(' · ') || `${job.done} / ${job.total} 条视频`}
+                      <p className="mt-1.5 text-xs text-[var(--text-tertiary)]">
+                        {progress?.currentUser || `${done} / ${total} 条视频`}
                       </p>
                     </div>
-                  ))}
-                </div>
-              </section>
-            )}
+                  )
+                })}
+                {activeJobs.map((job) => (
+                  <div key={job.id} className="rounded-lg bg-[var(--surface-muted)] px-3.5 py-3">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <span className="truncate text-sm font-medium">{job.name}</span>
+                      <span className="font-mono text-xs text-[var(--text-secondary)]">
+                        {jobProgress(job)}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-[var(--border)]">
+                      <div
+                        className="h-full rounded-full bg-[var(--success)]"
+                        style={{ width: `${jobProgress(job)}%` }}
+                      />
+                    </div>
+                    <p className="mt-1.5 truncate text-xs text-[var(--text-tertiary)]">
+                      {job.current.slice(0, 2).join(' · ') || `${job.done} / ${job.total} 条视频`}
+                    </p>
+                  </div>
+                ))}
+                {recordings.length + runningTasks.length + activeJobs.length === 0 && (
+                  <div className="flex items-center gap-2 rounded-lg bg-[var(--surface-muted)] px-3 py-3 text-xs text-[var(--text-tertiary)]">
+                    <CheckCircle2 size={15} className="text-[var(--success)]" />
+                    目前没有正在进行的任务
+                  </div>
+                )}
+              </div>
+            </section>
 
             <ChartCard>
               {trendData.length > 0 ? (
@@ -514,81 +507,40 @@ export default function DashboardPage(): React.JSX.Element {
           </div>
 
           <section className="flex min-h-0 flex-col rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold">最近动态</h2>
-                <p className="mt-1 text-xs text-[var(--text-tertiary)]">同步、直播与系统事件</p>
-              </div>
-              <Link
-                to="/logs"
-                className="inline-flex items-center gap-1 text-xs text-[var(--accent)] hover:underline"
-              >
-                查看全部
-                <ArrowRight size={13} />
-              </Link>
-            </div>
-            <div className="mt-4 flex gap-1 border-b border-[var(--border)]">
+            <h2 className="text-sm font-semibold">最近动态</h2>
+            <div className="mt-3 flex gap-0.5 rounded-md bg-[var(--surface-muted)] p-0.5">
               {activityFilters.map((item) => (
                 <button
                   key={item.value}
                   type="button"
                   onClick={() => setFilter(item.value)}
-                  className={`border-b-2 px-2.5 py-2 text-xs transition-colors ${
+                  className={`flex-1 rounded px-2 py-1.5 text-xs transition-colors ${
                     filter === item.value
-                      ? 'border-[var(--accent)] font-medium text-[var(--accent)]'
-                      : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      ? 'bg-[var(--surface)] font-medium text-[var(--text-primary)] shadow-sm'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
-                  {item.label}
+                  {item.value === 'error' ? `${item.label} · ${activityErrorCount}` : item.label}
                 </button>
               ))}
             </div>
-            <div className="min-h-0 flex-1 divide-y divide-[var(--border)] overflow-y-auto">
-              {visibleActivities.length > 0 ? (
-                visibleActivities.map((item) => (
-                  <div key={item.id} className="flex gap-3 py-3.5">
-                    <span
-                      className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
-                        item.error
-                          ? 'bg-[var(--danger-soft)] text-[var(--danger)]'
-                          : item.kind === 'live'
-                            ? 'bg-[var(--danger-soft)] text-[var(--live)]'
-                            : item.kind === 'sync'
-                              ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
-                              : 'bg-[var(--surface-muted)] text-[var(--text-secondary)]'
-                      }`}
-                    >
-                      {item.error ? (
-                        <AlertCircle size={14} />
-                      ) : item.kind === 'live' ? (
-                        <Radio size={14} />
-                      ) : item.kind === 'sync' ? (
-                        <RefreshCw size={14} />
-                      ) : (
-                        <CircleDot size={14} />
-                      )}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="text-xs font-medium leading-5">{item.title}</p>
-                        <time className="shrink-0 font-mono text-[10px] text-[var(--text-tertiary)]">
-                          {formatActivityTime(item.timestamp)}
-                        </time>
-                      </div>
-                      {item.detail && (
-                        <p className="mt-0.5 truncate text-[11px] text-[var(--text-secondary)]">
-                          {item.detail}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))
-              ) : (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {todayActivities.length > 0 && <ActivityGroup label="今天" items={todayActivities} />}
+              {yesterdayActivities.length > 0 && (
+                <ActivityGroup label="昨天" items={yesterdayActivities} />
+              )}
+              {todayActivities.length + yesterdayActivities.length === 0 ? (
                 <div className="flex h-40 flex-col items-center justify-center gap-2 text-center text-sm text-[var(--text-tertiary)]">
                   <CheckCircle2 size={20} className="text-[var(--success)]" />
                   暂无动态
                 </div>
-              )}
+              ) : null}
+            </div>
+            <div className="flex items-center gap-2 border-t border-[var(--border)] pt-3 text-xs">
+              <span className="flex-1 text-[var(--text-tertiary)]">原「同步日志」已合并至此</span>
+              <Link to="/logs" className="text-[var(--accent)] hover:underline">
+                查看全部 {activities.length} 条
+              </Link>
             </div>
           </section>
         </div>
@@ -597,63 +549,126 @@ export default function DashboardPage(): React.JSX.Element {
   )
 }
 
-function KpiCard({
-  icon: Icon,
+function HeaderStat({
   label,
   value,
-  detail,
-  color
+  suffix,
+  separated = false
 }: {
-  icon: LucideIcon
   label: string
   value: string
-  detail: string
-  color: string
+  suffix?: string
+  separated?: boolean
 }): React.JSX.Element {
-  const colorClasses: Record<string, string> = {
-    'var(--accent)': 'text-[var(--accent)] bg-[var(--accent-soft)]',
-    'var(--success)': 'text-[var(--success)] bg-[var(--success-soft)]',
-    'var(--warning)': 'text-[var(--warning)] bg-[var(--warning-soft)]',
-    'var(--live)': 'text-[var(--live)] bg-[var(--danger-soft)]'
-  }
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3.5">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-[var(--text-secondary)]">{label}</p>
-        <span
-          className={`flex h-8 w-8 items-center justify-center rounded-lg ${colorClasses[color]}`}
-        >
-          <Icon size={16} />
-        </span>
-      </div>
-      <p className="mt-1 font-mono text-[22px] font-semibold leading-7 tracking-tight">{value}</p>
-      <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">{detail}</p>
+    <div
+      className={`flex flex-col gap-0.5 ${separated ? 'border-l border-[var(--border)] pl-7' : ''}`}
+    >
+      <span className="text-xs text-[var(--text-secondary)]">{label}</span>
+      <span className="flex items-baseline gap-1 font-mono text-[22px] font-semibold leading-7 tracking-tight">
+        {value}
+        {suffix && (
+          <span className="text-xs font-normal text-[var(--text-tertiary)]">{suffix}</span>
+        )}
+      </span>
     </div>
   )
 }
 
+function ActivityGroup({
+  label,
+  items
+}: {
+  label: string
+  items: ActivityItem[]
+}): React.JSX.Element {
+  return (
+    <section>
+      <h3 className="pb-1 pt-3 text-[11px] font-semibold tracking-wide text-[var(--text-tertiary)]">
+        {label}
+      </h3>
+      <div className="divide-y divide-[var(--border)]/70">
+        {items.map((item) => (
+          <div key={item.id} className="flex gap-3 py-2.5">
+            <span
+              className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
+                item.error
+                  ? 'bg-[var(--danger-soft)] text-[var(--danger)]'
+                  : item.kind === 'live'
+                    ? 'bg-[var(--danger-soft)] text-[var(--live)]'
+                    : item.kind === 'sync'
+                      ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                      : 'bg-[var(--surface-muted)] text-[var(--text-secondary)]'
+              }`}
+            >
+              {item.error ? (
+                <AlertCircle size={14} />
+              ) : item.kind === 'live' ? (
+                <Radio size={14} />
+              ) : item.kind === 'sync' ? (
+                <RefreshCw size={14} />
+              ) : (
+                <CircleDot size={14} />
+              )}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-xs font-medium leading-5">{item.title}</p>
+                <time className="shrink-0 font-mono text-[10px] text-[var(--text-tertiary)]">
+                  {formatActivityTime(item.timestamp)}
+                </time>
+              </div>
+              <p className="mt-0.5 truncate text-[11px] text-[var(--text-secondary)]">
+                {item.detail ||
+                  (item.kind === 'sync'
+                    ? '同步事件'
+                    : item.kind === 'live'
+                      ? '直播录制'
+                      : '系统事件')}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function AttentionItem({
+  icon: Icon,
+  tone,
   title,
   description,
   action,
   onClick
 }: {
+  icon: LucideIcon
+  tone: 'warning' | 'danger' | 'accent'
   title: string
   description: string
   action: string
   onClick: () => void
 }): React.JSX.Element {
+  const toneClasses = {
+    warning: 'bg-[var(--warning-soft)] text-[var(--warning)]',
+    danger: 'bg-[var(--danger-soft)] text-[var(--danger)]',
+    accent: 'bg-[var(--accent-soft)] text-[var(--accent)]'
+  }[tone]
   return (
-    <div className="flex min-w-[250px] flex-1 items-center gap-3">
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--warning)]" />
+    <div className="flex min-w-[250px] flex-1 items-center gap-2.5 border-l border-[var(--border)] px-3.5 py-2 first:border-l-0">
+      <span
+        className={`flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full ${toneClasses}`}
+      >
+        <Icon size={14} />
+      </span>
       <div className="min-w-0 flex-1">
         <p className="text-xs font-medium">{title}</p>
-        <p className="mt-0.5 text-[11px] text-[var(--text-secondary)]">{description}</p>
+        <p className="mt-0.5 truncate text-[11px] text-[var(--text-secondary)]">{description}</p>
       </div>
       <button
         type="button"
         onClick={onClick}
-        className="shrink-0 text-xs font-medium text-[var(--accent)] hover:underline"
+        className={`shrink-0 rounded-md px-2.5 py-1.5 text-xs font-semibold ${toneClasses}`}
       >
         {action}
       </button>
