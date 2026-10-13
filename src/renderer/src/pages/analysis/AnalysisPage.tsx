@@ -1,7 +1,7 @@
 import { Page, PageBody } from '@/components/layout/Page'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Sparkles, ListChecks, SlidersHorizontal, Cpu, Mic } from 'lucide-react'
 import type { AiProviderView, AnalysisJobView, AsrProviderView } from '@shared/ai'
@@ -25,6 +25,8 @@ const STATS_REFRESH_MS = 2000
 
 export default function AnalysisPage(): React.JSX.Element {
   const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
+  const navigate = useNavigate()
   const tabParam = searchParams.get('tab')
   const tab: Tab =
     tabParam === 'settings' || tabParam === 'providers' || tabParam === 'asr' ? tabParam : 'queue'
@@ -40,6 +42,13 @@ export default function AnalysisPage(): React.JSX.Element {
   const [providers, setProviders] = useState<AiProviderView[]>([])
   const [asrProviders, setAsrProviders] = useState<AsrProviderView[]>([])
   const [newJobOpen, setNewJobOpen] = useState(false)
+
+  useEffect(() => {
+    const state = location.state as { openNewJob?: boolean } | null
+    if (!state?.openNewJob) return
+    window.setTimeout(() => setNewJobOpen(true), 0)
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null })
+  }, [location, navigate])
 
   const refreshTotals = useCallback((): void => {
     window.api.analysis

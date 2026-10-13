@@ -1,15 +1,29 @@
 :root {
-  /* Apple-inspired minimal palette */
-  --accent-primary: #0a84ff;
-  --accent-secondary: #5ac8fa;
-  --bg-primary: #f5f5f7;
-  --bg-surface: #ffffff;
-  --bg-active: #e8f0fe;
-  --bg-hover: #f2f2f4;
-  --border-color: #e5e5e7;
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --surface-muted: #f2f2f4;
+  --border: #e5e5e7;
   --text-primary: #1d1d1f;
   --text-secondary: #6e6e73;
-  --text-muted: #a1a1a6;
+  --text-tertiary: #a1a1a6;
+  --accent: #0a84ff;
+  --accent-soft: #e8f0fe;
+  --success: #1f9d55;
+  --success-soft: #e6f6ec;
+  --warning: #c27803;
+  --warning-soft: #fff4de;
+  --danger: #e5484d;
+  --danger-soft: #fdecec;
+  --live: #ff2d55;
+
+  --accent-primary: var(--accent);
+  --accent-secondary: #5ac8fa;
+  --bg-primary: var(--bg);
+  --bg-surface: var(--surface);
+  --bg-active: var(--accent-soft);
+  --bg-hover: var(--surface-muted);
+  --border-color: var(--border);
+  --text-muted: var(--text-tertiary);
 
   /* shadcn/ui 变量映射 */
   --background: 240 10% 97%;
@@ -24,11 +38,8 @@
   --secondary-foreground: 240 4% 16%;
   --muted: 240 6% 95%;
   --muted-foreground: 240 4% 44%;
-  --accent: 214 100% 95%;
-  --accent-foreground: 209 100% 52%;
   --destructive: 4 100% 59%;
   --destructive-foreground: 0 0% 98%;
-  --border: 240 6% 90%;
   --input: 240 6% 90%;
   --ring: 209 100% 52%;
   --radius: 0.75rem;
@@ -40,7 +51,7 @@ body {
   background: var(--bg-primary);
   line-height: 1.5;
   font-family:
-    Inter,
+    'Noto Sans SC',
     -apple-system,
     BlinkMacSystemFont,
     'SF Pro Text',
@@ -57,6 +68,10 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 :where(button, a, input, textarea, select, summary, [role='button']) {
