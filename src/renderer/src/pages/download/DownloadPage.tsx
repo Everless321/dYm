@@ -433,7 +433,7 @@ export default function DownloadPage() {
                   {users.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-8 text-[#6E6E73]">
                       <p className="text-sm">暂无用户</p>
-                      <p className="text-xs mt-1 text-[#A1A1A6]">请先在用户管理中添加用户</p>
+                      <p className="text-xs mt-1 text-[#A1A1A6]">请先在创作者中添加用户</p>
                     </div>
                   ) : (
                     users.map((user) => (

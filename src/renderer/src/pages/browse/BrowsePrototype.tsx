@@ -66,6 +66,7 @@ export default function BrowsePrototype(): React.JSX.Element {
   const [hasMore, setHasMore] = useState(true)
   const gridRef = useRef<HTMLDivElement>(null)
   const seqRef = useRef(0)
+  const authorWrapRef = useRef<HTMLDivElement>(null)
 
   const filters = useMemo<PostFilters>(
     () => ({
@@ -124,6 +125,21 @@ export default function BrowsePrototype(): React.JSX.Element {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300)
     return () => window.clearTimeout(timer)
   }, [search])
+  useEffect(() => {
+    if (!authorOpen) return
+    const onPointerDown = (event: MouseEvent): void => {
+      if (!authorWrapRef.current?.contains(event.target as Node)) setAuthorOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setAuthorOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [authorOpen])
   useEffect(() => {
     localStorage.setItem('home_post_sort', JSON.stringify(sort))
     setPosts([])
@@ -216,7 +232,7 @@ export default function BrowsePrototype(): React.JSX.Element {
             className="h-8 pl-8 text-xs"
           />
         </div>
-        <div className="relative">
+        <div className="relative" ref={authorWrapRef}>
           <button
             onClick={() => setAuthorOpen((open) => !open)}
             className="flex h-8 items-center gap-2 rounded-md border px-2.5 text-xs"

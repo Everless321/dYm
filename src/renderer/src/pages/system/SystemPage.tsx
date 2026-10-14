@@ -724,7 +724,7 @@ export default function SystemPage() {
               <Section eyebrow="常规" title="直播录制">
                 <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-6">
                   <p className="text-xs text-[#A1A1A6] mb-4">
-                    在「用户管理」中为用户开启「录制直播」并设置检测计划，应用会按计划检测开播并用
+                    在「创作者」中为用户开启「录制直播」并设置检测计划，应用会按计划检测开播并用
                     ffmpeg 自动录制。录制文件默认保存到下方目录（按 sec_uid 分文件夹）。
                   </p>
 

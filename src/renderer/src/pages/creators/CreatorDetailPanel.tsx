@@ -21,7 +21,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { getAvatarUrl, toMediaSrc } from '@/lib/utils'
 import { formatCompactNumber, formatBytes } from '@/lib/format'
-import { SYNC_CRON_PRESETS } from '@/pages/users/UsersPage'
+import { SYNC_CRON_PRESETS } from '@/lib/sync-presets'
 
 interface CreatorDetailPanelProps {
   user: DbUser

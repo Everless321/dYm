@@ -1,6 +1,7 @@
 import { Page, PageBody } from '@/components/layout/Page'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   Plus,
@@ -38,20 +39,11 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { CreatorDetailPanel } from '@/pages/creators/CreatorDetailPanel'
 import { getAvatarUrl } from '@/lib/utils'
+import { SYNC_CRON_PRESETS } from '@/lib/sync-presets'
 import { Badge } from '@/components/ui/badge'
 import { formatCompactNumber } from '@/lib/format'
 
-// 同步计划常用预设，点一下直接填入，省得每次手写 cron
-export const SYNC_CRON_PRESETS: { label: string; value: string }[] = [
-  { label: '每小时', value: '0 * * * *' },
-  { label: '每 3 小时', value: '0 */3 * * *' },
-  { label: '每 6 小时', value: '0 */6 * * *' },
-  { label: '每 12 小时', value: '0 */12 * * *' },
-  { label: '每天 8:00', value: '0 8 * * *' },
-  { label: '每天 12:00', value: '0 12 * * *' },
-  { label: '每天 0:00', value: '0 0 * * *' },
-  { label: '每周一 8:00', value: '0 8 * * 1' }
-]
+// 同步计划常用预设见 @/lib/sync-presets（独立文件避免 fast-refresh 限制）
 
 function CronPresetRow({
   value,
@@ -150,6 +142,14 @@ export default function UsersPage() {
   const [detailUser, setDetailUser] = useState<DbUser | null>(null)
   const [deleteFiles, setDeleteFiles] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [searchParams] = useSearchParams()
+
+  useEffect(() => {
+    const secUid = searchParams.get('user')
+    if (!secUid) return
+    const target = users.find((user) => user.sec_uid === secUid)
+    if (target) setDetailUser(target)
+  }, [users, searchParams])
 
   useEffect(() => {
     loadUsers()
@@ -295,6 +295,7 @@ export default function UsersPage() {
     try {
       const data = await window.api.user.getAll()
       setUsers(data)
+      setDetailUser((prev) => (prev ? (data.find((user) => user.id === prev.id) ?? null) : null))
     } catch (error) {
       toast.error(`加载用户列表失败: ${(error as Error).message}`)
     }
@@ -585,7 +586,7 @@ export default function UsersPage() {
   return (
     <Page>
       <PageHeader
-        title="用户管理"
+        title="创作者"
         actions={
           <Button
             onClick={() => setOpen(true)}
