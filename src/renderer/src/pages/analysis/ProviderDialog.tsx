@@ -27,6 +27,7 @@ import {
   type AiProviderView,
   type AiReasoningEffort,
   type CodexAuthStatus,
+  type GrokCliStatus,
   type OpenCodeCliKey
 } from '@shared/ai'
 
@@ -88,7 +89,14 @@ const EMPTY_FORM: FormState = {
 }
 
 const supportsReasoning = (protocol: AiProtocol): boolean =>
-  protocol === 'openai-responses' || protocol === 'codex' || protocol === 'opencode'
+  protocol === 'openai-responses' ||
+  protocol === 'codex' ||
+  protocol === 'opencode' ||
+  protocol === 'grok-cli'
+
+/** 订阅类协议的接口地址固定，也不用填 API Key */
+const isFixedEndpoint = (protocol: AiProtocol): boolean =>
+  protocol === 'codex' || protocol === 'grok-cli'
 
 export function ProviderDialog({
   open,
@@ -107,6 +115,7 @@ export function ProviderDialog({
   const [models, setModels] = useState<AiModelInfo[] | null>(null)
   const [codexStatus, setCodexStatus] = useState<CodexAuthStatus | null>(null)
   const [cliKey, setCliKey] = useState<OpenCodeCliKey | null>(null)
+  const [grokStatus, setGrokStatus] = useState<GrokCliStatus | null>(null)
   const [codexBusy, setCodexBusy] = useState<'login' | 'import' | 'logout' | null>(null)
 
   // 只在打开或换了另一条提供方时重置表单；同一条保存后父级回传新对象不应打断正在编辑的状态
@@ -132,6 +141,20 @@ export function ProviderDialog({
 
   const isCodex = form.protocol === 'codex'
   const isOpenCode = form.protocol === 'opencode'
+  const isGrokCli = form.protocol === 'grok-cli'
+  const fixedEndpoint = isFixedEndpoint(form.protocol)
+
+  const refreshGrokStatus = (): Promise<void> =>
+    window.api.ai
+      .grokCliStatus()
+      .then(setGrokStatus)
+      .catch((error) => {
+        toast.error(`读取 Grok CLI 登录态失败: ${(error as Error).message}`)
+      })
+
+  useEffect(() => {
+    if (open && isGrokCli) void refreshGrokStatus()
+  }, [open, isGrokCli])
 
   // OpenCode 协议下探测本机 CLI 是否已 /connect，有就给个一键填入
   useEffect(() => {
@@ -178,7 +201,7 @@ export function ProviderDialog({
 
   const validate = (): string | null => {
     if (!form.name.trim()) return '请填写名称'
-    if (!isCodex && !form.baseUrl.trim()) return '请填写接口地址'
+    if (!fixedEndpoint && !form.baseUrl.trim()) return '请填写接口地址'
     if (!form.model.trim()) return '请填写模型'
     return null
   }
@@ -223,7 +246,7 @@ export function ProviderDialog({
   }
 
   const handleLoadModels = async (): Promise<void> => {
-    if (!isCodex && !form.baseUrl.trim()) {
+    if (!fixedEndpoint && !form.baseUrl.trim()) {
       toast.error('请先填写接口地址')
       return
     }
@@ -371,13 +394,11 @@ export function ProviderDialog({
                   setForm({
                     ...form,
                     protocol,
-                    // 换到 codex 时地址固定；从 codex 换出来时给一个协议对应的默认地址
+                    // 换到订阅类协议时地址固定；从订阅类换出来时给一个协议对应的默认地址
                     baseUrl:
-                      protocol === 'codex'
+                      isFixedEndpoint(protocol) || isFixedEndpoint(form.protocol)
                         ? (template?.baseUrl ?? '')
-                        : form.protocol === 'codex'
-                          ? (template?.baseUrl ?? '')
-                          : form.baseUrl
+                        : form.baseUrl
                   })
                 }}
               >
@@ -394,7 +415,7 @@ export function ProviderDialog({
               </Select>
             </Field>
 
-            {!isCodex && (
+            {!fixedEndpoint && (
               <Field label="接口地址">
                 <Input
                   value={form.baseUrl}
@@ -445,7 +466,7 @@ export function ProviderDialog({
               </div>
             </Field>
 
-            {!isCodex && (
+            {!fixedEndpoint && (
               <Field
                 label="API Key"
                 hint={
@@ -573,6 +594,38 @@ export function ProviderDialog({
                       退出登录
                     </Button>
                   )}
+                </div>
+              </div>
+            )}
+
+            {isGrokCli && (
+              <div className="rounded-xl border border-[#E5E5E7] bg-[#F5F5F7] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-[#1D1D1F]">Grok CLI 登录态</p>
+                    <p className="text-xs text-[#A1A1A6] mt-0.5">
+                      {grokStatus === null
+                        ? '读取中…'
+                        : grokStatus.loggedIn
+                          ? '已检测到登录，分析时会自动使用最新的登录令牌'
+                          : '未检测到登录：请先安装 Grok CLI，并在终端运行 grok login'}
+                    </p>
+                    {grokStatus && (
+                      <p className="mt-1 truncate font-mono text-[11px] text-[#A1A1A6]">
+                        {grokStatus.authPath}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => void refreshGrokStatus()}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-1" />
+                    重新检测
+                  </Button>
                 </div>
               </div>
             )}

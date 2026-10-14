@@ -11,6 +11,7 @@ export type AiProtocol =
   | 'gemini' // Google Gemini generateContent
   | 'codex' // ChatGPT Plus/Pro 订阅（Codex 后端，OAuth 登录，Responses 协议）
   | 'opencode' // OpenCode Zen / Go 订阅：一个 Key，按模型自动走 responses / messages / gemini / chat
+  | 'grok-cli' // SuperGrok 订阅：读本机 Grok CLI 的登录令牌，走 cli-chat-proxy（Responses 协议）
 
 export const AI_PROTOCOLS: { value: AiProtocol; label: string; description: string }[] = [
   {
@@ -38,6 +39,11 @@ export const AI_PROTOCOLS: { value: AiProtocol; label: string; description: stri
     value: 'codex',
     label: 'ChatGPT 订阅（Codex）',
     description: '用 ChatGPT Plus / Pro 订阅登录，无需 API Key；走 Codex 后端'
+  },
+  {
+    value: 'grok-cli',
+    label: 'Grok 订阅（Grok CLI）',
+    description: '用 SuperGrok 订阅，无需 API Key；读取本机 grok login 的登录态'
   }
 ]
 
@@ -76,6 +82,14 @@ export const AI_PROVIDER_TEMPLATES: AiProviderTemplate[] = [
     baseUrl: 'https://chatgpt.com/backend-api/codex',
     model: 'gpt-5.5',
     hint: '点「登录 ChatGPT」完成授权，或从本机 Codex CLI 导入登录态'
+  },
+  {
+    id: 'grok-cli',
+    name: 'Grok 订阅（SuperGrok）',
+    protocol: 'grok-cli',
+    baseUrl: 'https://cli-chat-proxy.grok.com/v1',
+    model: 'grok-4.7',
+    hint: '先安装 Grok CLI 并在终端运行 grok login；登录 7 天过期，过期后重新运行即可'
   },
   {
     id: 'opencode-zen',
@@ -167,6 +181,13 @@ export interface OpenCodeCliKey {
   /** models.dev 提供方 id：opencode（Zen）或 opencode-go */
   entry: 'opencode' | 'opencode-go'
   key: string
+}
+
+/** 本机 Grok CLI 登录状态 */
+export interface GrokCliStatus {
+  loggedIn: boolean
+  /** auth.json 的完整路径，方便用户自查 */
+  authPath: string
 }
 
 /** Codex 登录状态 */

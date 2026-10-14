@@ -41,6 +41,7 @@ import {
   codexImportFromCli,
   codexLogout,
   opencodeCliKey,
+  getGrokCliStatus,
   listAsrProviders,
   saveAsrProvider,
   deleteAsrProvider,
@@ -83,6 +84,7 @@ export function registerAnalysisIpc(): void {
   )
   ipcMain.handle('ai:codexLogout', (_event, providerId: string) => codexLogout(providerId))
   ipcMain.handle('ai:opencodeCliKey', (_event, baseUrl: string) => opencodeCliKey(baseUrl))
+  ipcMain.handle('ai:grokCliStatus', () => getGrokCliStatus())
 
   // ---- 语音转写提供方 ----
   ipcMain.handle('asr:listProviders', () => listAsrProviders())

@@ -11,6 +11,7 @@ import type {
   AsrProviderInput,
   AsrProviderView,
   CodexAuthStatus,
+  GrokCliStatus,
   OpenCodeCliKey,
   CreateAnalysisJobInput
 } from '../shared/ai'
@@ -537,6 +538,7 @@ declare global {
     codexLogout: (providerId: string) => Promise<CodexAuthStatus>
     /** 本机 OpenCode CLI（/connect 保存的）里与地址匹配的 Zen/Go API Key；没有为 null */
     opencodeCliKey: (baseUrl: string) => Promise<OpenCodeCliKey | null>
+    grokCliStatus: () => Promise<GrokCliStatus>
   }
 
   interface AsrAPI {

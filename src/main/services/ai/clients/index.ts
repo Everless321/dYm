@@ -5,6 +5,7 @@ import { AnthropicClient } from './anthropic'
 import { GeminiClient } from './gemini'
 import { CodexClient } from './codex'
 import { OpenCodeClient } from './opencode'
+import { GrokCliClient } from './grok-cli'
 
 export interface CreateClientOptions {
   /** Codex 刷新令牌后的回写；不传则刷新结果只保留在内存 */
@@ -28,6 +29,8 @@ export function createAiClient(
       return new OpenCodeClient(provider)
     case 'codex':
       return new CodexClient(provider, (json) => options.persistCredential?.(provider.id, json))
+    case 'grok-cli':
+      return new GrokCliClient(provider)
     default: {
       const never: never = provider.protocol
       throw new Error(`未知的 AI 协议：${String(never)}`)
@@ -36,4 +39,5 @@ export function createAiClient(
 }
 
 export { CODEX_KNOWN_MODELS, CODEX_BASE_URL } from './codex'
+export { GROK_CLI_BASE_URL } from './grok-cli'
 export { OPENCODE_ZEN_BASE_URL, OPENCODE_GO_BASE_URL, opencodeRouteOf } from './opencode'
