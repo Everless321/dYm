@@ -7,12 +7,14 @@ import {
   type AiProviderView,
   type AiReasoningEffort,
   type CodexAuthStatus,
+  type GrokAuthStatus,
   type OpenCodeCliKey
 } from '../../../shared/ai'
 import type { AiClient, AiModelInfo, ResolvedProvider } from './types'
-import { createAiClient, CODEX_BASE_URL } from './clients'
+import { createAiClient, CODEX_BASE_URL, GROK_BASE_URL } from './clients'
 import { openSecret, sealSecret } from './secret'
 import { pickOpenCodeCliKey } from './opencode-auth'
+import { cancelGrokLogin, loginGrokWithBrowser, parseGrokCredential } from './grok-auth'
 import {
   cancelCodexLogin,
   hasCliAuth,
@@ -39,6 +41,13 @@ interface ProviderRow {
 const VALID_PROTOCOLS = new Set<string>(AI_PROTOCOLS.map((p) => p.value))
 const VALID_EFFORTS = new Set<string>(['none', 'minimal', 'low', 'medium', 'high'])
 
+/** 订阅类协议的接口地址是固定的，不用用户填 */
+function fixedBaseUrl(protocol: string): string | null {
+  if (protocol === 'codex') return CODEX_BASE_URL
+  if (protocol === 'grok') return GROK_BASE_URL
+  return null
+}
+
 function toView(row: ProviderRow): AiProviderView {
   return {
     id: row.id,
@@ -60,7 +69,7 @@ function toResolved(row: ProviderRow): ResolvedProvider {
     id: row.id,
     name: row.name,
     protocol: row.protocol as AiProtocol,
-    baseUrl: row.protocol === 'codex' ? CODEX_BASE_URL : row.base_url,
+    baseUrl: fixedBaseUrl(row.protocol) ?? row.base_url,
     model: row.model,
     credential: openSecret(row.credential),
     reasoningEffort: (row.reasoning_effort as AiReasoningEffort | null) ?? null
@@ -110,6 +119,9 @@ export function resolveProvider(id?: string | null): ResolvedProvider {
   if (row.protocol === 'codex' && !parseCodexCredential(resolved.credential)) {
     throw new Error(`提供方「${row.name}」尚未登录 ChatGPT`)
   }
+  if (row.protocol === 'grok' && !parseGrokCredential(resolved.credential)) {
+    throw new Error(`提供方「${row.name}」尚未登录 Grok`)
+  }
   return resolved
 }
 
@@ -122,7 +134,7 @@ export function createClientFor(id?: string | null): AiClient {
 function validateInput(input: AiProviderInput): void {
   if (!input.name?.trim()) throw new Error('请填写提供方名称')
   if (!VALID_PROTOCOLS.has(input.protocol)) throw new Error(`未知协议：${input.protocol}`)
-  if (input.protocol !== 'codex' && !input.baseUrl?.trim()) throw new Error('请填写 API 地址')
+  if (!fixedBaseUrl(input.protocol) && !input.baseUrl?.trim()) throw new Error('请填写 API 地址')
   if (input.reasoningEffort && !VALID_EFFORTS.has(input.reasoningEffort)) {
     throw new Error(`未知推理深度：${input.reasoningEffort}`)
   }
@@ -134,7 +146,7 @@ export function saveProvider(input: AiProviderInput): AiProviderView {
   const now = Math.floor(Date.now() / 1000)
   const existing = input.id ? getRow(input.id) : undefined
   const id = existing?.id ?? input.id ?? randomUUID()
-  const baseUrl = input.protocol === 'codex' ? CODEX_BASE_URL : input.baseUrl.trim()
+  const baseUrl = fixedBaseUrl(input.protocol) ?? input.baseUrl.trim()
 
   if (existing) {
     // 换协议后旧凭据（比如 codex 的 OAuth）对新协议没意义，直接丢弃
@@ -206,12 +218,13 @@ export function setDefaultProvider(id: string): void {
 }
 
 function persistCredential(id: string, credentialJson: string): void {
-  const cred = parseCodexCredential(credentialJson)
+  const email =
+    parseCodexCredential(credentialJson)?.email ?? parseGrokCredential(credentialJson)?.email
   getDatabase()
     .prepare(
       `UPDATE ai_providers SET credential = ?, credential_label = ?, updated_at = strftime('%s','now') WHERE id = ?`
     )
-    .run(sealSecret(credentialJson), cred?.email ?? null, id)
+    .run(sealSecret(credentialJson), email ?? null, id)
 }
 
 // ==================== 验证 / 模型列表 ====================
@@ -230,7 +243,7 @@ function resolveDraft(input: AiProviderInput): ResolvedProvider {
     id: existing?.id ?? input.id ?? 'draft',
     name: input.name,
     protocol: input.protocol,
-    baseUrl: input.protocol === 'codex' ? CODEX_BASE_URL : input.baseUrl,
+    baseUrl: fixedBaseUrl(input.protocol) ?? input.baseUrl,
     model: input.model,
     credential,
     reasoningEffort: input.reasoningEffort ?? null
@@ -244,6 +257,9 @@ export async function verifyProvider(
   if (!resolved.model.trim()) throw new Error('请先填写模型')
   if (resolved.protocol === 'codex' && !parseCodexCredential(resolved.credential)) {
     throw new Error('请先登录 ChatGPT')
+  }
+  if (resolved.protocol === 'grok' && !parseGrokCredential(resolved.credential)) {
+    throw new Error('请先登录 Grok')
   }
   const client = createAiClient(resolved, {
     persistCredential: (id, json) => {
@@ -313,6 +329,45 @@ export function codexLogout(providerId: string): CodexAuthStatus {
     )
     .run(providerId)
   return getCodexStatus(providerId)
+}
+
+// ==================== Grok 登录 ====================
+
+export function getGrokStatus(providerId: string): GrokAuthStatus {
+  const row = getRow(providerId)
+  const cred = row ? parseGrokCredential(openSecret(row.credential)) : null
+  return {
+    loggedIn: !!cred,
+    email: cred?.email ?? row?.credential_label ?? null,
+    expiresAt: cred?.expires_at ?? null
+  }
+}
+
+function ensureGrokProvider(providerId: string): void {
+  const row = getRow(providerId)
+  if (!row) throw new Error('提供方不存在，请先保存')
+  if (row.protocol !== 'grok') throw new Error('该提供方不是 Grok 订阅协议')
+}
+
+export async function grokLogin(providerId: string): Promise<GrokAuthStatus> {
+  ensureGrokProvider(providerId)
+  const cred = await loginGrokWithBrowser()
+  persistCredential(providerId, JSON.stringify(cred))
+  return getGrokStatus(providerId)
+}
+
+export function grokCancelLogin(): void {
+  cancelGrokLogin()
+}
+
+export function grokLogout(providerId: string): GrokAuthStatus {
+  ensureGrokProvider(providerId)
+  getDatabase()
+    .prepare(
+      `UPDATE ai_providers SET credential = NULL, credential_label = NULL, updated_at = strftime('%s','now') WHERE id = ?`
+    )
+    .run(providerId)
+  return getGrokStatus(providerId)
 }
 
 // ==================== OpenCode CLI 导入 ====================

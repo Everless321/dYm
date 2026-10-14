@@ -1,19 +1,16 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Library, Search, CheckSquare, Trash2, RotateCw, Plus, X } from 'lucide-react'
+import { Search, CheckSquare, Trash2, RotateCw, Plus, X, Check, Tag } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { cn } from '@/lib/utils'
+import { cn, getMergedTags, toMediaSrc } from '@/lib/utils'
+import { MediaViewer } from '@/components/media/MediaViewer'
 import { ClearTagsDialog } from './ClearTagsDialog'
 import { ReanalyzeProgressDialog } from './ReanalyzeProgressDialog'
 import { AddTagsDialog } from './AddTagsDialog'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { StatCard } from './components/StatCard'
 import { FilterSection, FilterRow } from './components/FilterSection'
-import { VideoCard } from './components/VideoCard'
-import { UserProfileBar } from './components/UserProfileBar'
-import { ACCENT } from './components/tokens'
 import { parseTagFilters, countActiveFilters, readList, FROM_LIST } from './filters'
 import {
   readPanelPrefs,
@@ -21,6 +18,7 @@ import {
   type FilterSectionId,
   type PanelPrefs
 } from './panel-prefs'
+import TagWorkbenchPrototype from './TagWorkbenchPrototype'
 
 const PAGE_SIZE = 60
 const LEVEL_MIN = 1
@@ -50,7 +48,7 @@ const SORT_OPTIONS: { key: TagPostSort; label: string }[] = [
   { key: 'level', label: '内容评级' }
 ]
 
-export default function TagWorkbenchPage(): React.JSX.Element {
+export function LegacyTagWorkbenchPage(): React.JSX.Element {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
 
@@ -93,24 +91,20 @@ export default function TagWorkbenchPage(): React.JSX.Element {
   // 列表请求序号。筛选切换很快时，慢的旧请求可能晚于新请求返回，用它丢弃过期结果
   const requestIdRef = useRef(0)
 
-  // 筛选栏的顺序/折叠属于个人偏好，存本地；本页会因为进详情页而卸载，放组件 state 留不住
   const [panelPrefs, setPanelPrefs] = useState<PanelPrefs>(readPanelPrefs)
-
   const updatePanelPrefs = useCallback((next: PanelPrefs) => {
     setPanelPrefs(next)
     writePanelPrefs(next)
   }, [])
-
   const toggleSection = useCallback(
     (id: FilterSectionId) => {
       const collapsed = panelPrefs.collapsed.includes(id)
-        ? panelPrefs.collapsed.filter((x) => x !== id)
+        ? panelPrefs.collapsed.filter((item) => item !== id)
         : [...panelPrefs.collapsed, id]
       updatePanelPrefs({ ...panelPrefs, collapsed })
     },
     [panelPrefs, updatePanelPrefs]
   )
-
   const moveSection = useCallback(
     (id: FilterSectionId, delta: -1 | 1) => {
       const from = panelPrefs.order.indexOf(id)
@@ -123,8 +117,6 @@ export default function TagWorkbenchPage(): React.JSX.Element {
     },
     [panelPrefs, updatePanelPrefs]
   )
-
-  /** 每个分组都要的公共 props：展开状态 + 到顶/到底时禁用移动 */
   const sectionProps = (
     id: FilterSectionId
   ): {
@@ -144,6 +136,8 @@ export default function TagWorkbenchPage(): React.JSX.Element {
 
   const [selectMode, setSelectMode] = useState(false)
   const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [detailPostId, setDetailPostId] = useState<number | null>(null)
+  const [viewerOpen, setViewerOpen] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [reanalyzeIds, setReanalyzeIds] = useState<number[] | null>(null)
@@ -368,13 +362,22 @@ export default function TagWorkbenchPage(): React.JSX.Element {
   )
 
   const handleCardClick = useCallback(
-    (id: number): void => (selectMode ? toggleSelect(id) : openVideo(id)),
-    [selectMode, toggleSelect, openVideo]
+    (id: number): void => (selectMode ? toggleSelect(id) : setDetailPostId(id)),
+    [selectMode, toggleSelect]
   )
 
   const selectedIds = Array.from(selected)
   const hasMore = posts.length < total
   const activeUser = secUid ? users.find((u) => u.sec_uid === secUid) : undefined
+  const detailPost = posts.find((post) => post.id === detailPostId)
+
+  useEffect(() => {
+    if (!posts.length) {
+      setDetailPostId(null)
+      return
+    }
+    if (!posts.some((post) => post.id === detailPostId)) setDetailPostId(posts[0].id)
+  }, [posts, detailPostId])
 
   const visibleUsers = useMemo(() => {
     const kw = userSearch.trim().toLowerCase()
@@ -413,8 +416,12 @@ export default function TagWorkbenchPage(): React.JSX.Element {
   return (
     <div className="flex flex-col h-full">
       <PageHeader
-        title="标签管理"
-        description="按标注状态、用户、标签等条件筛选视频，支持批量打标"
+        title="视频"
+        meta={
+          activeUser
+            ? activeUser.nickname || activeUser.sec_uid
+            : `${stats.totalVideos.toLocaleString()} 个视频 · 已标记 ${stats.tagged.toLocaleString()}`
+        }
         actions={
           <>
             {selectMode ? (
@@ -431,106 +438,17 @@ export default function TagWorkbenchPage(): React.JSX.Element {
             ) : (
               <Button variant="outline" size="sm" onClick={() => setSelectMode(true)}>
                 <CheckSquare className="h-4 w-4 mr-1.5" />
-                选择
+                多选
               </Button>
             )}
-            <Button variant="outline" onClick={() => navigate('/tags/library')}>
-              <Library className="h-4 w-4 mr-1.5" />
-              标签库管理
-            </Button>
           </>
         }
       />
 
-      {/* 批量操作条 */}
-      {selectMode && (
-        <div className="flex items-center justify-between gap-4 px-8 py-3 bg-[#E8F0FE] border-b border-[#D1E3FB] shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            <span className="text-sm text-[#0A84FF] font-medium whitespace-nowrap">
-              已选 {selected.size} 个
-            </span>
-            <button
-              onClick={() =>
-                setSelected((prev) =>
-                  prev.size === posts.length ? new Set() : new Set(posts.map((p) => p.id))
-                )
-              }
-              className="text-xs text-[#0A84FF] hover:underline whitespace-nowrap"
-            >
-              {selected.size === posts.length && posts.length > 0
-                ? '取消全选'
-                : `全选已加载（${posts.length}）`}
-            </button>
-          </div>
-          <div className="flex items-center gap-2.5 shrink-0">
-            <Button size="sm" disabled={selected.size === 0} onClick={() => setAddOpen(true)}>
-              <Plus className="h-3.5 w-3.5 mr-1.5" />
-              添加标签
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={selected.size === 0}
-              onClick={() => setClearOpen(true)}
-            >
-              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-              批量清除
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={selected.size === 0}
-              onClick={() => setReanalyzeIds(selectedIds)}
-            >
-              <RotateCw className="h-3.5 w-3.5 mr-1.5" />
-              批量重标
-            </Button>
-          </div>
-        </div>
-      )}
-
-      <div className="flex-1 min-h-0 flex flex-col gap-5 p-8 pb-0">
-        {/* 顶部：全库统计卡片 / 单用户时换成该用户画像 */}
-        {activeUser ? (
-          <UserProfileBar
-            user={activeUser}
-            onTagClick={(t) => toggleInList('tags', t)}
-            onClear={() => patch({ user: undefined })}
-          />
-        ) : (
-          <div className="grid grid-cols-4 gap-4 shrink-0">
-            <StatCard
-              label="总视频数"
-              value={stats.totalVideos}
-              active={status === 'all' && activeFilterCount === 0}
-              onClick={clearAll}
-            />
-            <StatCard
-              label="已标记"
-              value={stats.tagged}
-              color={ACCENT.green}
-              active={status === 'tagged'}
-              onClick={() => patch({ status: status === 'tagged' ? undefined : 'tagged' })}
-            />
-            <StatCard
-              label="未标记"
-              value={stats.untagged}
-              color={ACCENT.orange}
-              active={status === 'untagged'}
-              onClick={() => patch({ status: status === 'untagged' ? undefined : 'untagged' })}
-            />
-            <StatCard
-              label="标签种类"
-              value={stats.tagKinds}
-              color={ACCENT.blue}
-              onClick={() => navigate('/tags/library')}
-            />
-          </div>
-        )}
-
-        <div className="flex-1 min-h-0 flex gap-5">
+      <div className="flex-1 min-h-0 flex flex-col gap-3 p-5 pb-0 overflow-hidden">
+        <div className="flex-1 min-h-0 flex gap-3">
           {/* ── 左侧筛选栏 ── */}
-          <aside className="w-60 shrink-0 rounded-xl bg-white shadow-sm ring-1 ring-black/[0.04] flex flex-col overflow-hidden">
+          <aside className="w-[208px] shrink-0 rounded-lg border border-[#E5E5E7] bg-white flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#F0F0F2] shrink-0">
               <span className="text-sm font-medium text-[#1D1D1F]">筛选</span>
               {activeFilterCount > 0 && (
@@ -749,102 +667,265 @@ export default function TagWorkbenchPage(): React.JSX.Element {
           </aside>
 
           {/* ── 右侧结果区 ── */}
-          <div className="flex-1 min-w-0 rounded-xl bg-white shadow-sm ring-1 ring-black/[0.04] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between gap-4 px-5 py-3.5 border-b border-[#F0F0F2] shrink-0">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-sm font-medium text-[#1D1D1F] whitespace-nowrap tabular-nums">
-                  {total} 个视频
-                </span>
-                {activeFilterCount > 0 && (
-                  <span className="text-xs text-[#A1A1A6] whitespace-nowrap">
-                    · {activeFilterCount} 个筛选条件
+          <div className="flex-1 min-w-0 flex gap-3 overflow-hidden">
+            <div className="flex-[1.35] min-w-0 rounded-lg border border-[#E5E5E7] bg-white flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between gap-4 px-5 py-3.5 border-b border-[#F0F0F2] shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-medium text-[#1D1D1F] whitespace-nowrap tabular-nums">
+                    {total} 个视频
                   </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2.5 shrink-0">
-                <select
-                  value={sort}
-                  onChange={(e) => patch({ sort: e.target.value })}
-                  className="h-8 rounded-md border border-[#E5E5E7] bg-white px-2 text-xs text-[#1D1D1F] outline-none focus:border-[#0A84FF] cursor-pointer"
-                >
-                  {SORT_OPTIONS.map((s) => (
-                    <option key={s.key} value={s.key}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-                <div className="relative w-56">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#A1A1A6]" />
-                  <Input
-                    value={searchDraft}
-                    onChange={(e) => setSearchDraft(e.target.value)}
-                    placeholder="搜索标题 / 描述 / 标签"
-                    className="pl-9 h-8"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* 已选条件 chips */}
-            {(tags.length > 0 || categories.length > 0 || scenes.length > 0) && (
-              <div className="flex flex-wrap gap-1.5 px-5 py-2.5 border-b border-[#F0F0F2] shrink-0">
-                {tags.map((t) => (
-                  <FilterChip key={`t-${t}`} onRemove={() => toggleInList('tags', t)}>
-                    {t}
-                  </FilterChip>
-                ))}
-                {categories.map((c) => (
-                  <FilterChip key={`c-${c}`} onRemove={() => toggleInList('cat', c)}>
-                    分类：{c}
-                  </FilterChip>
-                ))}
-                {scenes.map((s) => (
-                  <FilterChip key={`s-${s}`} onRemove={() => toggleInList('scene', s)}>
-                    场景：{s}
-                  </FilterChip>
-                ))}
-              </div>
-            )}
-
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-5">
-              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-5">
-                {posts.map((p) => (
-                  <VideoCard
-                    key={p.id}
-                    post={p}
-                    cover={covers.get(p.id)}
-                    selectMode={selectMode}
-                    selected={selected.has(p.id)}
-                    highlightTags={filters.tags}
-                    onClick={handleCardClick}
-                    onToggleSelect={toggleSelect}
-                  />
-                ))}
-              </div>
-
-              {posts.length === 0 && !loading && (
-                <div className="py-20 text-center space-y-3">
-                  <p className="text-sm text-[#A1A1A6]">
-                    {activeFilterCount > 0 ? '没有符合条件的视频' : '暂无视频'}
-                  </p>
                   {activeFilterCount > 0 && (
-                    <Button variant="outline" size="sm" onClick={clearAll}>
-                      清除筛选条件
-                    </Button>
+                    <span className="text-xs text-[#A1A1A6] whitespace-nowrap">
+                      · {activeFilterCount} 个筛选条件
+                    </span>
                   )}
                 </div>
-              )}
+                <div className="flex items-center gap-2.5 shrink-0">
+                  <select
+                    value={sort}
+                    onChange={(e) => patch({ sort: e.target.value })}
+                    className="h-8 rounded-md border border-[#E5E5E7] bg-white px-2 text-xs text-[#1D1D1F] outline-none focus:border-[#0A84FF] cursor-pointer"
+                  >
+                    {SORT_OPTIONS.map((s) => (
+                      <option key={s.key} value={s.key}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="relative w-56">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#A1A1A6]" />
+                    <Input
+                      value={searchDraft}
+                      onChange={(e) => setSearchDraft(e.target.value)}
+                      placeholder="搜索标题 / 描述 / 标签"
+                      className="pl-9 h-8"
+                    />
+                  </div>
+                </div>
+              </div>
 
-              {hasMore && (
-                <div className="flex justify-center pt-5">
-                  <Button variant="outline" disabled={loading} onClick={() => loadPage(page + 1)}>
-                    {loading ? '加载中…' : `加载更多（${posts.length}/${total}）`}
-                  </Button>
+              {/* 已选条件 chips */}
+              {(tags.length > 0 || categories.length > 0 || scenes.length > 0) && (
+                <div className="flex flex-wrap gap-1.5 px-5 py-2.5 border-b border-[#F0F0F2] shrink-0">
+                  {tags.map((t) => (
+                    <FilterChip key={`t-${t}`} onRemove={() => toggleInList('tags', t)}>
+                      {t}
+                    </FilterChip>
+                  ))}
+                  {categories.map((c) => (
+                    <FilterChip key={`c-${c}`} onRemove={() => toggleInList('cat', c)}>
+                      分类：{c}
+                    </FilterChip>
+                  ))}
+                  {scenes.map((s) => (
+                    <FilterChip key={`s-${s}`} onRemove={() => toggleInList('scene', s)}>
+                      场景：{s}
+                    </FilterChip>
+                  ))}
                 </div>
               )}
+
+              <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2">
+                <div className="divide-y divide-[#F0F0F2]">
+                  {posts.map((post) => {
+                    const mergedTags = getMergedTags(post).slice(0, 3)
+                    const active = detailPostId === post.id
+                    return (
+                      <div
+                        key={post.id}
+                        onClick={() => handleCardClick(post.id)}
+                        className={cn(
+                          'flex items-center gap-3 rounded-md px-2 py-2.5 cursor-pointer transition-colors',
+                          active ? 'bg-[#F0F6FF]' : 'hover:bg-[#F8F9FB]'
+                        )}
+                      >
+                        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md bg-[#F2F2F4]">
+                          {covers.get(post.id) && (
+                            <img
+                              src={toMediaSrc(covers.get(post.id)!)}
+                              className="h-full w-full object-cover"
+                              alt=""
+                            />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-[#1D1D1F]">
+                            {post.caption || post.desc || '无标题'}
+                          </p>
+                          <p className="mt-1 truncate text-xs text-[#8A8A8E]">
+                            {post.nickname || post.sec_uid}
+                            {post.create_time
+                              ? ` · ${new Date(Number(post.create_time) * 1000).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}`
+                              : ''}
+                          </p>
+                          <div className="mt-1 flex gap-1 overflow-hidden">
+                            {mergedTags.map((tag) => (
+                              <span
+                                key={tag}
+                                className="max-w-24 truncate rounded bg-[#F2F2F4] px-1.5 py-0.5 text-[10px] text-[#6E6E73]"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        {selectMode ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              toggleSelect(post.id)
+                            }}
+                            className={cn(
+                              'flex h-5 w-5 shrink-0 items-center justify-center rounded border',
+                              selected.has(post.id)
+                                ? 'border-[#0A84FF] bg-[#0A84FF] text-white'
+                                : 'border-[#C7C7CC] bg-white text-transparent'
+                            )}
+                            aria-label={selected.has(post.id) ? '取消选择' : '选择视频'}
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </button>
+                        ) : (
+                          <span className="text-xs text-[#A1A1A6]">
+                            {post.analysis_summary ? '已分析' : '待分析'}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {posts.length === 0 && !loading && (
+                  <div className="py-20 text-center space-y-3">
+                    <p className="text-sm text-[#A1A1A6]">
+                      {activeFilterCount > 0 ? '没有符合条件的视频' : '暂无视频'}
+                    </p>
+                    {activeFilterCount > 0 && (
+                      <Button variant="outline" size="sm" onClick={clearAll}>
+                        清除筛选条件
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {hasMore && (
+                  <div className="flex justify-center pt-5">
+                    <Button variant="outline" disabled={loading} onClick={() => loadPage(page + 1)}>
+                      {loading ? '加载中…' : `加载更多（${posts.length}/${total}）`}
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
+            <aside className="w-[300px] shrink-0 rounded-lg border border-[#E5E5E7] bg-white flex flex-col overflow-hidden">
+              {detailPost ? (
+                <>
+                  <div className="relative aspect-[4/5] max-h-[320px] bg-[#1D1D1F]">
+                    {covers.get(detailPost.id) && (
+                      <img
+                        src={toMediaSrc(covers.get(detailPost.id)!)}
+                        className="h-full w-full object-cover"
+                        alt=""
+                      />
+                    )}
+                  </div>
+                  <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+                    <div>
+                      <p className="text-sm font-semibold text-[#1D1D1F]">
+                        {detailPost.caption || detailPost.desc || '无标题'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          navigate(`/creators?user=${encodeURIComponent(detailPost.sec_uid)}`)
+                        }
+                        className="mt-1 text-xs text-[#0A84FF] hover:underline"
+                      >
+                        {detailPost.nickname || detailPost.sec_uid}
+                      </button>
+                    </div>
+                    <div className="space-y-1 rounded-md bg-[#F7F7F9] p-3">
+                      <p className="text-[11px] font-medium text-[#8A8A8E]">作品描述</p>
+                      <p className="line-clamp-4 text-xs leading-relaxed text-[#45454A]">
+                        {detailPost.desc || detailPost.caption || '暂无描述'}
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-medium text-[#8A8A8E]">标签</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {getMergedTags(detailPost).map((tag) => (
+                          <span
+                            key={tag}
+                            className="rounded-full bg-[#EAF3FF] px-2 py-1 text-[11px] text-[#2675C7]"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                        {!getMergedTags(detailPost).length && (
+                          <span className="text-xs text-[#A1A1A6]">暂无标签</span>
+                        )}
+                      </div>
+                    </div>
+                    {detailPost.analysis_summary && (
+                      <div className="space-y-1">
+                        <p className="text-[11px] font-medium text-[#8A8A8E]">AI 摘要</p>
+                        <p className="line-clamp-4 text-xs leading-relaxed text-[#45454A]">
+                          {detailPost.analysis_summary}
+                        </p>
+                      </div>
+                    )}
+                    <div className="mt-auto grid grid-cols-2 gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setViewerOpen(true)}>
+                        播放
+                      </Button>
+                      <Button size="sm" onClick={() => openVideo(detailPost.id)}>
+                        <Tag className="mr-1.5 h-3.5 w-3.5" />
+                        标注
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-1 items-center justify-center text-sm text-[#A1A1A6]">
+                  选择一条视频查看详情
+                </div>
+              )}
+            </aside>
           </div>
         </div>
+        {selectMode && selected.size > 0 && (
+          <div className="mb-3 flex shrink-0 items-center gap-3 rounded-lg border border-[#D9E8FA] bg-white px-4 py-3 shadow-sm">
+            <span className="text-sm font-medium text-[#1D1D1F]">
+              已选择 {selected.size} 个视频
+            </span>
+            <button
+              type="button"
+              onClick={() =>
+                setSelected((prev) =>
+                  prev.size === posts.length ? new Set() : new Set(posts.map((post) => post.id))
+                )
+              }
+              className="text-xs text-[#0A84FF] hover:underline"
+            >
+              {selected.size === posts.length && posts.length > 0 ? '取消全选' : '全选已加载'}
+            </button>
+            <div className="ml-auto flex items-center gap-2">
+              <Button size="sm" onClick={() => setAddOpen(true)}>
+                <Plus className="mr-1 h-3.5 w-3.5" />
+                添加标签
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setClearOpen(true)}>
+                <Trash2 className="mr-1 h-3.5 w-3.5" />
+                批量清除
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setReanalyzeIds(selectedIds)}>
+                <RotateCw className="mr-1 h-3.5 w-3.5" />
+                批量重分析
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       <AddTagsDialog
@@ -866,6 +947,9 @@ export default function TagWorkbenchPage(): React.JSX.Element {
         postIds={reanalyzeIds || []}
         onDone={refresh}
       />
+      {detailPost && (
+        <MediaViewer post={detailPost} open={viewerOpen} onOpenChange={setViewerOpen} />
+      )}
     </div>
   )
 }
@@ -932,4 +1016,8 @@ function FilterChip({
       </button>
     </span>
   )
+}
+
+export default function TagWorkbenchPage(): React.JSX.Element {
+  return <TagWorkbenchPrototype />
 }

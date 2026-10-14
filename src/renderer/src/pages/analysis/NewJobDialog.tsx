@@ -119,7 +119,7 @@ export function NewJobDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !creating && onOpenChange(o)}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-h-[85vh] max-w-[680px] overflow-y-auto rounded-lg">
         <DialogHeader>
           <DialogTitle>新建分析作业</DialogTitle>
           <DialogDescription>

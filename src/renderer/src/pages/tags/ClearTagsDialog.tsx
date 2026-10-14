@@ -35,7 +35,7 @@ export function ClearTagsDialog({
   postIds,
   onCleared,
   onReanalyze
-}: ClearTagsDialogProps) {
+}: ClearTagsDialogProps): React.JSX.Element {
   const [scope, setScope] = useState<Scope>('all')
   const [reTag, setReTag] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -47,7 +47,7 @@ export function ClearTagsDialog({
     }
   }, [open])
 
-  const handleConfirm = async () => {
+  const handleConfirm = async (): Promise<void> => {
     if (!postIds.length) return
     setLoading(true)
     try {
@@ -68,7 +68,7 @@ export function ClearTagsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-[560px] rounded-lg">
         <DialogHeader>
           <DialogTitle>批量清除标签</DialogTitle>
           <DialogDescription>已选中 {postIds.length} 个视频</DialogDescription>

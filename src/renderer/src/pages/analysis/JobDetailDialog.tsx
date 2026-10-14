@@ -103,7 +103,7 @@ export function JobDetailDialog({ job, onOpenChange }: JobDetailDialogProps): Re
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-h-[90vh] max-w-[900px] flex flex-col rounded-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span className="truncate">{job?.name ?? ''}</span>

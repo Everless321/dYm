@@ -2,9 +2,8 @@ import './assets/main.css'
 
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { RouterProvider } from 'react-router-dom'
 import { toast } from 'sonner'
-import { router } from './routes'
+import App from './app'
 import { Toaster } from './components/ui/sonner'
 import { ErrorBoundary } from './components/common/ErrorBoundary'
 
@@ -21,7 +20,7 @@ window.addEventListener('unhandledrejection', (event) => {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
-      <RouterProvider router={router} />
+      <App />
     </ErrorBoundary>
     <Toaster position="top-center" />
   </StrictMode>

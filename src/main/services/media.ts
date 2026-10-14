@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { existsSync, readdirSync } from 'fs'
+import { existsSync, readdirSync, statSync } from 'fs'
 import { join, normalize, resolve, sep } from 'path'
 import { getSetting } from '../database'
 import { findCloudCover, findCloudMediaFiles } from './storage/remote-media'
@@ -11,6 +11,8 @@ export interface MediaFiles {
   imageVideos?: (string | null)[]
   cover?: string
   music?: string
+  /** 本地媒体文件总大小（字节）；云端媒体没有本地大小，为 undefined */
+  size?: number
 }
 
 export function getDownloadPath(): string {
@@ -132,14 +134,25 @@ function readLocalMediaFiles(targetFolder: string, awemeType: number): MediaFile
           }
         }
       }
-      return { type: 'images', images, imageVideos, cover, music }
+      return { type: 'images', images, imageVideos, cover, music, size: folderSize(targetFolder) }
     }
 
     const videoFile = files.find((f) => /\.(mp4|mov|avi)$/i.test(f))
     const video = videoFile ? toUrlPath(join(targetFolder, videoFile)) : undefined
-    return { type: 'video', video, cover }
+    return { type: 'video', video, cover, size: video ? folderSize(targetFolder) : undefined }
   } catch {
     return null
+  }
+}
+
+function folderSize(targetFolder: string): number | undefined {
+  try {
+    return readdirSync(targetFolder).reduce(
+      (total, f) => total + statSync(join(targetFolder, f)).size,
+      0
+    )
+  } catch {
+    return undefined
   }
 }
 

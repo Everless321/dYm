@@ -1,7 +1,7 @@
 import { Page, PageBody } from '@/components/layout/Page'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Sparkles, ListChecks, SlidersHorizontal, Cpu, Mic } from 'lucide-react'
 import type { AiProviderView, AnalysisJobView, AsrProviderView } from '@shared/ai'
@@ -25,6 +25,8 @@ const STATS_REFRESH_MS = 2000
 
 export default function AnalysisPage(): React.JSX.Element {
   const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
+  const navigate = useNavigate()
   const tabParam = searchParams.get('tab')
   const tab: Tab =
     tabParam === 'settings' || tabParam === 'providers' || tabParam === 'asr' ? tabParam : 'queue'
@@ -40,6 +42,13 @@ export default function AnalysisPage(): React.JSX.Element {
   const [providers, setProviders] = useState<AiProviderView[]>([])
   const [asrProviders, setAsrProviders] = useState<AsrProviderView[]>([])
   const [newJobOpen, setNewJobOpen] = useState(false)
+
+  useEffect(() => {
+    const state = location.state as { openNewJob?: boolean } | null
+    if (!state?.openNewJob) return
+    window.setTimeout(() => setNewJobOpen(true), 0)
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null })
+  }, [location, navigate])
 
   const refreshTotals = useCallback((): void => {
     window.api.analysis
@@ -94,8 +103,9 @@ export default function AnalysisPage(): React.JSX.Element {
   return (
     <Page>
       <PageHeader
-        title="AI 视频分析"
-        description="结合画面、语音转写和文案理解整条视频，输出总结、章节与结构化标签"
+        title="分析队列"
+        description="管理分析作业、提供方与语音转写"
+        meta={activeCount ? `${activeCount} 个作业进行中` : undefined}
         actions={
           <button
             onClick={() => setNewJobOpen(true)}
@@ -107,7 +117,7 @@ export default function AnalysisPage(): React.JSX.Element {
         }
       />
 
-      <PageBody>
+      <PageBody fill={tab === 'queue'} width={tab === 'queue' ? 'full' : 'default'}>
         <div className="inline-flex h-9 items-center rounded-lg bg-[#F2F2F4] p-1">
           {TABS.map((t) => {
             const Icon = t.icon
@@ -135,7 +145,7 @@ export default function AnalysisPage(): React.JSX.Element {
           })}
         </div>
 
-        <div>
+        <div className={tab === 'queue' ? 'min-h-0 flex-1' : ''}>
           {tab === 'queue' && (
             <JobsPanel jobs={jobs} totals={totals} onCreate={() => setNewJobOpen(true)} />
           )}

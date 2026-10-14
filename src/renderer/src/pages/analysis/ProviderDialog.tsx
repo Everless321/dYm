@@ -27,6 +27,7 @@ import {
   type AiProviderView,
   type AiReasoningEffort,
   type CodexAuthStatus,
+  type GrokAuthStatus,
   type OpenCodeCliKey
 } from '@shared/ai'
 
@@ -88,7 +89,14 @@ const EMPTY_FORM: FormState = {
 }
 
 const supportsReasoning = (protocol: AiProtocol): boolean =>
-  protocol === 'openai-responses' || protocol === 'codex' || protocol === 'opencode'
+  protocol === 'openai-responses' ||
+  protocol === 'codex' ||
+  protocol === 'opencode' ||
+  protocol === 'grok'
+
+/** 订阅类协议的接口地址固定，也不用填 API Key */
+const isFixedEndpoint = (protocol: AiProtocol): boolean =>
+  protocol === 'codex' || protocol === 'grok'
 
 export function ProviderDialog({
   open,
@@ -99,13 +107,13 @@ export function ProviderDialog({
   // 新建时先选模板；编辑时直接进表单
   const [step, setStep] = useState<'template' | 'form'>('form')
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
-  // 保存后拿到的 id（codex 登录需要先有记录）
+  // 保存后拿到的 id（codex / grok 登录需要先有记录）
   const [savedId, setSavedId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [loadingModels, setLoadingModels] = useState(false)
   const [models, setModels] = useState<AiModelInfo[] | null>(null)
-  const [codexStatus, setCodexStatus] = useState<CodexAuthStatus | null>(null)
+  const [codexStatus, setCodexStatus] = useState<CodexAuthStatus | GrokAuthStatus | null>(null)
   const [cliKey, setCliKey] = useState<OpenCodeCliKey | null>(null)
   const [codexBusy, setCodexBusy] = useState<'login' | 'import' | 'logout' | null>(null)
 
@@ -132,6 +140,8 @@ export function ProviderDialog({
 
   const isCodex = form.protocol === 'codex'
   const isOpenCode = form.protocol === 'opencode'
+  const isGrok = form.protocol === 'grok'
+  const fixedEndpoint = isFixedEndpoint(form.protocol)
 
   // OpenCode 协议下探测本机 CLI 是否已 /connect，有就给个一键填入
   useEffect(() => {
@@ -150,16 +160,15 @@ export function ProviderDialog({
   }, [open, isOpenCode, form.baseUrl])
 
   useEffect(() => {
-    if (!open || !isCodex || !savedId) return
+    if (!open || !(isCodex || isGrok) || !savedId) return
     let cancelled = false
-    window.api.ai
-      .codexStatus(savedId)
+    ;(isGrok ? window.api.ai.grokStatus(savedId) : window.api.ai.codexStatus(savedId))
       .then((s) => !cancelled && setCodexStatus(s))
       .catch((error) => toast.error(`读取登录状态失败: ${(error as Error).message}`))
     return () => {
       cancelled = true
     }
-  }, [open, isCodex, savedId])
+  }, [open, isCodex, isGrok, savedId])
 
   const toInput = (): AiProviderInput => ({
     id: savedId ?? undefined,
@@ -178,7 +187,7 @@ export function ProviderDialog({
 
   const validate = (): string | null => {
     if (!form.name.trim()) return '请填写名称'
-    if (!isCodex && !form.baseUrl.trim()) return '请填写接口地址'
+    if (!fixedEndpoint && !form.baseUrl.trim()) return '请填写接口地址'
     if (!form.model.trim()) return '请填写模型'
     return null
   }
@@ -223,7 +232,7 @@ export function ProviderDialog({
   }
 
   const handleLoadModels = async (): Promise<void> => {
-    if (!isCodex && !form.baseUrl.trim()) {
+    if (!fixedEndpoint && !form.baseUrl.trim()) {
       toast.error('请先填写接口地址')
       return
     }
@@ -245,7 +254,7 @@ export function ProviderDialog({
 
   const runCodex = async (
     action: 'login' | 'import' | 'logout',
-    fn: (id: string) => Promise<CodexAuthStatus>
+    fn: (id: string) => Promise<CodexAuthStatus | GrokAuthStatus>
   ): Promise<void> => {
     let id = savedId
     if (!id) {
@@ -272,7 +281,7 @@ export function ProviderDialog({
 
   const cancelLogin = async (): Promise<void> => {
     try {
-      await window.api.ai.codexCancelLogin()
+      await (isGrok ? window.api.ai.grokCancelLogin() : window.api.ai.codexCancelLogin())
     } catch {
       // 取消都失败就别把用户锁在对话框里；登录 promise 会自己超时收尾
       setCodexBusy(null)
@@ -280,18 +289,19 @@ export function ProviderDialog({
   }
 
   // 登录等待中关掉对话框 / 离开页面：把主进程里挂着的授权流程一并取消
+  const cancelPendingLogins = (): void => {
+    void window.api.ai.codexCancelLogin().catch(() => undefined)
+    void window.api.ai.grokCancelLogin().catch(() => undefined)
+  }
   const codexBusyRef = useRef(codexBusy)
   codexBusyRef.current = codexBusy
   useEffect(() => {
     if (open) return
-    if (codexBusyRef.current === 'login')
-      void window.api.ai.codexCancelLogin().catch(() => undefined)
+    if (codexBusyRef.current === 'login') cancelPendingLogins()
   }, [open])
   useEffect(
     () => () => {
-      if (codexBusyRef.current === 'login') {
-        void window.api.ai.codexCancelLogin().catch(() => undefined)
-      }
+      if (codexBusyRef.current === 'login') cancelPendingLogins()
     },
     []
   )
@@ -371,13 +381,11 @@ export function ProviderDialog({
                   setForm({
                     ...form,
                     protocol,
-                    // 换到 codex 时地址固定；从 codex 换出来时给一个协议对应的默认地址
+                    // 换到订阅类协议时地址固定；从订阅类换出来时给一个协议对应的默认地址
                     baseUrl:
-                      protocol === 'codex'
+                      isFixedEndpoint(protocol) || isFixedEndpoint(form.protocol)
                         ? (template?.baseUrl ?? '')
-                        : form.protocol === 'codex'
-                          ? (template?.baseUrl ?? '')
-                          : form.baseUrl
+                        : form.baseUrl
                   })
                 }}
               >
@@ -394,7 +402,7 @@ export function ProviderDialog({
               </Select>
             </Field>
 
-            {!isCodex && (
+            {!fixedEndpoint && (
               <Field label="接口地址">
                 <Input
                   value={form.baseUrl}
@@ -445,7 +453,7 @@ export function ProviderDialog({
               </div>
             </Field>
 
-            {!isCodex && (
+            {!fixedEndpoint && (
               <Field
                 label="API Key"
                 hint={
@@ -505,11 +513,13 @@ export function ProviderDialog({
               </Field>
             )}
 
-            {isCodex && (
+            {(isCodex || isGrok) && (
               <div className="rounded-xl border border-[#E5E5E7] bg-[#F5F5F7] p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-[#1D1D1F]">ChatGPT 账号</p>
+                    <p className="text-sm font-medium text-[#1D1D1F]">
+                      {isGrok ? 'xAI 账号' : 'ChatGPT 账号'}
+                    </p>
                     <p className="text-xs text-[#A1A1A6] mt-0.5">
                       {!savedId
                         ? '点下方按钮会先保存本条配置，再打开浏览器授权'
@@ -535,35 +545,45 @@ export function ProviderDialog({
                       type="button"
                       variant={codexStatus?.loggedIn ? 'outline' : 'default'}
                       disabled={!!codexBusy || saving}
-                      onClick={() => runCodex('login', (id) => window.api.ai.codexLogin(id))}
-                    >
-                      <LogIn className="h-4 w-4 mr-1" />
-                      {codexStatus?.loggedIn ? '重新登录' : '登录 ChatGPT'}
-                    </Button>
-                  )}
-                  {(codexStatus?.cliAuthAvailable ?? true) && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={!!codexBusy || saving}
                       onClick={() =>
-                        runCodex('import', (id) => window.api.ai.codexImportFromCli(id))
+                        runCodex('login', (id) =>
+                          isGrok ? window.api.ai.grokLogin(id) : window.api.ai.codexLogin(id)
+                        )
                       }
                     >
-                      {codexBusy === 'import' ? (
-                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                      ) : (
-                        <Import className="h-4 w-4 mr-1" />
-                      )}
-                      从 Codex CLI 导入
+                      <LogIn className="h-4 w-4 mr-1" />
+                      {codexStatus?.loggedIn ? '重新登录' : isGrok ? '登录 Grok' : '登录 ChatGPT'}
                     </Button>
                   )}
+                  {isCodex &&
+                    (codexStatus === null ||
+                      ('cliAuthAvailable' in codexStatus && codexStatus.cliAuthAvailable)) && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={!!codexBusy || saving}
+                        onClick={() =>
+                          runCodex('import', (id) => window.api.ai.codexImportFromCli(id))
+                        }
+                      >
+                        {codexBusy === 'import' ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <Import className="h-4 w-4 mr-1" />
+                        )}
+                        从 Codex CLI 导入
+                      </Button>
+                    )}
                   {codexStatus?.loggedIn && (
                     <Button
                       type="button"
                       variant="ghost"
                       disabled={!!codexBusy}
-                      onClick={() => runCodex('logout', (id) => window.api.ai.codexLogout(id))}
+                      onClick={() =>
+                        runCodex('logout', (id) =>
+                          isGrok ? window.api.ai.grokLogout(id) : window.api.ai.codexLogout(id)
+                        )
+                      }
                     >
                       {codexBusy === 'logout' ? (
                         <Loader2 className="h-4 w-4 mr-1 animate-spin" />

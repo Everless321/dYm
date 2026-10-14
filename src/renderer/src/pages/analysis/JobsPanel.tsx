@@ -60,56 +60,56 @@ export function JobsPanel({ jobs, totals, onCreate }: JobsPanelProps): React.JSX
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="grid shrink-0 grid-cols-4 gap-3">
         <Stat label="待分析" value={totals?.unanalyzed ?? null} color="#0A84FF" />
         <Stat label="已分析" value={totals?.analyzed ?? null} color="#22C55E" />
         <Stat label="进行中的作业" value={jobs ? active.length : null} color="#F59E0B" />
         <Stat label="作品总数" value={totals?.total ?? null} color="#1D1D1F" />
       </div>
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-[15px] font-semibold text-[#1D1D1F]">队列</h3>
-          <span className="text-xs text-[#A1A1A6]">{active.length} 个作业</span>
-        </div>
-        {jobs === null ? (
-          <div className="py-10 text-center text-sm text-[#A1A1A6]">加载中…</div>
-        ) : active.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[#D1D1D6] bg-white py-12 text-center">
-            <ListChecks className="h-10 w-10 text-[#E5E5E7] mx-auto mb-3" />
-            <p className="text-sm text-[#6E6E73]">队列是空的</p>
-            <p className="text-xs text-[#A1A1A6] mt-1 mb-4">
-              {totals?.unanalyzed
-                ? `还有 ${totals.unanalyzed.toLocaleString()} 条作品没有分析`
-                : '所有作品都已分析'}
-            </p>
-            <Button variant="outline" onClick={onCreate}>
-              新建分析作业
-            </Button>
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_440px] gap-4">
+        <section className="flex min-h-0 flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[15px] font-semibold text-[#1D1D1F]">队列</h3>
+            <span className="text-xs text-[#A1A1A6]">{active.length} 个作业</span>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {active.map((job) => (
-              <JobCard
-                key={job.id}
-                job={job}
-                busy={!!busy[job.id]}
-                onOpen={() => setDetailId(job.id)}
-                onPause={() => run(job.id, () => window.api.analysis.pauseJob(job.id))}
-                onResume={() => run(job.id, () => window.api.analysis.resumeJob(job.id))}
-                onCancel={() => {
-                  if (!window.confirm(`取消作业「${job.name}」？已完成的条目会保留。`)) return
-                  run(job.id, () => window.api.analysis.cancelJob(job.id))
-                }}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+          {jobs === null ? (
+            <div className="py-10 text-center text-sm text-[#A1A1A6]">加载中…</div>
+          ) : active.length === 0 ? (
+            <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-[#D1D1D6] bg-white text-center">
+              <ListChecks className="mx-auto mb-3 h-10 w-10 text-[#E5E5E7]" />
+              <p className="text-sm text-[#6E6E73]">队列是空的</p>
+              <p className="mb-4 mt-1 text-xs text-[#A1A1A6]">
+                {totals?.unanalyzed
+                  ? `还有 ${totals.unanalyzed.toLocaleString()} 条作品没有分析`
+                  : '所有作品都已分析'}
+              </p>
+              <Button variant="outline" onClick={onCreate}>
+                新建分析作业
+              </Button>
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+              {active.map((job) => (
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  busy={!!busy[job.id]}
+                  onOpen={() => setDetailId(job.id)}
+                  onPause={() => run(job.id, () => window.api.analysis.pauseJob(job.id))}
+                  onResume={() => run(job.id, () => window.api.analysis.resumeJob(job.id))}
+                  onCancel={() => {
+                    if (!window.confirm(`取消作业「${job.name}」？已完成的条目会保留。`)) return
+                    run(job.id, () => window.api.analysis.cancelJob(job.id))
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </section>
 
-      {finished.length > 0 && (
-        <section className="space-y-3">
+        <section className="flex min-h-0 flex-col gap-3">
           <div className="flex items-center justify-between">
             <h3 className="text-[15px] font-semibold text-[#1D1D1F]">历史</h3>
             <Button
@@ -127,7 +127,10 @@ export function JobsPanel({ jobs, totals, onCreate }: JobsPanelProps): React.JSX
               清除已结束
             </Button>
           </div>
-          <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm divide-y divide-[#F2F2F4]">
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-[#E5E5E7] bg-white divide-y divide-[#F2F2F4]">
+            {finished.length === 0 && (
+              <p className="py-10 text-center text-xs text-[#A1A1A6]">暂无历史作业</p>
+            )}
             {finished.map((job) => {
               const meta = JOB_STATUS_META[job.status]
               return (
@@ -203,7 +206,7 @@ export function JobsPanel({ jobs, totals, onCreate }: JobsPanelProps): React.JSX
             })}
           </div>
         </section>
-      )}
+      </div>
 
       <JobDetailDialog job={detailJob} onOpenChange={(o) => !o && setDetailId(null)} />
     </div>

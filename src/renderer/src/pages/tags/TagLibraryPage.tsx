@@ -12,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
-import { PageHeader, Crumbs } from '@/components/layout/PageHeader'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { StatCard } from './components/StatCard'
 import { TAG_SOURCE, TagSource, ACCENT } from './components/tokens'
 
@@ -26,7 +26,7 @@ const SOURCE_FILTERS: { key: SourceFilter; label: string }[] = [
   { key: 'both', label: '混合' }
 ]
 
-export default function TagLibraryPage() {
+export default function TagLibraryPage(): React.JSX.Element {
   const navigate = useNavigate()
   const [stats, setStats] = useState<TagLibraryStats>({
     totalTags: 0,
@@ -83,7 +83,7 @@ export default function TagLibraryPage() {
     )
   }, [tags, search, activeCategory, sourceFilter, sort])
 
-  const toggle = (tag: string) => {
+  const toggle = (tag: string): void => {
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(tag)) next.delete(tag)
@@ -92,7 +92,7 @@ export default function TagLibraryPage() {
     })
   }
 
-  const doRename = async () => {
+  const doRename = async (): Promise<void> => {
     if (!renameTarget || saving) return
     const v = renameValue.trim()
     if (!v || v === renameTarget) {
@@ -112,7 +112,7 @@ export default function TagLibraryPage() {
     }
   }
 
-  const doMerge = async () => {
+  const doMerge = async (): Promise<void> => {
     if (saving) return
     const names = Array.from(selected)
     const into = mergeInto.trim()
@@ -130,7 +130,7 @@ export default function TagLibraryPage() {
     }
   }
 
-  const doNew = async () => {
+  const doNew = async (): Promise<void> => {
     if (saving) return
     const v = newValue.trim()
     if (!v) return
@@ -148,7 +148,7 @@ export default function TagLibraryPage() {
     }
   }
 
-  const doDelete = async () => {
+  const doDelete = async (): Promise<void> => {
     if (!deleteTargets?.length || saving) return
     setSaving(true)
     try {
@@ -168,14 +168,8 @@ export default function TagLibraryPage() {
   return (
     <div className="flex flex-col h-full">
       <PageHeader
-        left={
-          <Crumbs
-            items={[
-              { label: '标签管理', onClick: () => navigate('/tags') },
-              { label: '标签库管理' }
-            ]}
-          />
-        }
+        title="标签库"
+        meta={`${stats.totalTags.toLocaleString()} 个标签 · ${stats.categories} 个分类`}
         actions={
           <>
             <Button
@@ -215,7 +209,7 @@ export default function TagLibraryPage() {
 
         <div className="flex gap-6 items-start">
           {/* Categories（可点击筛选） */}
-          <div className="w-64 shrink-0 rounded-xl border border-[#E5E5E7] bg-white p-5">
+          <div className="w-[208px] shrink-0 rounded-lg border border-[#E5E5E7] bg-white p-4">
             <p className="text-xs font-medium text-[#A1A1A6] mb-3">按分类筛选</p>
             <div className="space-y-0.5">
               <CategoryRow
@@ -239,7 +233,7 @@ export default function TagLibraryPage() {
             </div>
           </div>
 
-          {/* Tags grid */}
+          {/* Tag table */}
           <div className="flex-1 rounded-xl border border-[#E5E5E7] bg-white flex flex-col">
             <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E5E7] gap-3">
               <span className="text-sm font-medium text-[#1D1D1F] whitespace-nowrap">
@@ -282,59 +276,103 @@ export default function TagLibraryPage() {
                 </div>
               </div>
             </div>
-            <div className="p-5 flex flex-wrap gap-2.5 content-start">
-              {filtered.map((t) => {
-                const sc = TAG_SOURCE[t.source]
-                const isSel = selected.has(t.tag)
-                return (
-                  <div
-                    key={t.tag}
-                    onClick={() => toggle(t.tag)}
-                    className={cn(
-                      'group inline-flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-full text-xs cursor-pointer border-2 transition-all',
-                      isSel ? 'border-[#0A84FF]' : 'border-transparent'
-                    )}
-                    style={{ backgroundColor: sc.bg, color: sc.color }}
-                  >
-                    <span className="font-medium">{t.tag}</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        navigate(`/tags?tags=${encodeURIComponent(t.tag)}`)
-                      }}
-                      className="opacity-0 group-hover:opacity-100 hover:opacity-60"
-                      title={`查看这 ${t.count} 个视频`}
+            <div className="min-h-0 flex-1 overflow-auto">
+              <div className="min-w-[760px]">
+                <div className="grid grid-cols-[36px_minmax(160px,1fr)_84px_minmax(140px,1fr)_92px_112px] items-center gap-3 border-b border-[#E5E5E7] bg-[#FAFAFB] px-4 py-2.5 text-[11px] font-medium text-[#8A8A8E]">
+                  <span />
+                  <span>标签</span>
+                  <span>频次</span>
+                  <span>分类</span>
+                  <span>来源</span>
+                  <span className="text-right">操作</span>
+                </div>
+                {filtered.map((tag) => {
+                  const source = TAG_SOURCE[tag.source]
+                  const isSelected = selected.has(tag.tag)
+                  return (
+                    <div
+                      key={tag.tag}
+                      className={cn(
+                        'group grid grid-cols-[36px_minmax(160px,1fr)_84px_minmax(140px,1fr)_92px_112px] items-center gap-3 border-b border-[#F0F0F2] px-4 py-2.5 text-xs hover:bg-[#FAFBFD]',
+                        isSelected && 'bg-[#F5F9FF]'
+                      )}
                     >
-                      <Film className="h-3 w-3" />
-                    </button>
-                    <span className="opacity-60 tabular-nums">{t.count}</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setRenameTarget(t.tag)
-                        setRenameValue(t.tag)
-                      }}
-                      className="opacity-0 group-hover:opacity-100 hover:opacity-60"
-                      title="重命名"
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setDeleteTargets([t.tag])
-                      }}
-                      className="opacity-0 group-hover:opacity-100 hover:opacity-60"
-                      title="删除"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </div>
-                )
-              })}
-              {filtered.length === 0 && (
-                <p className="text-xs text-[#C7C7CC] py-8 w-full text-center">暂无标签</p>
-              )}
+                      <button
+                        type="button"
+                        onClick={() => toggle(tag.tag)}
+                        aria-label={isSelected ? '取消选择' : '选择标签'}
+                        className={cn(
+                          'flex h-4 w-4 items-center justify-center rounded border',
+                          isSelected
+                            ? 'border-[#0A84FF] bg-[#0A84FF] text-white'
+                            : 'border-[#C7C7CC] bg-white text-transparent'
+                        )}
+                      >
+                        <Plus className="h-3 w-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggle(tag.tag)}
+                        className="truncate text-left font-medium text-[#1D1D1F] hover:text-[#0A84FF]"
+                      >
+                        {tag.tag}
+                      </button>
+                      <span className="font-mono tabular-nums text-[#45454A]">
+                        {tag.count.toLocaleString()}
+                      </span>
+                      <div className="flex min-w-0 gap-1 overflow-hidden">
+                        {tag.categories.length ? (
+                          tag.categories.map((category) => (
+                            <span
+                              key={category}
+                              className="truncate rounded bg-[#F2F2F4] px-1.5 py-1 text-[10px] text-[#6E6E73]"
+                            >
+                              {category}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-[#A1A1A6]">未分类</span>
+                        )}
+                      </div>
+                      <span
+                        className="w-fit rounded-full px-2 py-1 text-[10px] font-medium"
+                        style={{ backgroundColor: source.bg, color: source.color }}
+                      >
+                        {source.label}
+                      </span>
+                      <div className="flex justify-end gap-1 opacity-70 group-hover:opacity-100">
+                        <button
+                          onClick={() => navigate(`/tags?tags=${encodeURIComponent(tag.tag)}`)}
+                          className="rounded p-1 text-[#8A8A8E] hover:bg-[#F2F2F4] hover:text-[#0A84FF]"
+                          title={`查看这 ${tag.count} 个视频`}
+                        >
+                          <Film className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setRenameTarget(tag.tag)
+                            setRenameValue(tag.tag)
+                          }}
+                          className="rounded p-1 text-[#8A8A8E] hover:bg-[#F2F2F4] hover:text-[#0A84FF]"
+                          title="重命名"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteTargets([tag.tag])}
+                          className="rounded p-1 text-[#8A8A8E] hover:bg-[#FFF1F0] hover:text-[#EF4444]"
+                          title="删除"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+                {filtered.length === 0 && (
+                  <p className="py-10 text-center text-xs text-[#A1A1A6]">暂无标签</p>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -483,7 +521,7 @@ function CategoryRow({
   count: number
   active: boolean
   onClick: () => void
-}) {
+}): React.JSX.Element {
   return (
     <button
       onClick={onClick}

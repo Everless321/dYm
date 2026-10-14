@@ -174,7 +174,7 @@ export function ProvidersPanel({ onChanged }: ProvidersPanelProps): React.JSX.El
                         <>
                           <KeyRound className="h-3.5 w-3.5 text-[#22C55E]" />
                           <span className="text-[#1D1D1F]">
-                            {p.protocol === 'codex'
+                            {p.protocol === 'codex' || p.protocol === 'grok'
                               ? `已登录${p.credentialLabel ? `：${p.credentialLabel}` : ''}`
                               : '已保存'}
                           </span>
@@ -183,7 +183,9 @@ export function ProvidersPanel({ onChanged }: ProvidersPanelProps): React.JSX.El
                         <>
                           <ShieldAlert className="h-3.5 w-3.5 text-[#F59E0B]" />
                           <span className="text-[#6E6E73]">
-                            {p.protocol === 'codex' ? '未登录' : '未设置（本地服务可不填）'}
+                            {p.protocol === 'codex' || p.protocol === 'grok'
+                              ? '未登录'
+                              : '未设置（本地服务可不填）'}
                           </span>
                         </>
                       )}

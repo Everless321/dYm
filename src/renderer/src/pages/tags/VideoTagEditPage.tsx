@@ -20,13 +20,21 @@ import { PageHeader, BackLink } from '@/components/layout/PageHeader'
 import { parseTagFilters, stripNavMarkers } from './filters'
 import { AnalysisDetailCard } from './components/AnalysisDetailCard'
 
+type PostLoadResult = {
+  post: DbPost | null
+  cover: string | null
+  status: 'ready' | 'notFound' | 'error'
+  errorMessage?: string
+}
+
 export default function VideoTagEditPage(): React.JSX.Element {
   const { postId = '' } = useParams()
   const [searchParams] = useSearchParams()
   const id = Number(postId)
   const navigate = useNavigate()
-  const [post, setPost] = useState<DbPost | null>(null)
-  const [cover, setCover] = useState<string | null>(null)
+  const [loadedPost, setLoadedPost] = useState<DbPost | null>(null)
+  const [loadedCover, setLoadedCover] = useState<string | null>(null)
+  const [loadedId, setLoadedId] = useState<number | null>(null)
   const [viewerOpen, setViewerOpen] = useState(false)
   const [input, setInput] = useState('')
   const [suggestions, setSuggestions] = useState<string[]>([])
@@ -41,38 +49,51 @@ export default function VideoTagEditPage(): React.JSX.Element {
   // 上/下一条切换很快时，旧请求可能晚于新请求返回，用序号丢弃过期结果
   const loadSeqRef = useRef(0)
 
-  const load = useCallback(async () => {
+  const fetchPost = useCallback(async (): Promise<PostLoadResult | null> => {
     const seq = ++loadSeqRef.current
     try {
       const p = await window.api.tag.getPost(id)
-      if (seq !== loadSeqRef.current) return
+      if (seq !== loadSeqRef.current) return null
       if (!p) {
-        setPost(null)
-        setStatus('notFound')
-        return
+        return { post: null, cover: null, status: 'notFound' }
       }
-      setPost(p)
-      setStatus('ready')
+      let nextCover: string | null = null
       try {
-        const c = await window.api.post.getCoverPath(p.sec_uid, p.folder_name)
-        if (seq !== loadSeqRef.current) return
-        setCover(c)
+        nextCover = await window.api.post.getCoverPath(p.sec_uid, p.folder_name)
+        if (seq !== loadSeqRef.current) return null
       } catch (error) {
         console.error('[VideoTagEditPage] 获取封面失败:', error)
       }
+      return { post: p, cover: nextCover, status: 'ready' }
     } catch (error) {
-      if (seq !== loadSeqRef.current) return
-      setErrorMessage((error as Error).message)
-      setStatus('error')
+      if (seq !== loadSeqRef.current) return null
+      return {
+        post: null,
+        cover: null,
+        status: 'error',
+        errorMessage: (error as Error).message
+      }
     }
   }, [id])
 
+  const applyPostLoad = useCallback(
+    (result: PostLoadResult | null): void => {
+      if (!result) return
+      setLoadedPost(result.post)
+      setLoadedCover(result.cover)
+      setLoadedId(id)
+      setStatus(result.status)
+      if (result.errorMessage) setErrorMessage(result.errorMessage)
+    },
+    [id]
+  )
+
+  const load = useCallback((): void => {
+    void fetchPost().then(applyPostLoad)
+  }, [fetchPost, applyPostLoad])
+
   useEffect(() => {
-    // 换作品时清掉上一条的封面和内容，避免短暂显示旧数据
-    setStatus('loading')
-    setPost(null)
-    setCover(null)
-    load()
+    void fetchPost().then(applyPostLoad)
     window.api.tag
       .getTagsWithFrequency()
       .then((list) => {
@@ -81,7 +102,11 @@ export default function VideoTagEditPage(): React.JSX.Element {
       .catch((error) => {
         console.error('[VideoTagEditPage] 获取推荐标签失败:', error)
       })
-  }, [load])
+  }, [fetchPost, applyPostLoad])
+
+  const currentPost = loadedId === id ? loadedPost : null
+  const cover = loadedId === id ? loadedCover : null
+  const currentStatus = loadedId === id ? status : 'loading'
 
   // 本页发起的重新分析在队列里跑；等到这条作品完成再刷新（别的页面发起的也会命中）。
   // 作业被取消 / 整体失败时不会有 itemDone，所以还要盯着作业本身的状态收尾。
@@ -119,7 +144,7 @@ export default function VideoTagEditPage(): React.JSX.Element {
   const backSearch = stripNavMarkers(search)
   const backTo = `/tags${backSearch ? `?${backSearch}` : ''}`
   // secUid 只在没有 query 时才参与，否则换作者会让队列白重查一次
-  const queueSecUid = search ? null : (post?.sec_uid ?? null)
+  const queueSecUid = search ? null : (currentPost?.sec_uid ?? null)
 
   useEffect(() => {
     const filters: TagPostFilters | null = search
@@ -164,20 +189,20 @@ export default function VideoTagEditPage(): React.JSX.Element {
     return () => window.removeEventListener('keydown', onKey)
   }, [prevId, nextId, go, viewerOpen])
 
-  if (status === 'loading') {
+  if (currentStatus === 'loading') {
     return <div className="p-10 text-sm text-[#A1A1A6]">加载中…</div>
   }
 
-  if (status === 'notFound' || status === 'error' || !post) {
+  if (currentStatus === 'notFound' || currentStatus === 'error' || !currentPost) {
     return (
       <div className="flex flex-col h-full">
         <PageHeader left={<BackLink label="返回列表" onClick={() => navigate(backTo)} />} />
         <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center">
           <p className="text-sm text-[#6E6E73]">
-            {status === 'error' ? `加载失败: ${errorMessage}` : '作品不存在'}
+            {currentStatus === 'error' ? `加载失败: ${errorMessage}` : '作品不存在'}
           </p>
           <div className="flex items-center gap-2">
-            {status === 'error' && (
+            {currentStatus === 'error' && (
               <Button variant="outline" onClick={load}>
                 重试
               </Button>
@@ -189,6 +214,7 @@ export default function VideoTagEditPage(): React.JSX.Element {
     )
   }
 
+  const post = currentPost
   const aiTags = parseTags(post.analysis_tags)
   const manualTags = parseTags(post.manual_tags)
 
@@ -268,12 +294,12 @@ export default function VideoTagEditPage(): React.JSX.Element {
         }
       />
 
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="flex gap-8 max-w-5xl">
+      <div className="flex-1 min-h-0 overflow-hidden p-4">
+        <div className="grid h-full min-h-0 grid-cols-[256px_minmax(0,1fr)_312px] gap-4">
           {/* Left: preview */}
-          <div className="w-80 shrink-0 space-y-4">
+          <div className="min-w-0 space-y-4 overflow-y-auto">
             <div
-              className="relative aspect-[3/4] rounded-2xl overflow-hidden bg-[#1D1D1F] cursor-pointer group shadow-sm"
+              className="group relative h-[400px] overflow-hidden rounded-lg bg-[#1D1D1F] shadow-sm cursor-pointer"
               onClick={() => setViewerOpen(true)}
             >
               {cover ? (
@@ -287,15 +313,23 @@ export default function VideoTagEditPage(): React.JSX.Element {
                 <Play className="h-12 w-12 text-white" />
               </div>
             </div>
-            <div className="rounded-xl border border-[#E5E5E7] bg-white p-4 space-y-2">
+            <div className="rounded-lg border border-[#E5E5E7] bg-white p-3 space-y-2">
               <p className="text-sm text-[#1D1D1F] leading-relaxed">
                 {post.desc || post.caption || '无描述'}
               </p>
             </div>
           </div>
 
-          {/* Right: tag editing */}
-          <div className="flex-1 space-y-5">
+          <div className="min-w-0 overflow-y-auto rounded-lg border border-[#E5E5E7] bg-white p-2">
+            <AnalysisDetailCard
+              postId={id}
+              refreshKey={detailKey}
+              fallbackSummary={post.analysis_summary}
+            />
+          </div>
+
+          {/* Tag editing */}
+          <div className="min-w-0 space-y-4 overflow-y-auto rounded-lg border border-[#E5E5E7] bg-white p-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-[#1D1D1F]">标签编辑</h2>
               <Button variant="outline" onClick={handleReanalyze} disabled={reanalyzing}>
@@ -328,14 +362,8 @@ export default function VideoTagEditPage(): React.JSX.Element {
               empty="暂无手动标签"
             />
 
-            <AnalysisDetailCard
-              postId={id}
-              refreshKey={detailKey}
-              fallbackSummary={post.analysis_summary}
-            />
-
             {/* Add + suggestions */}
-            <div className="rounded-xl border border-[#E5E5E7] bg-white p-5 space-y-4">
+            <div className="rounded-lg border border-[#E5E5E7] bg-white p-4 space-y-4">
               <div className="flex gap-2">
                 <Input
                   value={input}

@@ -318,7 +318,7 @@ export default function LiveRecordPage(): React.JSX.Element {
             </div>
             <h2 className="text-xl font-semibold text-[#1D1D1F] mb-2">暂无录制记录</h2>
             <p className="text-[#6E6E73]">
-              在「用户管理」中为用户开启「录制直播」并设置检测计划后，将在这里显示
+              在「创作者」中为用户开启「录制直播」并设置检测计划后，将在这里显示
             </p>
           </div>
         ) : (

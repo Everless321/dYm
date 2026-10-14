@@ -11,6 +11,7 @@ import type {
   AsrProviderInput,
   AsrProviderView,
   CodexAuthStatus,
+  GrokAuthStatus,
   OpenCodeCliKey,
   CreateAnalysisJobInput
 } from '../shared/ai'
@@ -425,6 +426,9 @@ declare global {
     video_path: string | null
     music_path: string | null
     downloaded_at: number
+    duration?: number | null
+    width?: number | null
+    height?: number | null
     analysis_tags: string | null
     analysis_category: string | null
     analysis_summary: string | null
@@ -443,6 +447,8 @@ declare global {
     imageVideos?: (string | null)[]
     cover?: string
     music?: string
+    /** 本地文件总大小（字节）；云端媒体为 undefined */
+    size?: number
   }
 
   interface PostAuthor {
@@ -532,6 +538,11 @@ declare global {
     codexLogout: (providerId: string) => Promise<CodexAuthStatus>
     /** 本机 OpenCode CLI（/connect 保存的）里与地址匹配的 Zen/Go API Key；没有为 null */
     opencodeCliKey: (baseUrl: string) => Promise<OpenCodeCliKey | null>
+    /** Grok 订阅：浏览器 OAuth 登录，令牌存在该提供方记录里 */
+    grokStatus: (providerId: string) => Promise<GrokAuthStatus>
+    grokLogin: (providerId: string) => Promise<GrokAuthStatus>
+    grokCancelLogin: () => Promise<void>
+    grokLogout: (providerId: string) => Promise<GrokAuthStatus>
   }
 
   interface AsrAPI {
