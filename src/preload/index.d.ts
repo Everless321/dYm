@@ -446,6 +446,8 @@ declare global {
     imageVideos?: (string | null)[]
     cover?: string
     music?: string
+    /** 本地文件总大小（字节）；云端媒体为 undefined */
+    size?: number
   }
 
   interface PostAuthor {

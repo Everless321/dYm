@@ -1,22 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ArrowDown,
-  ArrowUp,
+  ArrowDownWideNarrow,
+  ArrowUpNarrowWide,
   Check,
   ChevronDown,
-  Download,
-  Flame,
+  ChevronUp,
+  Ellipsis,
+  EyeOff,
+  FolderOpen,
   Images,
-  LibraryBig,
+  Link as LinkIcon,
   Play,
+  RotateCw,
   Search,
+  SquarePen,
+  Tag,
+  Tags,
   UserRound,
-  Video
+  Users,
+  Video,
+  X
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { MediaViewer } from '@/components/media/MediaViewer'
 import { VideoDownloadDialog } from '@/components/media/VideoDownloadDialog'
 import {
@@ -24,6 +30,7 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuShortcut,
   ContextMenuTrigger
 } from '@/components/ui/context-menu'
 import { getInitialSort } from '@/lib/post-sort'
@@ -182,10 +189,24 @@ export default function BrowsePrototype(): React.JSX.Element {
         const index = posts.findIndex((post) => post.id === selected.id)
         if (index >= 0 && posts[index + 1]) setSelected(posts[index + 1])
       }
+      // 右键 / 悬停选中卡片后，菜单里标出的快捷键直接生效
+      if (!viewerOpen && selected) {
+        const key = event.key.toLowerCase()
+        if (key === 't' || (key === 'e' && event.metaKey)) {
+          event.preventDefault()
+          navigate(`/tags/video/${selected.id}`)
+        } else if (key === 'a' && event.metaKey) {
+          event.preventDefault()
+          navigate(`/creators?user=${encodeURIComponent(selected.sec_uid)}`)
+        } else if (key === 'r' && event.metaKey) {
+          event.preventDefault()
+          void window.api.post.openFolder(selected.sec_uid, selected.folder_name)
+        }
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [posts, selected, viewerOpen])
+  }, [posts, selected, viewerOpen, navigate])
 
   const clearFilters = (): void => {
     setSearch('')
@@ -219,248 +240,434 @@ export default function BrowsePrototype(): React.JSX.Element {
     levels[1] < 10 ||
     analyzedOnly
   )
+  const authorName = author
+    ? (authors.find((item) => item.sec_uid === author)?.nickname ?? '作者')
+    : '全部作者'
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[#F5F5F7]">
-      <div className="flex shrink-0 items-center gap-2 border-b bg-white px-4 py-2">
-        <div className="relative min-w-[180px] flex-1">
-          <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#A1A1A6]" />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="搜索标题、作者或标签"
-            className="h-8 pl-8 text-xs"
-          />
+    <div className="flex h-full min-h-0 flex-col bg-[var(--bg)]">
+      {/* Header：标题行 + 筛选行 + 标签行 */}
+      <div className="flex shrink-0 flex-col gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-6 pb-3.5 pt-[18px]">
+        <div className="flex items-center justify-between">
+          <div className="flex items-end gap-2.5">
+            <h1 className="text-[22px] font-bold leading-7 text-[var(--text-primary)]">视频浏览</h1>
+            <span className="text-xs leading-[1.75] text-[var(--text-tertiary)]">
+              共 {total.toLocaleString()} 个视频
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() =>
+                webOrigin && void window.api.system.openInAppBrowser(webOrigin, '网页端')
+              }
+              className="flex h-8 items-center gap-2 rounded-[6px] border border-[var(--border)] bg-[var(--surface)] pl-2.5 pr-1 text-[13px] font-medium text-[var(--text-primary)]"
+              title={webOrigin || '网页端未启动'}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="var(--text-secondary)"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+                <path d="M2 12h20" />
+              </svg>
+              打开网页端
+              <span className="flex h-6 items-center gap-1.5 rounded bg-[var(--surface-muted)] px-[7px] font-mono text-[11px] text-[var(--text-secondary)]">
+                <i
+                  className={`h-1.5 w-1.5 rounded-full ${webOrigin ? 'bg-[var(--success)]' : 'bg-[var(--text-tertiary)]'}`}
+                />
+                {webOrigin || '未启动'}
+              </span>
+            </button>
+            <button
+              onClick={() => setDownloadOpen(true)}
+              className="flex h-8 items-center gap-1.5 rounded-[6px] bg-[var(--text-primary)] px-3 text-[13px] font-medium text-white"
+            >
+              <LinkIcon size={14} />
+              解析下载
+            </button>
+          </div>
         </div>
-        <div className="relative" ref={authorWrapRef}>
-          <button
-            onClick={() => setAuthorOpen((open) => !open)}
-            className="flex h-8 items-center gap-2 rounded-md border px-2.5 text-xs"
-          >
-            {author ? authors.find((item) => item.sec_uid === author)?.nickname || '作者' : '作者'}
-            <ChevronDown size={13} />
-          </button>
-          {authorOpen && (
-            <div className="absolute left-0 top-9 z-20 w-64 rounded-lg border bg-white p-2 shadow-xl">
-              <FacetSearch value={authorSearch} onChange={setAuthorSearch} placeholder="搜索作者" />
-              <div className="max-h-56 overflow-y-auto py-1">
-                {filteredAuthors.map((item) => {
-                  const creator = creatorRecords.find((user) => user.sec_uid === item.sec_uid)
-                  return (
-                    <button
-                      key={item.sec_uid}
-                      onClick={() => {
-                        setAuthor(author === item.sec_uid ? '' : item.sec_uid)
-                        setAuthorOpen(false)
-                      }}
-                      className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-xs hover:bg-[#F2F2F4]"
-                    >
-                      {creator?.avatar_path ? (
-                        <img
-                          src={toMediaSrc(creator.avatar_path)}
-                          className="h-6 w-6 rounded-full object-cover"
-                        />
-                      ) : (
-                        <span className="h-6 w-6 rounded-full bg-[#E8F0FE]" />
-                      )}
-                      <span className="flex-1">{item.nickname}</span>
-                      <span className="text-[10px] text-[#8E8E93]">
-                        {creator?.downloaded_count ?? ''}
-                      </span>
-                      {author === item.sec_uid && <Check size={13} />}
-                    </button>
-                  )
-                })}
-              </div>
-              <div className="border-t px-2 pt-2 text-[10px] text-[#8E8E93]">
-                共 {creatorRecords.length} 位作者 · {hiddenCreators.length} 位已隐藏 ·{' '}
-                <button onClick={() => navigate('/creators')} className="text-[#0A84FF]">
-                  管理
+
+        {/* 筛选行 */}
+        <div className="flex items-center gap-2">
+          <div className="relative w-[260px]">
+            <Search
+              size={14}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]"
+            />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="搜索标题 / 作者 / 标签"
+              className="h-8 w-full rounded-[6px] bg-[var(--surface-muted)] pl-8 pr-2.5 text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)]"
+            />
+          </div>
+          <div className="relative" ref={authorWrapRef}>
+            <button
+              onClick={() => setAuthorOpen((open) => !open)}
+              className={`flex h-8 items-center gap-1.5 rounded-[6px] border px-2.5 ${
+                authorOpen ? 'border-[var(--accent)]' : 'border-[var(--border)]'
+              } bg-[var(--surface)]`}
+            >
+              <UserRound size={14} className="text-[var(--text-secondary)]" />
+              <span className="text-xs text-[var(--text-tertiary)]">作者</span>
+              <span className="max-w-32 truncate text-[13px] font-medium text-[var(--text-primary)]">
+                {authorName}
+              </span>
+              {authorOpen ? (
+                <ChevronUp size={14} className="text-[var(--text-secondary)]" />
+              ) : (
+                <ChevronDown size={14} className="text-[var(--text-secondary)]" />
+              )}
+            </button>
+            {authorOpen && (
+              <div className="absolute left-0 top-9 z-20 w-[260px] rounded-[10px] border border-[var(--border)] bg-[var(--surface)] p-1.5 shadow-[0_10px_30px_#0000001F,0_1px_3px_#0000000D]">
+                <div className="px-0.5 pb-1.5 pt-0.5">
+                  <div className="relative">
+                    <Search
+                      size={13}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]"
+                    />
+                    <input
+                      value={authorSearch}
+                      onChange={(event) => setAuthorSearch(event.target.value)}
+                      placeholder="搜索作者…"
+                      className="h-7 w-full rounded-[6px] bg-[var(--surface-muted)] pl-7 pr-2 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)]"
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setAuthor('')
+                    setAuthorOpen(false)
+                  }}
+                  className={`flex h-8 w-full items-center gap-2 rounded-[6px] px-2 text-left text-[13px] ${
+                    !author
+                      ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                      : 'text-[var(--text-primary)] hover:bg-[var(--surface-muted)]'
+                  }`}
+                >
+                  <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-[var(--surface-muted)]">
+                    <Users size={12} className="text-[var(--text-secondary)]" />
+                  </span>
+                  <span className={`flex-1 ${!author ? 'font-medium' : ''}`}>全部作者</span>
+                  <span
+                    className={`font-mono text-[11px] ${!author ? 'text-[var(--accent)]' : 'text-[var(--text-tertiary)]'}`}
+                  >
+                    {total.toLocaleString()}
+                  </span>
+                  <span className="grid h-3.5 w-3.5 shrink-0 place-items-center">
+                    {!author && <Check size={14} />}
+                  </span>
                 </button>
+                <div className="my-1 h-px bg-[var(--border)]" />
+                <div className="max-h-56 overflow-y-auto">
+                  {filteredAuthors.map((item) => {
+                    const creator = creatorRecords.find((user) => user.sec_uid === item.sec_uid)
+                    const active = author === item.sec_uid
+                    return (
+                      <button
+                        key={item.sec_uid}
+                        onClick={() => {
+                          setAuthor(active ? '' : item.sec_uid)
+                          setAuthorOpen(false)
+                        }}
+                        className={`flex h-8 w-full items-center gap-2 rounded-[6px] px-2 text-left text-[13px] ${
+                          active
+                            ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                            : 'text-[var(--text-primary)] hover:bg-[var(--surface-muted)]'
+                        }`}
+                      >
+                        {creator?.avatar_path ? (
+                          <img
+                            src={toMediaSrc(creator.avatar_path)}
+                            className="h-5 w-5 rounded-full object-cover"
+                          />
+                        ) : (
+                          <span className="h-5 w-5 rounded-full bg-[var(--accent-soft)]" />
+                        )}
+                        <span className="flex-1 truncate">{item.nickname}</span>
+                        <span className="font-mono text-[11px] text-[var(--text-tertiary)]">
+                          {creator?.downloaded_count ?? ''}
+                        </span>
+                        <span className="grid h-3.5 w-3.5 shrink-0 place-items-center">
+                          {active && <Check size={14} />}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="flex items-center justify-between border-t border-[var(--border)] px-2 pb-0.5 pt-1.5">
+                  <span className="text-[11px] text-[var(--text-tertiary)]">
+                    共 {creatorRecords.length} 位作者 · {hiddenCreators.length} 位已隐藏
+                  </span>
+                  <button
+                    onClick={() => navigate('/creators')}
+                    className="text-[11px] font-medium text-[var(--accent)]"
+                  >
+                    管理
+                  </button>
+                </div>
               </div>
+            )}
+          </div>
+          <div className="h-5 w-px bg-[var(--border)]" />
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-[var(--text-secondary)]">内容分级</span>
+            <div className="flex h-7 items-center gap-0.5 rounded-[6px] bg-[var(--surface-muted)] p-0.5">
+              {Array.from({ length: 10 }, (_, index) => index + 1).map((level) => (
+                <button
+                  key={level}
+                  onClick={() =>
+                    setLevels((current) =>
+                      current[0] === level && current[1] === level ? [0, 10] : [level, level]
+                    )
+                  }
+                  className={`h-full w-6 rounded font-mono text-[11px] font-medium ${
+                    level >= levels[0] && level <= levels[1]
+                      ? 'bg-[var(--accent)] text-white'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  {level}
+                </button>
+              ))}
             </div>
+            <span className="text-xs text-[var(--accent)]">
+              {levels[0]}–{levels[1]}
+            </span>
+          </div>
+          <div className="h-5 w-px bg-[var(--border)]" />
+          <button
+            onClick={() => setAnalyzedOnly((v) => !v)}
+            className="flex items-center gap-2"
+            role="switch"
+            aria-checked={analyzedOnly}
+          >
+            <span
+              className={`flex h-[18px] w-8 items-center rounded-full p-0.5 transition-colors ${
+                analyzedOnly ? 'justify-end bg-[var(--accent)]' : 'bg-[var(--border)]'
+              }`}
+            >
+              <span className="h-3.5 w-3.5 rounded-full bg-white shadow-sm" />
+            </span>
+            <span className="text-[13px] text-[var(--text-primary)]">仅显示已分析</span>
+          </button>
+          <div className="flex-1" />
+          {activeFilter && (
+            <button
+              onClick={clearFilters}
+              className="flex h-7 items-center gap-1 rounded-[6px] px-2 text-xs font-medium text-[var(--accent)]"
+            >
+              <X size={13} />
+              清除筛选
+            </button>
           )}
         </div>
-        <div className="flex items-center gap-1 rounded-md border px-2 py-1">
-          <span className="mr-1 flex items-center gap-1 text-[10px] text-[#6E6E73]">
-            <Flame size={12} />
-            内容分级
+
+        {/* 标签行 */}
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1.5 text-xs font-medium text-[var(--text-secondary)]">
+            <Tags size={14} />
+            标签筛选
           </span>
-          {Array.from({ length: 10 }, (_, index) => index + 1).map((level) => (
-            <button
-              key={level}
-              onClick={() =>
-                setLevels((current) =>
-                  current[0] === level && current[1] === level ? [0, 10] : [level, level]
-                )
-              }
-              className={`h-5 w-5 rounded text-[10px] ${level >= levels[0] && level <= levels[1] ? 'bg-[#E8F0FE] text-[#0A84FF]' : 'text-[#A1A1A6]'}`}
-            >
-              {level}
-            </button>
-          ))}
-          <span className="ml-1 whitespace-nowrap text-[9px] text-[#8E8E93]">
-            {levels[0]}–{levels[1]}
-          </span>
-        </div>
-        <label className="flex items-center gap-1.5 whitespace-nowrap text-[11px] text-[#6E6E73]">
-          <input
-            type="checkbox"
-            checked={analyzedOnly}
-            onChange={(event) => setAnalyzedOnly(event.target.checked)}
-          />
-          仅显示已分析
-        </label>
-        {activeFilter && (
-          <button onClick={clearFilters} className="whitespace-nowrap text-xs text-[#0A84FF]">
-            清除筛选
-          </button>
-        )}
-        <div className="ml-2 flex items-center gap-2">
-          <button
-            onClick={() =>
-              webOrigin && void window.api.system.openInAppBrowser(webOrigin, '网页端')
-            }
-            className="flex min-w-[150px] items-center gap-1.5 truncate text-[10px] text-[#6E6E73]"
-            title={webOrigin || '网页端不可用'}
-          >
-            <i
-              className={`h-2 w-2 shrink-0 rounded-full ${webOrigin ? 'bg-[#34C759]' : 'bg-[#A1A1A6]'}`}
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
+            {visibleTags.map((item) => {
+              const on = selectedTags.includes(item.tag)
+              return (
+                <button
+                  key={item.tag}
+                  onClick={() => toggleTag(item.tag)}
+                  className={`flex h-6 shrink-0 items-center gap-1 rounded-full border px-2 text-xs ${
+                    on
+                      ? 'border-[var(--accent)] bg-[var(--accent-soft)] font-medium text-[var(--accent)]'
+                      : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)]'
+                  }`}
+                >
+                  {on && <Check size={12} />}
+                  {item.tag}
+                  <span
+                    className={`text-[10px] ${on ? 'text-[var(--accent)]' : 'text-[var(--text-tertiary)]'}`}
+                  >
+                    {item.count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          <div className="relative w-[150px]">
+            <Search
+              size={13}
+              className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]"
             />
-            打开网页端 · {webOrigin || '未启动'}
-          </button>
-          <Button
-            size="sm"
-            className="h-8 bg-[#1D1D1F] text-white"
-            onClick={() => setDownloadOpen(true)}
-          >
-            <Download size={14} />
-            解析下载
-          </Button>
+            <input
+              value={tagSearch}
+              onChange={(event) => setTagSearch(event.target.value)}
+              placeholder="搜索标签…"
+              className="h-7 w-full rounded-[6px] bg-[var(--surface-muted)] pl-7 pr-2 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)]"
+            />
+          </div>
+          {tags.length > 12 && (
+            <button
+              onClick={() => setShowAllTags((show) => !show)}
+              className="flex h-6 shrink-0 items-center gap-0.5 px-1 text-xs font-medium text-[var(--text-secondary)]"
+            >
+              {showAllTags ? '收起' : `展开 (${tags.length})`}
+              <ChevronDown
+                size={13}
+                className={showAllTags ? 'rotate-180 transition-transform' : 'transition-transform'}
+              />
+            </button>
+          )}
+          {selectedTags.length > 0 && (
+            <>
+              <div className="h-4 w-px bg-[var(--border)]" />
+              <button
+                onClick={() => setSelectedTags([])}
+                className="shrink-0 text-xs font-medium text-[var(--accent)]"
+              >
+                清除 ({selectedTags.length})
+              </button>
+            </>
+          )}
         </div>
       </div>
-      <div className="flex min-h-10 shrink-0 items-center gap-1 overflow-x-auto border-b bg-white px-4">
-        <span className="mr-1 whitespace-nowrap text-[10px] text-[#8E8E93]">标签筛选</span>
-        {visibleTags.map((item) => (
-          <button
-            key={item.tag}
-            onClick={() => toggleTag(item.tag)}
-            className={`shrink-0 rounded-full border px-2 py-1 text-[10px] ${selectedTags.includes(item.tag) ? 'border-[#0A84FF] bg-[#E8F0FE] text-[#0A84FF]' : 'border-transparent text-[#6E6E73] hover:bg-[#F2F2F4]'}`}
-          >
-            {selectedTags.includes(item.tag) && '✓ '}
-            {item.tag}
-            <span className="ml-1 text-[#A1A1A6]">{item.count}</span>
-          </button>
-        ))}
-        <Input
-          value={tagSearch}
-          onChange={(event) => setTagSearch(event.target.value)}
-          placeholder="搜索标签"
-          className="ml-auto h-7 w-32 text-[10px]"
-        />
-        {tags.length > 12 && (
-          <button
-            onClick={() => setShowAllTags((show) => !show)}
-            className="whitespace-nowrap text-[10px] text-[#6E6E73]"
-          >
-            {showAllTags ? '收起' : `展开 (${tags.length})`}
-          </button>
+
+      {/* SubBar：隐藏提示 + 排序 */}
+      <div className="flex shrink-0 items-center gap-2 px-6 pb-2.5 pt-3">
+        {hiddenCreators.length > 0 && (
+          <span className="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)]">
+            <EyeOff size={13} />
+            已隐藏 {hiddenCreators.length}{' '}
+            位创作者的作品（在创作者设置里关闭了「在视频浏览中显示」）
+            <span>·</span>
+            <button
+              onClick={() => navigate('/creators')}
+              className="font-medium text-[var(--accent)]"
+            >
+              管理
+            </button>
+          </span>
         )}
-        {selectedTags.length > 0 && (
-          <button
-            onClick={() => setSelectedTags([])}
-            className="whitespace-nowrap text-[10px] text-[#0A84FF]"
-          >
-            清除 ({selectedTags.length})
-          </button>
-        )}
-      </div>
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b bg-white px-4">
-        <span className="flex-1 truncate text-[10px] text-[#A1A1A6]">
-          {hiddenCreators.length
-            ? `已隐藏 ${hiddenCreators.length} 位创作者的作品（在创作者设置里关闭）`
-            : activeFilter
-              ? `当前筛选 · ${total} 个结果`
-              : ''}
-        </span>
-        <span className="text-[10px] text-[#8E8E93]">排序</span>
-        <div className="flex rounded bg-[#F2F2F4] p-0.5">
+        <div className="flex-1" />
+        <span className="text-xs text-[var(--text-tertiary)]">排序</span>
+        <div className="flex h-7 items-center gap-0.5 rounded-[6px] bg-[var(--surface-muted)] p-0.5">
           {sortOptions.map((item) => (
             <button
               key={item.field}
               onClick={() => setSort((current) => ({ ...current, field: item.field }))}
-              className={`rounded px-2 py-1 text-[10px] ${sort.field === item.field ? 'bg-white shadow-sm' : 'text-[#6E6E73]'}`}
+              className={`flex h-full items-center rounded px-2.5 text-xs ${
+                sort.field === item.field
+                  ? 'bg-[var(--surface)] font-medium text-[var(--text-primary)] shadow-sm'
+                  : 'text-[var(--text-secondary)]'
+              }`}
             >
               {item.label}
             </button>
           ))}
         </div>
-        <div className="flex rounded border p-0.5">
+        <div className="flex h-7 items-center gap-0.5 rounded-[6px] border border-[var(--border)] bg-[var(--surface)] p-0.5">
           <button
             onClick={() => setSort((current) => ({ ...current, order: 'ASC' }))}
-            className={`flex items-center gap-1 px-2 py-1 text-[10px] ${sort.order === 'ASC' ? 'bg-[#E8F0FE] text-[#0A84FF]' : ''}`}
+            className={`flex h-full items-center gap-1 rounded px-2 text-xs ${
+              sort.order === 'ASC'
+                ? 'bg-[var(--accent-soft)] font-medium text-[var(--accent)]'
+                : 'text-[var(--text-secondary)]'
+            }`}
           >
-            <ArrowUp size={12} />
+            <ArrowUpNarrowWide size={13} />
             升序
           </button>
           <button
             onClick={() => setSort((current) => ({ ...current, order: 'DESC' }))}
-            className={`flex items-center gap-1 px-2 py-1 text-[10px] ${sort.order === 'DESC' ? 'bg-[#E8F0FE] text-[#0A84FF]' : ''}`}
+            className={`flex h-full items-center gap-1 rounded px-2 text-xs ${
+              sort.order === 'DESC'
+                ? 'bg-[var(--accent-soft)] font-medium text-[var(--accent)]'
+                : 'text-[var(--text-secondary)]'
+            }`}
           >
-            <ArrowDown size={12} />
+            <ArrowDownWideNarrow size={13} />
             降序
           </button>
         </div>
       </div>
-      <main className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+
+      {/* 卡片网格 */}
+      <main className="min-h-0 flex-1 overflow-y-auto px-6 pt-1">
         {loading && posts.length === 0 ? (
-          <div className="grid h-full place-items-center text-sm text-[#8E8E93]">加载中…</div>
+          <div className="grid h-full place-items-center text-sm text-[var(--text-tertiary)]">
+            加载中…
+          </div>
         ) : posts.length === 0 ? (
           <div className="grid h-full min-h-80 place-items-center text-center">
             <div>
-              <Video className="mx-auto mb-3 text-[#A1A1A6]" size={40} />
-              <p className="text-sm text-[#6E6E73]">暂无视频</p>
-              <p className="mt-1 text-xs text-[#A1A1A6]">下载的视频会显示在这里，供你浏览和播放</p>
-              <Button
-                className="mt-4 bg-[#1D1D1F] text-white"
+              <Video className="mx-auto mb-3 text-[var(--text-tertiary)]" size={40} />
+              <p className="text-sm text-[var(--text-secondary)]">暂无视频</p>
+              <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                下载的视频会显示在这里，供你浏览和播放
+              </p>
+              <button
+                className="mt-4 h-8 rounded-[6px] bg-[var(--text-primary)] px-4 text-[13px] font-medium text-white"
                 onClick={() => setDownloadOpen(true)}
               >
                 解析下载
-              </Button>
+              </button>
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(148px,1fr))] gap-x-3 gap-y-4">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(134px,1fr))] gap-x-[18px] gap-y-[18px]">
             {posts.map((post) => (
               <BrowseCard
                 key={post.id}
                 post={post}
                 cover={covers[post.aweme_id]}
                 onOpen={openPost}
+                onSelect={setSelected}
                 onAnnotate={() => navigate(`/tags/video/${post.id}`)}
                 onCreator={() => navigate(`/creators?user=${encodeURIComponent(post.sec_uid)}`)}
               />
             ))}
           </div>
         )}
-        <div ref={gridRef} className="h-8 text-center text-[10px] text-[#A1A1A6]">
+        <div ref={gridRef} className="h-8 text-center text-[10px] text-[var(--text-tertiary)]">
           {loadingMore ? '加载中…' : !hasMore && posts.length > 0 ? '已加载全部作品' : ''}
         </div>
       </main>
-      <footer className="flex h-9 shrink-0 items-center gap-3 border-t bg-white px-4 text-[10px] text-[#8E8E93]">
-        <span>
-          已加载 {posts.length} / {total.toLocaleString()}
+
+      {/* Footer：加载进度 + 快捷键 */}
+      <footer className="flex shrink-0 items-center gap-2.5 border-t border-[var(--border)] bg-[var(--surface)] px-6 py-2.5">
+        <span className="flex items-center gap-1.5 text-xs">
+          <span className="text-[var(--text-secondary)]">已加载</span>
+          <span className="font-mono text-xs font-medium text-[var(--text-primary)]">
+            {posts.length} / {total.toLocaleString()}
+          </span>
         </span>
-        <div className="h-1 w-28 overflow-hidden rounded bg-[#F2F2F4]">
+        <div className="h-1 w-[120px] overflow-hidden rounded-sm bg-[var(--surface-muted)]">
           <div
-            className="h-full rounded bg-[#0A84FF]"
-            style={{ width: `${total ? Math.min((posts.length / total) * 100, 100) : 0}%` }}
+            className="h-full rounded-sm bg-[var(--accent)]"
+            style={{
+              width: `${total ? Math.min((posts.length / total) * 100, 100) : 0}%`
+            }}
           />
         </div>
-        <span>向下滚动自动加载更多</span>
-        <span className="ml-auto">
-          <kbd className="rounded border px-1">Space</kbd> 播放　
-          <kbd className="rounded border px-1">→</kbd> 下一个
+        <span className="text-xs text-[var(--text-tertiary)]">向下滚动自动加载更多</span>
+        <div className="flex-1" />
+        <span className="flex items-center gap-1.5 text-[11px] text-[var(--text-tertiary)]">
+          <kbd className="flex h-[18px] items-center rounded border border-[var(--border)] px-[5px] text-[10px] text-[var(--text-secondary)]">
+            Space
+          </kbd>
+          播放
+          <kbd className="ml-1 flex h-[18px] items-center rounded border border-[var(--border)] px-[5px] text-[10px] text-[var(--text-secondary)]">
+            →
+          </kbd>
+          下一个
         </span>
       </footer>
       <MediaViewer
@@ -477,43 +684,46 @@ export default function BrowsePrototype(): React.JSX.Element {
   )
 }
 
-function FacetSearch({
-  value,
-  onChange,
-  placeholder
-}: {
-  value: string
-  onChange: (value: string) => void
-  placeholder: string
-}): React.JSX.Element {
-  return (
-    <div className="relative">
-      <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-[#A1A1A6]" />
-      <Input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className="h-8 pl-7 text-xs"
-      />
-    </div>
-  )
-}
-
 function BrowseCard({
   post,
   cover,
   onOpen,
+  onSelect,
   onAnnotate,
   onCreator
 }: {
   post: DbPost
   cover?: string
   onOpen: (post: DbPost) => void
+  onSelect: (post: DbPost) => void
   onAnnotate: () => void
   onCreator: () => void
 }): React.JSX.Element {
   const tags = getMergedTags(post)
-  const image = post.aweme_type === 68
+  const isAlbum = post.aweme_type === 68
+  const level = post.analysis_content_level
+  const [imageCount, setImageCount] = useState<number | null>(null)
+  useEffect(() => {
+    if (!isAlbum) return
+    let alive = true
+    window.api.post
+      .getMediaFiles(post.sec_uid, post.folder_name, post.aweme_type)
+      .then((media) => {
+        if (alive) setImageCount(media?.images?.length ?? null)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [isAlbum, post.sec_uid, post.folder_name, post.aweme_type])
+  const pill =
+    level == null
+      ? null
+      : level >= 8
+        ? 'bg-[var(--success-soft)] text-[var(--success)]'
+        : level >= 5
+          ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+          : 'bg-[var(--surface-muted)] text-[var(--text-secondary)]'
   const redownload = async (): Promise<void> => {
     try {
       await window.api.post.redownload(post.aweme_id)
@@ -522,73 +732,192 @@ function BrowseCard({
       toast.error(`重新下载失败：${(error as Error).message}`)
     }
   }
+  const cardRef = useRef<HTMLButtonElement>(null)
+  const openMenuAt = (event: React.MouseEvent): void => {
+    event.stopPropagation()
+    event.preventDefault()
+    cardRef.current?.dispatchEvent(
+      new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: event.clientX,
+        clientY: event.clientY
+      })
+    )
+  }
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <button onClick={() => onOpen(post)} className="group min-w-0 text-left">
-          <div className="relative aspect-[9/16] overflow-hidden rounded-lg bg-[#F2F2F4]">
+        <button
+          ref={cardRef}
+          onClick={() => onOpen(post)}
+          onContextMenu={() => onSelect(post)}
+          className="group flex min-w-0 flex-col gap-2 rounded-lg p-0.5 text-left outline-none data-[state=open]:ring-2 data-[state=open]:ring-[var(--accent)]"
+        >
+          <div className="relative aspect-[9/16] overflow-hidden rounded-lg bg-[#2A2A2E]">
             {cover ? (
               <img src={cover} alt="" loading="lazy" className="h-full w-full object-cover" />
             ) : (
-              <div className="grid h-full place-items-center text-[#A1A1A6]">
-                {image ? <Images size={32} /> : <Video size={32} />}
+              <div className="grid h-full place-items-center text-[#6E6E73]">
+                {isAlbum ? <Images size={32} /> : <Video size={32} />}
               </div>
             )}
-            <span className="absolute left-2 top-2 rounded bg-black/60 px-2 py-0.5 text-[10px] text-white">
-              {image ? '图集' : '视频'}
+            <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/55 to-transparent" />
+            <span className="absolute left-1.5 top-1.5 flex h-5 items-center gap-1 rounded-[5px] bg-black/35 px-1.5 text-[11px] font-medium text-white backdrop-blur-sm">
+              {isAlbum ? <Images size={11} /> : <Play size={11} />}
+              {isAlbum ? '图集' : '视频'}
+              {isAlbum && imageCount !== null && (
+                <span className="font-mono text-white/80">{imageCount}</span>
+              )}
             </span>
-            {!image && post.duration ? (
-              <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-white">
+            {isAlbum && imageCount !== null && imageCount > 1 && (
+              <span className="absolute bottom-1.5 left-2 flex items-center gap-[3px]">
+                {Array.from({ length: Math.min(imageCount, 5) }).map((_, dot) => (
+                  <i
+                    key={dot}
+                    className={`h-1 w-1 rounded-full ${dot === 0 ? 'bg-white' : 'bg-white/45'}`}
+                  />
+                ))}
+              </span>
+            )}
+            {!isAlbum && post.duration ? (
+              <span className="absolute bottom-1.5 right-1.5 font-mono text-[11px] font-medium text-white">
                 {Math.floor(post.duration / 60)}:
                 {String(Math.floor(post.duration % 60)).padStart(2, '0')}
               </span>
             ) : null}
+
             <span className="absolute inset-0 grid place-items-center bg-black/0 text-white opacity-0 transition group-hover:bg-black/25 group-hover:opacity-100">
-              <Play size={34} />
+              <span className="grid h-11 w-11 place-items-center rounded-full bg-white/90 text-[var(--text-primary)]">
+                <Play size={20} className="ml-0.5" />
+              </span>
+            </span>
+            <span
+              role="button"
+              aria-label="更多操作"
+              onClick={openMenuAt}
+              className="absolute right-1.5 top-1.5 hidden h-6 w-6 place-items-center rounded-[5px] bg-black/35 text-white backdrop-blur-sm hover:bg-black/55 group-hover:grid"
+            >
+              <Ellipsis size={13} />
             </span>
           </div>
-          <p className="mt-2 line-clamp-2 min-h-8 text-xs font-medium leading-4">
-            {post.caption || post.desc || '无标题'}
-          </p>
-          <div className="flex items-center gap-1 text-[10px] text-[#6E6E73]">
-            <span className="truncate">@{post.nickname || post.sec_uid}</span>
-            <span className="ml-auto flex items-center gap-0.5 text-[#8E8E93]">
-              ☆ {post.analysis_content_level || '—'}
-            </span>
-          </div>
-          {tags.length > 0 && (
-            <div className="mt-1 flex flex-wrap gap-1">
-              {tags.slice(0, 3).map((tag) => (
+          <div className="flex min-w-0 flex-col gap-1">
+            <p
+              className={`h-[18px] truncate text-xs font-medium leading-[18px] ${
+                post.caption || post.desc
+                  ? 'text-[var(--text-primary)]'
+                  : 'font-normal text-[var(--text-tertiary)]'
+              }`}
+            >
+              {post.caption || post.desc || '无标题'}
+            </p>
+            <div className="flex items-center gap-1">
+              <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
+                @{post.nickname || post.sec_uid}
+              </span>
+              {pill && (
                 <span
-                  key={tag}
-                  className="max-w-full truncate rounded bg-[#F2F2F4] px-1.5 py-0.5 text-[9px] text-[#6E6E73]"
+                  className={`flex h-4 shrink-0 items-center gap-0.5 rounded px-1 text-[10px] font-semibold ${pill}`}
                 >
-                  {tag}
+                  <svg
+                    width="9"
+                    height="9"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                  </svg>
+                  {level}
                 </span>
-              ))}
+              )}
             </div>
-          )}
+            {tags.length > 0 && (
+              <div className="flex gap-1 overflow-hidden">
+                {tags.slice(0, 3).map((tag) => (
+                  <span
+                    key={tag}
+                    className="h-[18px] max-w-full truncate rounded bg-[var(--surface-muted)] px-[5px] text-[11px] leading-[18px] text-[var(--text-secondary)]"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </button>
       </ContextMenuTrigger>
-      <ContextMenuContent className="w-56">
-        <ContextMenuItem onClick={() => onOpen(post)}>
-          <Play size={14} className="mr-2" />
+      <ContextMenuContent className="w-60 rounded-[10px] border-[var(--border)] bg-[var(--surface)] p-1.5 shadow-[0_10px_30px_#0000001F,0_1px_3px_#0000000D]">
+        <div className="flex items-center gap-2 px-1.5 pb-1.5 pt-1">
+          {cover ? (
+            <img src={cover} alt="" className="h-10 w-7 rounded-[4px] object-cover" />
+          ) : (
+            <span className="grid h-10 w-7 place-items-center rounded-[4px] bg-[#2A2A2E] text-[#6E6E73]">
+              {isAlbum ? <Images size={12} /> : <Video size={12} />}
+            </span>
+          )}
+          <div className="min-w-0">
+            <p className="truncate text-[13px] font-medium leading-[18px] text-[var(--text-primary)]">
+              {post.caption || post.desc || '无标题'}
+            </p>
+            <p className="truncate text-[11px] leading-4 text-[var(--text-tertiary)]">
+              {isAlbum ? '图集' : '视频'}
+              {!isAlbum && post.duration
+                ? ` · ${Math.floor(post.duration / 60)}:${String(Math.floor(post.duration % 60)).padStart(2, '0')}`
+                : ''}
+              {' · @'}
+              {post.nickname || post.sec_uid}
+            </p>
+          </div>
+        </div>
+        <ContextMenuItem
+          onClick={() => onOpen(post)}
+          className="h-7 rounded-[6px] px-2 text-xs text-[var(--text-primary)] focus:bg-[var(--accent)] focus:text-white"
+        >
+          <Play size={13} className="mr-2" />
           播放
+          <ContextMenuShortcut className="font-mono text-[10px]">Space</ContextMenuShortcut>
         </ContextMenuItem>
-        <ContextMenuItem onClick={onAnnotate}>
-          <LibraryBig size={14} className="mr-2" />
-          在内容库中标注
+        <ContextMenuItem
+          onClick={onAnnotate}
+          className="h-7 rounded-[6px] px-2 text-xs text-[var(--text-primary)] focus:bg-[var(--surface-muted)]"
+        >
+          <Tag size={13} className="mr-2" />
+          添加标签…
+          <ContextMenuShortcut className="font-mono text-[10px]">T</ContextMenuShortcut>
         </ContextMenuItem>
-        <ContextMenuItem onClick={onCreator}>
-          <UserRound size={14} className="mr-2" />
-          查看创作者
+        <ContextMenuItem
+          onClick={onAnnotate}
+          className="h-7 rounded-[6px] px-2 text-xs text-[var(--text-primary)] focus:bg-[var(--surface-muted)]"
+        >
+          <SquarePen size={13} className="mr-2" />
+          在内容库中编辑标签
+          <ContextMenuShortcut className="font-mono text-[10px]">⌘E</ContextMenuShortcut>
         </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onClick={() => window.api.post.openFolder(post.sec_uid, post.folder_name)}>
+        <ContextMenuSeparator className="bg-[var(--border)]" />
+        <ContextMenuItem
+          onClick={onCreator}
+          className="h-7 rounded-[6px] px-2 text-xs text-[var(--text-primary)] focus:bg-[var(--surface-muted)]"
+        >
+          <UserRound size={13} className="mr-2" />
+          该作者的全部作品
+          <ContextMenuShortcut className="font-mono text-[10px]">⌘A</ContextMenuShortcut>
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => window.api.post.openFolder(post.sec_uid, post.folder_name)}
+          className="h-7 rounded-[6px] px-2 text-xs text-[var(--text-primary)] focus:bg-[var(--surface-muted)]"
+        >
+          <FolderOpen size={13} className="mr-2" />
           在文件管理器中打开
+          <ContextMenuShortcut className="font-mono text-[10px]">⌘R</ContextMenuShortcut>
         </ContextMenuItem>
-        <ContextMenuItem onClick={() => void redownload()}>
-          <Download size={14} className="mr-2" />
+        <ContextMenuSeparator className="bg-[var(--border)]" />
+        <ContextMenuItem
+          onClick={() => void redownload()}
+          className="h-7 rounded-[6px] px-2 text-xs text-[var(--text-primary)] focus:bg-[var(--surface-muted)]"
+        >
+          <RotateCw size={13} className="mr-2" />
           重新下载
         </ContextMenuItem>
       </ContextMenuContent>
