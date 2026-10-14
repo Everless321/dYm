@@ -168,14 +168,7 @@ export function Sidebar({ developerMode }: SidebarProps): React.JSX.Element {
         }`}
       >
         <Link2 size={16} />
-        {!collapsed && (
-          <>
-            <span>粘贴链接添加</span>
-            <kbd className="ml-auto rounded border border-white/20 px-1.5 py-0.5 text-[10px] text-white/70">
-              ⌘V
-            </kbd>
-          </>
-        )}
+        {!collapsed && <span>解析单个作品</span>}
       </button>
 
       <nav className="flex flex-col gap-1">
