@@ -221,7 +221,7 @@ export function cancelCodexLogin(): void {
   activeLogin?.cancel(new Error('登录已取消'))
 }
 
-function html(title: string, body: string): string {
+export function callbackPage(title: string, body: string): string {
   return `<!doctype html><html lang="zh"><head><meta charset="utf-8"><title>${title}</title>
 <style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0b0b0c;color:#eee}
 main{text-align:center;max-width:420px}h1{font-size:20px}p{color:#aaa}</style></head>
@@ -276,29 +276,29 @@ export async function loginWithBrowser(): Promise<CodexCredential> {
       res.setHeader('Content-Type', 'text/html; charset=utf-8')
       if (url.pathname !== CALLBACK_PATH) {
         res.statusCode = 404
-        res.end(html('地址不对', '请回到应用重新点击登录。'))
+        res.end(callbackPage('地址不对', '请回到应用重新点击登录。'))
         return
       }
       const error = url.searchParams.get('error')
       if (error) {
         res.statusCode = 400
-        res.end(html('授权失败', url.searchParams.get('error_description') ?? error))
+        res.end(callbackPage('授权失败', url.searchParams.get('error_description') ?? error))
         fail(new Error(`授权失败：${url.searchParams.get('error_description') ?? error}`))
         return
       }
       if (url.searchParams.get('state') !== state) {
         res.statusCode = 400
-        res.end(html('状态校验失败', '请回到应用重新登录。'))
+        res.end(callbackPage('状态校验失败', '请回到应用重新登录。'))
         return
       }
       const authCode = url.searchParams.get('code')
       if (!authCode) {
         res.statusCode = 400
-        res.end(html('缺少授权码', '请回到应用重新登录。'))
+        res.end(callbackPage('缺少授权码', '请回到应用重新登录。'))
         return
       }
       res.statusCode = 200
-      res.end(html('登录成功', '可以关闭此页面，回到应用继续。'))
+      res.end(callbackPage('登录成功', '可以关闭此页面，回到应用继续。'))
       finish(() => resolve(authCode))
     }
 

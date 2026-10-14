@@ -21,7 +21,7 @@ import type {
   AsrProviderInput,
   AsrProviderView,
   CodexAuthStatus,
-  GrokCliStatus,
+  GrokAuthStatus,
   OpenCodeCliKey,
   CreateAnalysisJobInput
 } from '../shared/ai'
@@ -228,7 +228,13 @@ const aiAPI = {
     ipcRenderer.invoke('ai:codexLogout', providerId),
   opencodeCliKey: (baseUrl: string): Promise<OpenCodeCliKey | null> =>
     ipcRenderer.invoke('ai:opencodeCliKey', baseUrl),
-  grokCliStatus: (): Promise<GrokCliStatus> => ipcRenderer.invoke('ai:grokCliStatus')
+  grokStatus: (providerId: string): Promise<GrokAuthStatus> =>
+    ipcRenderer.invoke('ai:grokStatus', providerId),
+  grokLogin: (providerId: string): Promise<GrokAuthStatus> =>
+    ipcRenderer.invoke('ai:grokLogin', providerId),
+  grokCancelLogin: (): Promise<void> => ipcRenderer.invoke('ai:grokCancelLogin'),
+  grokLogout: (providerId: string): Promise<GrokAuthStatus> =>
+    ipcRenderer.invoke('ai:grokLogout', providerId)
 }
 
 const asrAPI = {

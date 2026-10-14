@@ -174,22 +174,18 @@ export function ProvidersPanel({ onChanged }: ProvidersPanelProps): React.JSX.El
                         <>
                           <KeyRound className="h-3.5 w-3.5 text-[#22C55E]" />
                           <span className="text-[#1D1D1F]">
-                            {p.protocol === 'codex'
+                            {p.protocol === 'codex' || p.protocol === 'grok'
                               ? `已登录${p.credentialLabel ? `：${p.credentialLabel}` : ''}`
-                              : p.protocol === 'grok-cli'
-                                ? '已检测到 Grok CLI 登录'
-                                : '已保存'}
+                              : '已保存'}
                           </span>
                         </>
                       ) : (
                         <>
                           <ShieldAlert className="h-3.5 w-3.5 text-[#F59E0B]" />
                           <span className="text-[#6E6E73]">
-                            {p.protocol === 'codex'
+                            {p.protocol === 'codex' || p.protocol === 'grok'
                               ? '未登录'
-                              : p.protocol === 'grok-cli'
-                                ? '未登录：请在终端运行 grok login'
-                                : '未设置（本地服务可不填）'}
+                              : '未设置（本地服务可不填）'}
                           </span>
                         </>
                       )}
