@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ArrowRight,
   Check,
@@ -376,6 +377,25 @@ export function MediaViewer({
     else void stage.requestFullscreen()
   }
 
+  const title = post?.desc || post?.caption || '无标题'
+  const titleRef = useRef<HTMLHeadingElement | null>(null)
+  const [titleExpanded, setTitleExpanded] = useState(false)
+  const [titleClamped, setTitleClamped] = useState(false)
+
+  useEffect(() => {
+    setTitleExpanded(false)
+    const el = titleRef.current
+    if (!open || !el) return
+    const measure = (): void => setTitleClamped(el.scrollHeight > el.clientHeight + 1)
+    const frame = requestAnimationFrame(measure)
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => {
+      cancelAnimationFrame(frame)
+      observer.disconnect()
+    }
+  }, [open, title])
+
   const tags = post ? getMergedTags(post) : []
   const typeLabel = post?.aweme_type === 68 ? '图集' : '视频'
   const metaParts: string[] = [
@@ -394,17 +414,17 @@ export function MediaViewer({
 
   if (!open) return null
 
-  return (
+  // 按原型只遮住主内容区，侧边栏保持可见；没有挂载点时退回全窗口
+  const overlayRoot = document.querySelector<HTMLElement>('[data-overlay-root]')
+  const showPostNav = postPosition >= 0 && allPosts.length > 1
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0B0F]/70 p-5"
+      className={`${overlayRoot ? 'absolute' : 'fixed'} inset-0 z-50 flex bg-[#0B0B0F]/70 p-5`}
       onClick={() => onOpenChange(false)}
     >
       <div
-        className="flex overflow-hidden rounded-[14px] bg-white shadow-xl"
-        style={{
-          width: 'min(1168px, calc(100vw - 40px))',
-          height: 'min(860px, calc(100vh - 40px))'
-        }}
+        className="flex h-full w-full overflow-hidden rounded-[14px] bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 左侧播放器 */}
@@ -456,7 +476,9 @@ export function MediaViewer({
           {/* Stage */}
           <div
             ref={stageRef}
-            className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden"
+            className={`relative flex min-h-0 flex-1 items-center justify-center overflow-hidden ${
+              showPostNav ? 'px-[72px]' : ''
+            }`}
           >
             {/* 封面模糊背景 */}
             {media?.cover && (
@@ -493,13 +515,17 @@ export function MediaViewer({
                   {hasMultipleImages && (
                     <>
                       <button
-                        className="absolute left-4 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-white transition-colors hover:bg-black/75"
+                        className={`absolute top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-white transition-colors hover:bg-black/75 ${
+                          showPostNav ? 'left-[84px]' : 'left-4'
+                        }`}
                         onClick={handlePrev}
                       >
                         <ChevronLeft className="h-4 w-4" />
                       </button>
                       <button
-                        className="absolute right-4 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-white transition-colors hover:bg-black/75"
+                        className={`absolute top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-white transition-colors hover:bg-black/75 ${
+                          showPostNav ? 'right-[84px]' : 'right-4'
+                        }`}
                         onClick={handleNext}
                       >
                         <ChevronRight className="h-4 w-4" />
@@ -580,7 +606,7 @@ export function MediaViewer({
               </div>
             )}
             {/* 上/下一个作品大圆钮 */}
-            {postPosition >= 0 && allPosts.length > 1 && (
+            {showPostNav && (
               <>
                 <button
                   onClick={() => selectAdjacentPost(-1)}
@@ -606,7 +632,7 @@ export function MediaViewer({
 
           {/* Controls：仅视频有控制条；图集显示张数在 Stage 内 */}
           {isVideo && (
-            <div className="flex shrink-0 flex-col gap-2 px-5 pb-3.5 pt-1.5">
+            <div className="@container flex shrink-0 flex-col gap-2 px-5 pb-3.5 pt-1.5">
               {/* 进度条 */}
               <div
                 ref={progressRef}
@@ -637,10 +663,10 @@ export function MediaViewer({
                   style={{ left: `${playedPct}%` }}
                 />
               </div>
-              <div className="flex items-center gap-3.5">
+              <div className="flex items-center gap-2.5 whitespace-nowrap @min-[560px]:gap-3.5">
                 <button
                   onClick={togglePlay}
-                  className="flex h-[34px] w-[34px] items-center justify-center rounded-full bg-white text-[#0E0E11]"
+                  className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-white text-[#0E0E11]"
                 >
                   {playing ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
                 </button>
@@ -658,7 +684,7 @@ export function MediaViewer({
                 >
                   <SkipForward size={16} />
                 </button>
-                <span className="flex items-center gap-1 font-mono">
+                <span className="flex shrink-0 items-center gap-1 font-mono">
                   <span className="text-xs font-medium text-white">{fmtTime(currentTime)}</span>
                   <span className="text-xs text-white/50">/ {fmtTime(duration)}</span>
                 </span>
@@ -672,7 +698,7 @@ export function MediaViewer({
                     {isMuted || volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
                   </button>
                   <div
-                    className="relative flex h-3 w-[72px] cursor-pointer items-center"
+                    className="relative hidden h-3 w-[72px] cursor-pointer items-center @min-[520px]:flex"
                     onPointerDown={(e) => {
                       volumeDragRef.current = true
                       e.currentTarget.setPointerCapture(e.pointerId)
@@ -697,13 +723,13 @@ export function MediaViewer({
                   </div>
                 </span>
                 <div className="flex-1" />
-                <span className="flex items-center gap-1.5">
+                <span className="hidden items-center gap-1.5 @min-[680px]:flex">
                   <kbd className="flex h-[18px] items-center rounded border border-white/20 px-1.5 text-[10px] text-white/70">
                     Space
                   </kbd>
                   <span className="text-[11px] text-white/50">长按空格 2 倍速播放</span>
                 </span>
-                <div className="relative">
+                <div className="relative shrink-0">
                   <button
                     onClick={() => setRateMenuOpen((v) => !v)}
                     className="flex h-[26px] items-center gap-1 rounded-[5px] border border-white/30 bg-white/15 px-2"
@@ -757,8 +783,8 @@ export function MediaViewer({
         </div>
 
         {/* 右侧信息面板 */}
-        <div className="flex w-[380px] shrink-0 flex-col bg-white">
-          <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--border)] py-3 pl-[18px] pr-3">
+        <div className="flex w-[320px] shrink-0 flex-col bg-white xl:w-[380px]">
+          <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b border-[var(--border)] py-3 pl-[18px] pr-3">
             <span className="text-[13px] font-semibold text-[var(--text-primary)]">播放详情</span>
             <span className="flex-1 font-mono text-[11px] text-[var(--text-tertiary)]">
               {postPosition >= 0 ? `${postPosition + 1} / ${allPosts.length}` : ''}
@@ -771,7 +797,7 @@ export function MediaViewer({
             >
               <ChevronLeft size={13} className="text-[var(--text-secondary)]" />
               上一个
-              <span className="text-[10px] text-[var(--text-tertiary)]">←</span>
+              <span className="hidden text-[10px] text-[var(--text-tertiary)] xl:inline">←</span>
             </button>
             <button
               type="button"
@@ -781,7 +807,7 @@ export function MediaViewer({
             >
               下一个
               <ChevronRight size={13} className="text-[var(--text-secondary)]" />
-              <span className="text-[10px] text-[var(--text-tertiary)]">→</span>
+              <span className="hidden text-[10px] text-[var(--text-tertiary)] xl:inline">→</span>
             </button>
             <button
               type="button"
@@ -789,16 +815,31 @@ export function MediaViewer({
               className="flex h-7 items-center gap-1 rounded-[6px] bg-[var(--surface-muted)] px-[7px] text-xs text-[var(--text-primary)]"
             >
               <X size={14} />
-              <span className="text-[10px] text-[var(--text-tertiary)]">Esc</span>
+              <span className="hidden text-[10px] text-[var(--text-tertiary)] xl:inline">Esc</span>
             </button>
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-[18px] py-4">
             {/* 标题 */}
             <div className="flex flex-col gap-[5px]">
-              <h3 className="text-lg font-bold leading-6 text-[var(--text-primary)]">
-                {post?.desc || post?.caption || '无标题'}
+              <h3
+                ref={titleRef}
+                className={`break-words text-lg font-bold leading-6 text-[var(--text-primary)] ${
+                  titleExpanded ? '' : 'line-clamp-3'
+                }`}
+                title={titleClamped && !titleExpanded ? title : undefined}
+              >
+                {title}
               </h3>
+              {(titleClamped || titleExpanded) && (
+                <button
+                  type="button"
+                  onClick={() => setTitleExpanded((v) => !v)}
+                  className="self-start text-xs font-medium text-[var(--accent)]"
+                >
+                  {titleExpanded ? '收起' : '展开全文'}
+                </button>
+              )}
               <p className="text-[11px] text-[var(--text-tertiary)]">{metaParts.join(' · ')}</p>
             </div>
 
@@ -849,7 +890,7 @@ export function MediaViewer({
                     {post?.nickname}
                   </p>
                 )}
-                <p className="text-[11px] text-[var(--text-tertiary)]">
+                <p className="truncate text-[11px] text-[var(--text-tertiary)]">
                   {creator
                     ? `粉丝 ${formatCompactNumber(creator.follower_count)} · 已下载 ${creator.downloaded_count} 个`
                     : `@${post?.nickname}`}
@@ -887,7 +928,7 @@ export function MediaViewer({
                   </p>
                 )}
                 {categories.length > 0 && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="w-9 text-xs text-[var(--text-tertiary)]">分类</span>
                     {categories.map((cat) => (
                       <span
@@ -922,12 +963,12 @@ export function MediaViewer({
             )}
 
             {/* 操作 */}
-            <div className="flex gap-1.5">
+            <div className="flex gap-1.5 whitespace-nowrap">
               <button
                 onClick={handleDownload}
                 className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-[6px] border border-[var(--border)] bg-[var(--surface)] text-xs font-medium text-[var(--text-primary)]"
               >
-                <FolderOpen size={13} className="text-[var(--text-secondary)]" />
+                <FolderOpen size={13} className="hidden text-[var(--text-secondary)] xl:block" />
                 打开文件夹
               </button>
               <button
@@ -935,14 +976,14 @@ export function MediaViewer({
                 onClick={() => post && onAnnotate?.(post.id)}
                 className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-[6px] bg-[var(--text-primary)] text-xs font-medium text-white"
               >
-                <Tag size={13} />
+                <Tag size={13} className="hidden xl:block" />
                 在内容库中标注
               </button>
               <button
                 onClick={() => void handleRedownload()}
                 className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-[6px] border border-[var(--border)] bg-[var(--surface)] text-xs font-medium text-[var(--text-primary)]"
               >
-                <RotateCw size={13} className="text-[var(--text-secondary)]" />
+                <RotateCw size={13} className="hidden text-[var(--text-secondary)] xl:block" />
                 重新下载
               </button>
             </div>
@@ -1033,6 +1074,7 @@ export function MediaViewer({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    overlayRoot ?? document.body
   )
 }

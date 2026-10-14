@@ -84,7 +84,7 @@ export function AppLayout(): React.JSX.Element {
     <div className="flex h-screen min-h-0 overflow-hidden bg-[var(--bg)] text-[var(--text-primary)]">
       <WelcomeDialog />
       <Sidebar developerMode={developerMode === true} />
-      <main className="min-w-0 flex-1 overflow-hidden">
+      <main data-overlay-root className="relative min-w-0 flex-1 overflow-hidden">
         <Outlet />
       </main>
     </div>

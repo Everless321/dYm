@@ -295,9 +295,9 @@ export default function BrowsePrototype(): React.JSX.Element {
           </div>
         </div>
 
-        {/* 筛选行 */}
-        <div className="flex items-center gap-2">
-          <div className="relative w-[260px]">
+        {/* 筛选行：窄窗口下整组换行，不压缩组内文字 */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-2 whitespace-nowrap">
+          <div className="relative w-[200px] xl:w-[260px]">
             <Search
               size={14}
               className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]"
@@ -419,7 +419,7 @@ export default function BrowsePrototype(): React.JSX.Element {
             )}
           </div>
           <div className="h-5 w-px bg-[var(--border)]" />
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <span className="text-xs font-medium text-[var(--text-secondary)]">内容分级</span>
             <div className="flex h-7 items-center gap-0.5 rounded-[6px] bg-[var(--surface-muted)] p-0.5">
               {Array.from({ length: 10 }, (_, index) => index + 1).map((level) => (
@@ -447,7 +447,7 @@ export default function BrowsePrototype(): React.JSX.Element {
           <div className="h-5 w-px bg-[var(--border)]" />
           <button
             onClick={() => setAnalyzedOnly((v) => !v)}
-            className="flex items-center gap-2"
+            className="flex shrink-0 items-center gap-2"
             role="switch"
             aria-checked={analyzedOnly}
           >
@@ -543,22 +543,24 @@ export default function BrowsePrototype(): React.JSX.Element {
       {/* SubBar：隐藏提示 + 排序 */}
       <div className="flex shrink-0 items-center gap-2 px-6 pb-2.5 pt-3">
         {hiddenCreators.length > 0 && (
-          <span className="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)]">
-            <EyeOff size={13} />
-            已隐藏 {hiddenCreators.length}{' '}
-            位创作者的作品（在创作者设置里关闭了「在视频浏览中显示」）
+          <span className="flex min-w-0 items-center gap-1.5 text-xs text-[var(--text-tertiary)]">
+            <EyeOff size={13} className="shrink-0" />
+            <span className="truncate">
+              已隐藏 {hiddenCreators.length}{' '}
+              位创作者的作品（在创作者设置里关闭了「在视频浏览中显示」）
+            </span>
             <span>·</span>
             <button
               onClick={() => navigate('/creators')}
-              className="font-medium text-[var(--accent)]"
+              className="shrink-0 font-medium text-[var(--accent)]"
             >
               管理
             </button>
           </span>
         )}
         <div className="flex-1" />
-        <span className="text-xs text-[var(--text-tertiary)]">排序</span>
-        <div className="flex h-7 items-center gap-0.5 rounded-[6px] bg-[var(--surface-muted)] p-0.5">
+        <span className="shrink-0 whitespace-nowrap text-xs text-[var(--text-tertiary)]">排序</span>
+        <div className="flex h-7 shrink-0 items-center gap-0.5 whitespace-nowrap rounded-[6px] bg-[var(--surface-muted)] p-0.5">
           {sortOptions.map((item) => (
             <button
               key={item.field}
@@ -573,7 +575,7 @@ export default function BrowsePrototype(): React.JSX.Element {
             </button>
           ))}
         </div>
-        <div className="flex h-7 items-center gap-0.5 rounded-[6px] border border-[var(--border)] bg-[var(--surface)] p-0.5">
+        <div className="flex h-7 shrink-0 items-center gap-0.5 whitespace-nowrap rounded-[6px] border border-[var(--border)] bg-[var(--surface)] p-0.5">
           <button
             onClick={() => setSort((current) => ({ ...current, order: 'ASC' }))}
             className={`flex h-full items-center gap-1 rounded px-2 text-xs ${
