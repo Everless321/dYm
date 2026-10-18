@@ -180,6 +180,8 @@ await api.douyin.parseUrl(url)            // { type: 'user'|'video'|'unknown', i
 await api.douyin.collects()               // 收藏夹列表 [{ id, name, total }]
 await api.douyin.collectsVideos(id)       // 某收藏夹的全部作品
 await api.douyin.collectionVideos()       // 「收藏」里的全部作品
+await api.douyin.collectionVideos({ limit: 10 })  // 只取前 10 个，凑够就不再翻页
+await api.douyin.uncollect(awemeId)       // 取消收藏（会改动账号数据），失败抛错
 \`\`\`
 
 列表类接口都会自己翻页。嫌慢可以传 \`{ intervalMs }\` 覆盖默认的 1.5 秒间隔——

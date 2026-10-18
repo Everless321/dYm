@@ -205,6 +205,12 @@ export interface PagingOptions {
   intervalMs?: number
 }
 
+/** 「收藏」作品列表的选项 */
+export interface CollectionOptions extends PagingOptions {
+  /** 最多取多少条，凑够就不再翻页；省略或 0 表示取全部 */
+  limit?: number
+}
+
 /** 单个作品的详细信息 */
 export interface DouyinVideoInfo {
   awemeId: string
@@ -379,7 +385,7 @@ export interface ScriptApi {
   }
 
   /**
-   * 抖音只读接口，走应用里配置的 cookie 与签名。
+   * 抖音接口，走应用里配置的 cookie 与签名。除 uncollect 外都是只读。
    * 收藏相关接口没有用户参数，抖音按 cookie 判断「我」是谁，拿到的都是登录账号自己的数据。
    *
    * 列表类接口会自己翻页，每翻一页默认等 1.5 秒；
@@ -404,8 +410,10 @@ export interface ScriptApi {
     collects: (options?: PagingOptions) => Promise<DouyinCollect[]>
     /** 指定收藏夹里的全部作品 */
     collectsVideos: (collectsId: string, options?: PagingOptions) => Promise<CollectedAweme[]>
-    /** 「收藏」里的全部作品（含未归入收藏夹的） */
-    collectionVideos: (options?: PagingOptions) => Promise<CollectedAweme[]>
+    /** 「收藏」里的作品（含未归入收藏夹的）；不传 limit 会一直翻到最后一页 */
+    collectionVideos: (options?: CollectionOptions) => Promise<CollectedAweme[]>
+    /** 取消收藏一个作品（会改动登录账号的数据）；失败时抛错 */
+    uncollect: (awemeId: string) => Promise<void>
   }
 
   /**

@@ -14,12 +14,13 @@ import type {
   DouyinLink,
   DouyinUserInfo,
   DouyinVideoInfo,
+  CollectionOptions,
   PagingOptions,
   ScriptApi
 } from './types'
 
 /**
- * 脚本可用的抖音只读接口。
+ * 脚本可用的抖音接口。除 uncollect 会取消收藏外，其余都是只读。
  *
  * 收藏 / 收藏夹这些接口没有 sec_uid 参数，抖音是按 cookie 判断「我」是谁的，
  * 所以那部分拿到的一律是当前登录账号自己的数据。
@@ -32,6 +33,8 @@ const DEFAULT_PAGE_INTERVAL_MS = 1500
 const COLLECTS_PATH = '/aweme/v1/web/collects/list/'
 const COLLECTS_VIDEO_PATH = '/aweme/v1/web/collects/video/list/'
 const COLLECTION_PATH = '/aweme/v1/web/aweme/listcollection/'
+/** 收藏 / 取消收藏，参数走表单 body：action=1 收藏，action=0 取消 */
+const COLLECT_PATH = '/aweme/v1/web/aweme/collect/'
 
 /** 每页条数。抖音对这几个接口的上限就是 20，填 50 会直接返回 status_code=5 */
 const PAGE_SIZE = 20
@@ -68,6 +71,12 @@ function resolveInterval(options?: PagingOptions): number {
   const ms = options?.intervalMs
   if (ms === undefined) return DEFAULT_PAGE_INTERVAL_MS
   return Number.isFinite(ms) ? Math.max(0, ms) : DEFAULT_PAGE_INTERVAL_MS
+}
+
+/** 解析条数上限：省略、非有限数或不大于 0 都按不限（0）处理 */
+function resolveLimit(options?: CollectionOptions): number {
+  const limit = options?.limit
+  return limit !== undefined && Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0
 }
 
 /** 收藏、收藏夹作品、作者作品列表返回的都是 aweme_list，抽取逻辑共用 */
@@ -195,13 +204,15 @@ export function createDouyinApi(
   /**
    * 翻完受保护接口的全部分页。
    * 这些接口不走 polydl，所以分页逻辑得自己写：读 has_more 与 cursor，逐页累加。
+   * limit > 0 时凑够条数就停，不再翻后面的页。
    */
   async function drainPage<T>(
     path: string,
     extraParams: Record<string, string | number>,
     method: 'GET' | 'POST',
     take: (raw: Record<string, unknown>) => T[],
-    intervalMs = DEFAULT_PAGE_INTERVAL_MS
+    intervalMs = DEFAULT_PAGE_INTERVAL_MS,
+    limit = 0
   ): Promise<T[]> {
     const out: T[] = []
     let cursor = 0
@@ -214,6 +225,7 @@ export function createDouyinApi(
       throwIfCancelled()
       const raw = await fetchGuarded(path, { ...extraParams, cursor, count: PAGE_SIZE }, method)
       out.push(...take(raw))
+      if (limit > 0 && out.length >= limit) return out.slice(0, limit)
 
       if (!raw.has_more) break
       const next = Number(raw.cursor ?? raw.max_cursor ?? 0)
@@ -298,7 +310,23 @@ export function createDouyinApi(
       ),
 
     // listcollection 只认 POST，用 GET 会返回 404 Unsupported path(Janus)
-    collectionVideos: async (options?: PagingOptions): Promise<CollectedAweme[]> =>
-      drainPage(COLLECTION_PATH, {}, 'POST', toCollectedAwemes, resolveInterval(options))
+    collectionVideos: async (options?: CollectionOptions): Promise<CollectedAweme[]> =>
+      drainPage(
+        COLLECTION_PATH,
+        {},
+        'POST',
+        toCollectedAwemes,
+        resolveInterval(options),
+        resolveLimit(options)
+      ),
+
+    uncollect: async (awemeId: string): Promise<void> => {
+      throwIfCancelled()
+      await fetchGuarded(COLLECT_PATH, {}, 'POST', {
+        action: 0,
+        aweme_id: awemeId.trim(),
+        aweme_type: 0
+      })
+    }
   }
 }

@@ -398,10 +398,39 @@ api.douyin.collectsVideos(
 ### api.douyin.collectionVideos()
 
 ```ts
-api.douyin.collectionVideos(options?: PagingOptions): Promise<CollectedAweme[]>
+api.douyin.collectionVideos(options?: CollectionOptions): Promise<CollectedAweme[]>
+
+interface CollectionOptions extends PagingOptions {
+  /** 最多取多少条，省略或 0 表示取全部 */
+  limit?: number
+}
 ```
 
-「收藏」里的全部作品，包含没有归入任何收藏夹的。
+「收藏」里的作品，包含没有归入任何收藏夹的。不传 `limit` 会一直翻到最后一页；
+传了就凑够条数立即停止，不再请求后面的页：
+
+```js
+// 只要最新收藏的 10 个，只请求 1 页
+const latest = await api.douyin.collectionVideos({ limit: 10 })
+```
+
+### api.douyin.uncollect()
+
+```ts
+api.douyin.uncollect(awemeId: string): Promise<void>
+```
+
+取消收藏一个作品，和在网页上点「取消收藏」效果一样。**这个接口会改动登录账号的数据**，
+其余 `api.douyin` 接口都是只读。抖音返回失败时抛错。
+
+```js
+const [latest] = await api.douyin.collectionVideos({ limit: 1 })
+if (latest) await api.douyin.uncollect(latest.awemeId)
+```
+
+::: warning 注意风控
+连续取消收藏属于写操作，比翻页更容易触发风控。批量处理时每个作品之间请留几秒间隔。
+:::
 
 ### 翻页选项
 

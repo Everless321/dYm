@@ -220,20 +220,28 @@ async function ensurePage(): Promise<BrowserWindow> {
 async function requestInPage(
   path: string,
   params: Record<string, string | number>,
-  method: 'GET' | 'POST'
+  method: 'GET' | 'POST',
+  body?: Record<string, string | number>
 ): Promise<PageResponse> {
   const target = await ensurePage()
-  const extra = Object.entries(params)
-    .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
-    .join('&')
+  const encode = (fields: Record<string, string | number>): string =>
+    Object.entries(fields)
+      .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
+      .join('&')
+  const extra = encode(params)
   const url = `${path}?${bizParams}${extra ? `&${extra}` : ''}`
+
+  // 签名只覆盖 query，表单 body 不参与，照原样带上即可
+  const headers: Record<string, string> = { Accept: 'application/json, text/plain, */*' }
+  if (body) headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8'
 
   const script = `
     (async () => {
       const response = await fetch(${JSON.stringify(url)}, {
         method: ${JSON.stringify(method)},
         credentials: 'include',
-        headers: { Accept: 'application/json, text/plain, */*' }
+        headers: ${JSON.stringify(headers)},
+        body: ${body ? JSON.stringify(encode(body)) : 'undefined'}
       })
       const text = await response.text()
       let data = null
@@ -272,10 +280,11 @@ export async function getPageUifid(): Promise<string | null> {
 export async function fetchGuarded(
   path: string,
   params: Record<string, string | number> = {},
-  method: 'GET' | 'POST' = 'GET'
+  method: 'GET' | 'POST' = 'GET',
+  body?: Record<string, string | number>
 ): Promise<Record<string, unknown>> {
   return serialize(async () => {
-    const response = await requestInPage(path, params, method)
+    const response = await requestInPage(path, params, method, body)
 
     if (!response.data) {
       console.log('[DouyinPage] 非 JSON 响应:', {
