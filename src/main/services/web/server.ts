@@ -225,6 +225,7 @@ function buildAuthorPayload(user: DbUser): Record<string, unknown> {
     signature: user.signature,
     awemeCount: user.aweme_count,
     homepageUrl: user.homepage_url,
+    platform: user.platform || 'douyin',
     settings: {
       maxDownloadCount: user.max_download_count,
       autoSync: user.auto_sync === 1,

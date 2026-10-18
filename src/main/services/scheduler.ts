@@ -275,7 +275,7 @@ export function scheduleUserLive(user: DbUser): void {
     unscheduleUserLive(user.id)
   }
 
-  if (!user.live_record || !user.live_check_cron) {
+  if (user.platform === 'bilibili' || !user.live_record || !user.live_check_cron) {
     return
   }
 

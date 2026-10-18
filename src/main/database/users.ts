@@ -1,5 +1,10 @@
 import { getDatabase } from './connection'
 import { appEvents } from '../services/app-events'
+import {
+  normalizeBilibiliCreatorSettings,
+  normalizeCreatorPlatform,
+  type BilibiliCreatorSettings
+} from '../../shared/platforms'
 
 // User CRUD
 export interface DbUser {
@@ -31,6 +36,10 @@ export interface DbUser {
   live_check_cron: string
   live_status: 'idle' | 'recording'
   last_live_at: number | null
+  /** douyin | bilibili，旧数据缺省为抖音 */
+  platform: string
+  /** 平台专属设置的 JSON。抖音的直播计划仍写在 live_* 列 */
+  platform_settings: string
   created_at: number
   updated_at: number
 }
@@ -49,14 +58,16 @@ export interface CreateUserInput {
   total_favorited?: number
   aweme_count?: number
   homepage_url?: string
+  platform?: string
+  platform_settings?: string
 }
 
 export function createUser(input: CreateUserInput): DbUser {
   const database = getDatabase()
   const stmt = database.prepare(`
     INSERT INTO users (sec_uid, uid, nickname, signature, avatar, short_id, unique_id,
-      following_count, follower_count, total_favorited, aweme_count, homepage_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      following_count, follower_count, total_favorited, aweme_count, homepage_url, platform, platform_settings)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
   const result = stmt.run(
     input.sec_uid,
@@ -70,7 +81,9 @@ export function createUser(input: CreateUserInput): DbUser {
     input.follower_count || 0,
     input.total_favorited || 0,
     input.aweme_count || 0,
-    input.homepage_url || ''
+    input.homepage_url || '',
+    normalizeCreatorPlatform(input.platform),
+    input.platform_settings || '{}'
   )
   return getUserById(result.lastInsertRowid as number)!
 }
@@ -168,10 +181,14 @@ export interface UpdateUserSettingsInput {
   sync_cron?: string
   live_record?: boolean
   live_check_cron?: string
+  platform_settings?: BilibiliCreatorSettings
 }
 
 export function updateUserSettings(id: number, input: UpdateUserSettingsInput): DbUser | undefined {
   const database = getDatabase()
+  const current = getUserById(id)
+  if (!current) return undefined
+  const platform = normalizeCreatorPlatform(current.platform)
   const fields: string[] = []
   const values: unknown[] = []
 
@@ -195,13 +212,17 @@ export function updateUserSettings(id: number, input: UpdateUserSettingsInput): 
     fields.push('sync_cron = ?')
     values.push(input.sync_cron)
   }
-  if (input.live_record !== undefined) {
+  if (platform === 'douyin' && input.live_record !== undefined) {
     fields.push('live_record = ?')
     values.push(input.live_record ? 1 : 0)
   }
-  if (input.live_check_cron !== undefined) {
+  if (platform === 'douyin' && input.live_check_cron !== undefined) {
     fields.push('live_check_cron = ?')
     values.push(input.live_check_cron)
+  }
+  if (platform === 'bilibili' && input.platform_settings !== undefined) {
+    fields.push('platform_settings = ?')
+    values.push(JSON.stringify(normalizeBilibiliCreatorSettings(input.platform_settings)))
   }
 
   if (fields.length === 0) return getUserById(id)
@@ -280,23 +301,34 @@ export function batchUpdateUserSettings(
     fields.push('sync_cron = ?')
     values.push(input.sync_cron)
   }
+  const liveFields: string[] = []
+  const liveValues: unknown[] = []
   if (input.live_record !== undefined) {
-    fields.push('live_record = ?')
-    values.push(input.live_record ? 1 : 0)
+    liveFields.push('live_record = ?')
+    liveValues.push(input.live_record ? 1 : 0)
   }
   if (input.live_check_cron !== undefined) {
-    fields.push('live_check_cron = ?')
-    values.push(input.live_check_cron)
+    liveFields.push('live_check_cron = ?')
+    liveValues.push(input.live_check_cron)
   }
 
-  if (fields.length === 0) return
-
-  fields.push("updated_at = strftime('%s', 'now')")
+  if (fields.length === 0 && liveFields.length === 0) return
 
   const placeholders = ids.map(() => '?').join(',')
-  database
-    .prepare(`UPDATE users SET ${fields.join(', ')} WHERE id IN (${placeholders})`)
-    .run(...values, ...ids)
+  if (fields.length > 0) {
+    const shared = [...fields, "updated_at = strftime('%s', 'now')"]
+    database
+      .prepare(`UPDATE users SET ${shared.join(', ')} WHERE id IN (${placeholders})`)
+      .run(...values, ...ids)
+  }
+  if (liveFields.length > 0) {
+    const live = [...liveFields, "updated_at = strftime('%s', 'now')"]
+    database
+      .prepare(
+        `UPDATE users SET ${live.join(', ')} WHERE platform = 'douyin' AND id IN (${placeholders})`
+      )
+      .run(...liveValues, ...ids)
+  }
   for (const id of ids) {
     appEvents.emitDataChange('user:settings-changed', id)
   }
@@ -312,7 +344,7 @@ export function getLiveRecordUsers(): DbUser[] {
     SELECT u.*, COALESCE(p.cnt, 0) as downloaded_count
     FROM users u
     LEFT JOIN (SELECT user_id, COUNT(*) as cnt FROM posts GROUP BY user_id) p ON u.id = p.user_id
-    WHERE u.live_record = 1
+    WHERE u.live_record = 1 AND u.platform = 'douyin'
     ORDER BY u.created_at DESC
   `
     )

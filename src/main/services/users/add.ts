@@ -5,6 +5,7 @@ import {
   updateUser,
   getUserBySecUid,
   getPostByAwemeId,
+  updateUserSettings,
   type DbUser
 } from '../../database'
 import {
@@ -16,6 +17,9 @@ import {
 import { downloadSinglePost } from '../download/downloader'
 import { downloadAvatar } from './avatar'
 import { emitUserAdded } from '../scripts/emit'
+import { detectCreatorPlatform, sanitizeAddCreatorOptions } from '../../../shared/platforms'
+import { validate as validateCronExpression } from 'node-cron'
+import { addBilibiliCreator } from '../bilibili/add-user'
 
 export type AddUserPostDownload =
   | { status: 'downloading'; awemeId: string }
@@ -48,7 +52,19 @@ function broadcastAddPostProgress(payload: AddPostProgressPayload): void {
  * 若为作品链接且开启「添加用户时下载作品」，后台下载该作品。
  * 供 IPC `user:add` 与收藏同步定时任务共用。
  */
-export async function addUserByUrl(url: string): Promise<AddUserResult> {
+export async function addUserByUrl(url: string, rawOptions?: unknown): Promise<AddUserResult> {
+  const options = sanitizeAddCreatorOptions(rawOptions)
+  if (options?.sync_cron && !validateCronExpression(options.sync_cron)) {
+    throw new Error('同步计划不是合法的 Cron 表达式')
+  }
+  if (options?.live_check_cron && !validateCronExpression(options.live_check_cron)) {
+    throw new Error('直播检测计划不是合法的 Cron 表达式')
+  }
+  const platform = detectCreatorPlatform(url)
+  if (platform === 'bilibili') return addBilibiliCreator(url, options)
+  if (!platform) {
+    throw new Error('无法识别的链接，请粘贴抖音或哔哩哔哩的创作者主页或作品链接')
+  }
   console.log('[User:add] Input url:', url)
 
   const parseResult = await parseDouyinUrl(url)
@@ -146,7 +162,8 @@ export async function addUserByUrl(url: string): Promise<AddUserResult> {
       follower_count: (userData.follower_count as number) || 0,
       total_favorited: (userData.total_favorited as number) || 0,
       aweme_count: (userData.aweme_count as number) || 0,
-      homepage_url: homepageUrl
+      homepage_url: homepageUrl,
+      platform: 'douyin'
     }
     console.log('[User:add] Creating user with:', JSON.stringify(input, null, 2))
     dbUser = createUser(input)
@@ -160,6 +177,17 @@ export async function addUserByUrl(url: string): Promise<AddUserResult> {
       if (avatarPath) {
         dbUser = updateUser(dbUser.id, { avatar_path: avatarPath }) ?? dbUser
       }
+    }
+    if (options) {
+      dbUser =
+        updateUserSettings(dbUser.id, {
+          max_download_count: options.max_download_count,
+          show_in_home: options.show_in_home,
+          auto_sync: options.auto_sync,
+          sync_cron: options.sync_cron,
+          live_record: options.live_record,
+          live_check_cron: options.live_check_cron
+        }) ?? dbUser
     }
   }
 

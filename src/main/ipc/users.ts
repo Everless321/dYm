@@ -25,7 +25,7 @@ export function registerUserIpc(): void {
 
   // User IPC handlers
   ipcMain.handle('user:getAll', () => getAllUsers())
-  ipcMain.handle('user:add', (_event, url: string) => addUserByUrl(url))
+  ipcMain.handle('user:add', (_event, url: string, options?: unknown) => addUserByUrl(url, options))
   ipcMain.handle('user:delete', async (_event, id: number, deleteFiles?: boolean) => {
     // 先停掉进行中的同步 / 录制，再删库；否则同步线程会继续往已不存在的用户下写作品
     if (isUserSyncing(id)) stopUserSync(id)

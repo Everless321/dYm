@@ -1,6 +1,7 @@
 import { Page, PageBody } from '@/components/layout/Page'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   Plus,
@@ -39,6 +40,16 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { getAvatarUrl } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { formatCompactNumber } from '@/lib/format'
+import {
+  CREATOR_PLATFORM_LABEL,
+  defaultBilibiliCreatorSettings,
+  detectCreatorPlatform,
+  extractCreatorLink,
+  normalizeCreatorPlatform,
+  parseBilibiliCreatorSettings,
+  type CreatorPlatform
+} from '@shared/platforms'
+import { CreatorSettingsFields, type CreatorFormState } from './CreatorSettingsFields'
 
 // 同步计划常用预设，点一下直接填入，省得每次手写 cron
 const SYNC_CRON_PRESETS: { label: string; value: string }[] = [
@@ -90,8 +101,25 @@ type SortOption = 'default' | 'undownloaded' | 'total'
 type ShowInHomeFilter = 'all' | 'yes' | 'no'
 type AutoSyncFilter = 'all' | 'yes' | 'no'
 type DownloadStatusFilter = 'all' | 'completed' | 'partial' | 'none'
+type PlatformFilter = 'all' | CreatorPlatform
+
+function blankCreatorForm(): CreatorFormState {
+  return {
+    remark: '',
+    max_download_count: 0,
+    show_in_home: true,
+    auto_sync: false,
+    sync_cron: '',
+    live_record: false,
+    live_check_cron: '',
+    bilibili: defaultBilibiliCreatorSettings()
+  }
+}
 
 export default function UsersPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const draftLink = searchParams.get('draft') || ''
+  const skipClipboard = useRef(false)
   const [users, setUsers] = useState<DbUser[]>([])
   const [open, setOpen] = useState(false)
   const [url, setUrl] = useState('')
@@ -105,6 +133,8 @@ export default function UsersPage() {
   const [showInHomeFilter, setShowInHomeFilter] = useState<ShowInHomeFilter>('all')
   const [autoSyncFilter, setAutoSyncFilter] = useState<AutoSyncFilter>('all')
   const [downloadStatusFilter, setDownloadStatusFilter] = useState<DownloadStatusFilter>('all')
+  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>('all')
+  const [addForm, setAddForm] = useState<CreatorFormState>(blankCreatorForm)
   const [, setClipboardStatus] = useState<{
     detected: boolean
     type: 'user' | 'video' | 'unknown' | null
@@ -119,7 +149,8 @@ export default function UsersPage() {
     auto_sync: false,
     sync_cron: '',
     live_record: false,
-    live_check_cron: ''
+    live_check_cron: '',
+    bilibili: defaultBilibiliCreatorSettings()
   })
   const [editLoading, setEditLoading] = useState(false)
   const [cronValid, setCronValid] = useState(true)
@@ -213,6 +244,10 @@ export default function UsersPage() {
       result = result.filter((u) => (autoSyncFilter === 'yes' ? !!u.auto_sync : !u.auto_sync))
     }
 
+    if (platformFilter !== 'all') {
+      result = result.filter((user) => normalizeCreatorPlatform(user.platform) === platformFilter)
+    }
+
     // 下载状态筛选
     if (downloadStatusFilter !== 'all') {
       result = result.filter((u) => {
@@ -240,7 +275,7 @@ export default function UsersPage() {
     }
 
     return result
-  }, [users, searchTerm, sortBy, showInHomeFilter, autoSyncFilter, downloadStatusFilter])
+  }, [users, searchTerm, sortBy, showInHomeFilter, autoSyncFilter, downloadStatusFilter, platformFilter])
 
   const totalPages = Math.ceil(filteredUsers.length / pageSize)
   // 删除用户后列表变短，当前页可能越界
@@ -252,7 +287,7 @@ export default function UsersPage() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm, pageSize, sortBy, showInHomeFilter, autoSyncFilter, downloadStatusFilter])
+  }, [searchTerm, pageSize, sortBy, showInHomeFilter, autoSyncFilter, downloadStatusFilter, platformFilter])
 
   useEffect(() => {
     if (currentPage !== safePage) setCurrentPage(safePage)
@@ -261,19 +296,11 @@ export default function UsersPage() {
   const checkClipboard = useCallback(async () => {
     try {
       const text = await navigator.clipboard.readText()
-      if (text && (text.includes('douyin.com') || text.includes('v.douyin.com'))) {
-        const urlMatch = text.match(/https?:\/\/[^\s]+douyin\.com[^\s]*/i)
-        if (urlMatch) {
-          const detectedUrl = urlMatch[0]
-          const result = await window.api.douyin.parseUrl(detectedUrl)
-          setClipboardStatus({
-            detected: true,
-            type: result.type,
-            url: detectedUrl
-          })
-          setUrl(detectedUrl)
-          return
-        }
+      const link = text ? extractCreatorLink(text) : null
+      if (link) {
+        setClipboardStatus({ detected: true, type: null, url: link.url })
+        setUrl(link.url)
+        return
       }
       setClipboardStatus({ detected: false, type: null, url: '' })
     } catch {
@@ -282,7 +309,27 @@ export default function UsersPage() {
   }, [])
 
   useEffect(() => {
+    if (!draftLink) return
+    setUrl(draftLink)
+    setAddForm(blankCreatorForm())
     if (open) {
+      skipClipboard.current = false
+    } else {
+      skipClipboard.current = true
+      setOpen(true)
+    }
+    const next = new URLSearchParams(searchParams)
+    next.delete('draft')
+    setSearchParams(next, { replace: true })
+  }, [draftLink, open, searchParams, setSearchParams])
+
+  useEffect(() => {
+    if (open) {
+      if (skipClipboard.current) {
+        skipClipboard.current = false
+        return
+      }
+      setAddForm(blankCreatorForm())
       checkClipboard()
     } else {
       setClipboardStatus({ detected: false, type: null, url: '' })
@@ -299,14 +346,38 @@ export default function UsersPage() {
   }
 
   const handleAddUser = async () => {
-    if (!url.trim()) {
-      toast.error('请输入链接')
+    const trimmed = url.trim()
+    const platform = detectCreatorPlatform(trimmed)
+    if (!trimmed || !platform) {
+      toast.error('请粘贴抖音或哔哩哔哩的创作者主页或作品链接')
       return
+    }
+    if (addForm.auto_sync && addForm.sync_cron) {
+      const valid = await window.api.sync.validateCron(addForm.sync_cron)
+      if (!valid) {
+        toast.error('同步计划不是合法的 Cron 表达式')
+        return
+      }
+    }
+    if (platform === 'douyin' && addForm.live_record && addForm.live_check_cron) {
+      const valid = await window.api.sync.validateCron(addForm.live_check_cron)
+      if (!valid) {
+        toast.error('直播检测计划不是合法的 Cron 表达式')
+        return
+      }
     }
 
     setLoading(true)
     try {
-      const result = await window.api.user.add(url.trim())
+      const result = await window.api.user.add(trimmed, {
+        max_download_count: addForm.max_download_count,
+        show_in_home: addForm.show_in_home,
+        auto_sync: addForm.auto_sync,
+        sync_cron: addForm.sync_cron,
+        live_record: platform === 'douyin' ? addForm.live_record : false,
+        live_check_cron: platform === 'douyin' ? addForm.live_check_cron : '',
+        platform_settings: platform === 'bilibili' ? addForm.bilibili : undefined
+      })
       const { user, isNewUser, postDownload } = result
       const prefix = isNewUser ? `用户 ${user.nickname} 添加成功` : `用户 ${user.nickname} 已存在`
       if (postDownload.status === 'downloading') {
@@ -409,7 +480,8 @@ export default function UsersPage() {
       auto_sync: !!user.auto_sync,
       sync_cron: user.sync_cron || '',
       live_record: !!user.live_record,
-      live_check_cron: user.live_check_cron || ''
+      live_check_cron: user.live_check_cron || '',
+      bilibili: parseBilibiliCreatorSettings(user.platform_settings)
     })
     setCronValid(true)
     setLiveCronValid(true)
@@ -442,7 +514,9 @@ export default function UsersPage() {
         auto_sync: editForm.auto_sync,
         sync_cron: editForm.sync_cron,
         live_record: editForm.live_record,
-        live_check_cron: editForm.live_check_cron
+        live_check_cron: editForm.live_check_cron,
+        platform_settings:
+          normalizeCreatorPlatform(editingUser.platform) === 'bilibili' ? editForm.bilibili : undefined
       })
       toast.success('保存成功')
       setEditingUser(null)
@@ -590,7 +664,7 @@ export default function UsersPage() {
             className="bg-[#0A84FF] hover:bg-[#0A84FF]/90 text-white"
           >
             <Plus className="h-4 w-4 mr-2" />
-            添加用户
+            添加创作者
           </Button>
         }
       />
@@ -689,6 +763,15 @@ export default function UsersPage() {
                 <option value="no">自动同步: 关闭</option>
               </select>
               <select
+                value={platformFilter}
+                onChange={(e) => setPlatformFilter(e.target.value as PlatformFilter)}
+                className="h-9 px-3 text-xs border border-[#E5E5E7] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#0A84FF]/20"
+              >
+                <option value="all">平台: 全部</option>
+                <option value="douyin">平台: 抖音</option>
+                <option value="bilibili">平台: 哔哩哔哩</option>
+              </select>
+              <select
                 value={downloadStatusFilter}
                 onChange={(e) => setDownloadStatusFilter(e.target.value as DownloadStatusFilter)}
                 className="h-9 px-3 text-xs border border-[#E5E5E7] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#0A84FF]/20"
@@ -736,7 +819,7 @@ export default function UsersPage() {
                 <User className="h-8 w-8 text-[#A1A1A6]" />
               </div>
               <p className="text-base font-medium">暂无用户</p>
-              <p className="text-sm mt-1 text-[#A1A1A6]">点击上方添加用户按钮开始</p>
+              <p className="text-sm mt-1 text-[#A1A1A6]">点击上方添加创作者按钮开始</p>
             </div>
           ) : (
             paginatedUsers.map((user) => (
@@ -758,7 +841,12 @@ export default function UsersPage() {
                     </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0">
-                    <p className="font-medium text-[#1D1D1F] truncate">{user.nickname}</p>
+                    <p className="font-medium text-[#1D1D1F] truncate">
+                      {user.nickname}
+                      <span className="ml-2 align-middle text-[10px] font-medium text-[#6E6E73]">
+                        {CREATOR_PLATFORM_LABEL[normalizeCreatorPlatform(user.platform)]}
+                      </span>
+                    </p>
                     <p className="text-xs text-[#A1A1A6] truncate">
                       @{user.unique_id || user.short_id || '-'}
                     </p>
@@ -930,9 +1018,9 @@ export default function UsersPage() {
 
       {/* Add User Modal */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden" showCloseButton={false}>
+        <DialogContent className="sm:max-w-[560px] p-0 overflow-hidden" showCloseButton={false}>
           <div className="h-[60px] flex items-center justify-between px-6 border-b border-[#E5E5E7]">
-            <h2 className="text-lg font-semibold text-[#1D1D1F]">添加抖音用户</h2>
+            <h2 className="text-lg font-semibold text-[#1D1D1F]">添加创作者</h2>
             <button
               onClick={() => setOpen(false)}
               className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-[#F2F2F4] transition-colors"
@@ -940,17 +1028,23 @@ export default function UsersPage() {
               <X className="h-5 w-5 text-[#A1A1A6]" />
             </button>
           </div>
-          <div className="p-6 space-y-5">
+          <div className="max-h-[70vh] overflow-y-auto p-6 space-y-5">
             <div className="space-y-2">
-              <Label className="text-sm font-medium text-[#1D1D1F]">用户主页链接</Label>
+              <Label className="text-sm font-medium text-[#1D1D1F]">创作者主页或作品链接</Label>
               <Input
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://www.douyin.com/user/..."
+                placeholder="抖音或哔哩哔哩链接"
                 disabled={loading}
                 className="h-11 border-[#E5E5E7]"
               />
             </div>
+            <CreatorSettingsFields
+              platform={detectCreatorPlatform(url)}
+              form={addForm}
+              showRemark={false}
+              onChange={(patch) => setAddForm((current) => ({ ...current, ...patch }))}
+            />
           </div>
           <div className="h-[72px] flex items-center justify-end gap-3 px-6 border-t border-[#E5E5E7]">
             <Button
@@ -974,7 +1068,7 @@ export default function UsersPage() {
               ) : (
                 <>
                   <Plus className="h-4 w-4 mr-2" />
-                  添加用户
+                  添加创作者
                 </>
               )}
             </Button>
@@ -984,109 +1078,21 @@ export default function UsersPage() {
 
       {/* Edit User Dialog */}
       <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
-        <DialogContent className="sm:max-w-[480px]">
+        <DialogContent className="sm:max-w-[560px]">
           <DialogHeader>
             <DialogTitle>编辑用户</DialogTitle>
             <DialogDescription>修改 {editingUser?.nickname} 的设置</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>备注</Label>
-              <Input
-                value={editForm.remark}
-                onChange={(e) => setEditForm((f) => ({ ...f, remark: e.target.value }))}
-                placeholder="添加备注..."
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>单次下载限制</Label>
-              <Input
-                type="number"
-                min={0}
-                value={editForm.max_download_count}
-                onChange={(e) =>
-                  setEditForm((f) => ({ ...f, max_download_count: parseInt(e.target.value) || 0 }))
-                }
-                placeholder="0 表示使用全局设置"
-              />
-              <p className="text-xs text-muted-foreground">设为 0 则使用系统全局设置</p>
-            </div>
-            <div className="flex items-center justify-between">
-              <Label>在首页显示</Label>
-              <Switch
-                checked={editForm.show_in_home}
-                onCheckedChange={(checked) => setEditForm((f) => ({ ...f, show_in_home: checked }))}
-              />
-            </div>
-            <div className="border-t border-[#E5E5E7] pt-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>自动同步</Label>
-                  <p className="text-xs text-muted-foreground">按计划自动下载新作品</p>
-                </div>
-                <Switch
-                  checked={editForm.auto_sync}
-                  onCheckedChange={(checked) => setEditForm((f) => ({ ...f, auto_sync: checked }))}
-                />
-              </div>
-              {editForm.auto_sync && (
-                <div className="space-y-2">
-                  <Label>同步计划 (Cron 表达式)</Label>
-                  <Input
-                    value={editForm.sync_cron}
-                    onChange={(e) => {
-                      setEditForm((f) => ({ ...f, sync_cron: e.target.value }))
-                      setCronValid(true)
-                    }}
-                    placeholder="0 8 * * *"
-                    className={!cronValid ? 'border-red-500' : ''}
-                  />
-                  <CronPresetRow
-                    value={editForm.sync_cron}
-                    onPick={(cron) => {
-                      setEditForm((f) => ({ ...f, sync_cron: cron }))
-                      setCronValid(true)
-                    }}
-                  />
-                  {!cronValid && <p className="text-xs text-red-500">Cron 表达式无效</p>}
-                </div>
-              )}
-            </div>
-            <div className="border-t border-[#E5E5E7] pt-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>录制直播</Label>
-                  <p className="text-xs text-muted-foreground">按计划检测开播并自动录制</p>
-                </div>
-                <Switch
-                  checked={editForm.live_record}
-                  onCheckedChange={(checked) =>
-                    setEditForm((f) => ({ ...f, live_record: checked }))
-                  }
-                />
-              </div>
-              {editForm.live_record && (
-                <div className="space-y-2">
-                  <Label>检测计划 (Cron 表达式)</Label>
-                  <Input
-                    value={editForm.live_check_cron}
-                    onChange={(e) => {
-                      setEditForm((f) => ({ ...f, live_check_cron: e.target.value }))
-                      setLiveCronValid(true)
-                    }}
-                    placeholder="*/5 * * * *"
-                    className={!liveCronValid ? 'border-red-500' : ''}
-                  />
-                  <div className="text-xs text-muted-foreground space-y-1">
-                    <p>常用示例:</p>
-                    <p className="font-mono">*/5 * * * * - 每 5 分钟检测</p>
-                    <p className="font-mono">*/10 * * * * - 每 10 分钟检测</p>
-                    <p className="font-mono">0 * * * * - 每小时整点检测</p>
-                  </div>
-                  {!liveCronValid && <p className="text-xs text-red-500">Cron 表达式无效</p>}
-                </div>
-              )}
-            </div>
+          <div className="max-h-[70vh] overflow-y-auto py-4">
+            <CreatorSettingsFields
+              platform={editingUser ? normalizeCreatorPlatform(editingUser.platform) : null}
+              form={editForm}
+              cronValid={cronValid}
+              liveCronValid={liveCronValid}
+              onCronEdit={() => setCronValid(true)}
+              onLiveCronEdit={() => setLiveCronValid(true)}
+              onChange={(patch) => setEditForm((current) => ({ ...current, ...patch }))}
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingUser(null)} disabled={editLoading}>

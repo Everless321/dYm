@@ -12,7 +12,11 @@ const SEC_UID_PATTERN = /^[A-Za-z0-9_-]+$/
  * 返回 local:// 协议可用的路径（toUrlPath 形式）；失败返回 null
  * （不抛出，调用方降级用远程链接）。
  */
-export async function downloadAvatar(secUid: string, avatarUrl: string): Promise<string | null> {
+export async function downloadAvatar(
+  secUid: string,
+  avatarUrl: string,
+  headers?: Record<string, string>
+): Promise<string | null> {
   if (!avatarUrl || !/^https?:\/\//i.test(avatarUrl)) return null
   if (!SEC_UID_PATTERN.test(secUid)) {
     console.warn(`[Avatar] rejected invalid secUid: ${secUid}`)
@@ -20,7 +24,7 @@ export async function downloadAvatar(secUid: string, avatarUrl: string): Promise
   }
 
   try {
-    const res = await net.fetch(avatarUrl, { signal: AbortSignal.timeout(15_000) })
+    const res = await net.fetch(avatarUrl, { headers, signal: AbortSignal.timeout(15_000) })
     if (!res.ok) {
       console.warn(`[Avatar] download failed ${res.status} for ${secUid}`)
       return null

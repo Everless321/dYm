@@ -14,6 +14,12 @@ import {
 } from './format'
 import type { LiveSync, PanelUser } from './types'
 import { CronPresets, EmptyState, Loading, MediaImage, Modal, SyncBadge } from './widgets'
+import {
+  CREATOR_PLATFORM_LABEL,
+  defaultBilibiliCreatorSettings,
+  detectCreatorPlatform,
+  type BilibiliCreatorSettings
+} from '../../../src/shared/platforms'
 
 export function UsersPane({
   nodeId,
@@ -29,6 +35,13 @@ export function UsersPane({
   const [error, setError] = useState('')
   const [url, setUrl] = useState('')
   const [adding, setAdding] = useState(false)
+  const [maxDownloadCount, setMaxDownloadCount] = useState('0')
+  const [showInHome, setShowInHome] = useState(true)
+  const [autoSync, setAutoSync] = useState(false)
+  const [syncCron, setSyncCron] = useState('')
+  const [liveRecord, setLiveRecord] = useState(false)
+  const [liveCheckCron, setLiveCheckCron] = useState('')
+  const [bilibili, setBilibili] = useState<BilibiliCreatorSettings>(defaultBilibiliCreatorSettings)
   const [editing, setEditing] = useState<PanelUser | null>(null)
   const [keyword, setKeyword] = useState('')
   const [localReload, setLocalReload] = useState(0)
@@ -59,9 +72,23 @@ export function UsersPane({
       toast('请粘贴用户主页或作品链接')
       return
     }
+    const platform = detectCreatorPlatform(next)
+    if (!platform) {
+      toast('请粘贴抖音或哔哩哔哩的创作者主页或作品链接')
+      return
+    }
     setAdding(true)
     try {
-      await rpc(nodeId, 'users.add', { url: next })
+      await rpc(nodeId, 'users.add', {
+        url: next,
+        maxDownloadCount: Number(maxDownloadCount) || 0,
+        showInHome,
+        autoSync,
+        syncCron,
+        liveRecord: platform === 'douyin' ? liveRecord : false,
+        liveCheckCron: platform === 'douyin' ? liveCheckCron : '',
+        bilibili: platform === 'bilibili' ? bilibili : undefined
+      })
       setUrl('')
       toast('已添加')
       setLocalReload((current) => current + 1)
@@ -136,9 +163,9 @@ export function UsersPane({
     <section className="surface">
       <form className="composer" onSubmit={(event) => void onAdd(event)}>
         <label className="field grow">
-          添加用户
+          添加创作者
           <input
-            placeholder="粘贴用户主页或作品链接"
+            placeholder="粘贴抖音或哔哩哔哩的主页、作品链接"
             autoComplete="off"
             value={url}
             onChange={(event) => setUrl(event.target.value)}
@@ -148,13 +175,32 @@ export function UsersPane({
           {adding ? '正在添加' : '添加'}
         </button>
       </form>
+      {detectCreatorPlatform(url) ? (
+        <AddCreatorOptions
+          platform={detectCreatorPlatform(url) || 'douyin'}
+          maxDownloadCount={maxDownloadCount}
+          showInHome={showInHome}
+          autoSync={autoSync}
+          syncCron={syncCron}
+          liveRecord={liveRecord}
+          liveCheckCron={liveCheckCron}
+          bilibili={bilibili}
+          onMaxDownloadCount={setMaxDownloadCount}
+          onShowInHome={setShowInHome}
+          onAutoSync={setAutoSync}
+          onSyncCron={setSyncCron}
+          onLiveRecord={setLiveRecord}
+          onLiveCheckCron={setLiveCheckCron}
+          onBilibili={setBilibili}
+        />
+      ) : null}
       {users && users.length ? (
         <div className="composer">
           <label className="field grow">
             搜索
             <input
               value={keyword}
-              placeholder="昵称、抖音号或备注"
+              placeholder="昵称、账号或备注"
               autoComplete="off"
               onChange={(event) => setKeyword(event.target.value)}
             />
@@ -188,6 +234,7 @@ export function UsersPane({
                 const home =
                   user.homepageUrl && /^https:\/\//.test(user.homepageUrl) ? user.homepageUrl : ''
                 const meta = [
+                  user.platform === 'bilibili' ? '哔哩哔哩' : '抖音',
                   user.uniqueId ? `@${user.uniqueId}` : '',
                   user.remark,
                   user.lastSyncAt ? `上次同步 ${formatUnixAgo(user.lastSyncAt)}` : ''
@@ -302,6 +349,177 @@ export function UsersPane({
   )
 }
 
+function AddCreatorOptions({
+  platform,
+  maxDownloadCount,
+  showInHome,
+  autoSync,
+  syncCron,
+  liveRecord,
+  liveCheckCron,
+  bilibili,
+  onMaxDownloadCount,
+  onShowInHome,
+  onAutoSync,
+  onSyncCron,
+  onLiveRecord,
+  onLiveCheckCron,
+  onBilibili
+}: {
+  platform: 'douyin' | 'bilibili'
+  maxDownloadCount: string
+  showInHome: boolean
+  autoSync: boolean
+  syncCron: string
+  liveRecord: boolean
+  liveCheckCron: string
+  bilibili: BilibiliCreatorSettings
+  onMaxDownloadCount: (value: string) => void
+  onShowInHome: (value: boolean) => void
+  onAutoSync: (value: boolean) => void
+  onSyncCron: (value: string) => void
+  onLiveRecord: (value: boolean) => void
+  onLiveCheckCron: (value: string) => void
+  onBilibili: (value: BilibiliCreatorSettings) => void
+}): React.JSX.Element {
+  return (
+    <div className="composer">
+      <p className="eyebrow">已识别为{CREATOR_PLATFORM_LABEL[platform]}，下面是这个平台的设置</p>
+      <label className="field">
+        单次下载上限
+        <input
+          type="number"
+          min={0}
+          value={maxDownloadCount}
+          onChange={(event) => onMaxDownloadCount(event.target.value)}
+        />
+      </label>
+      <label className="field">
+        自动同步 Cron
+        <input
+          value={syncCron}
+          placeholder="留空表示不定时，例如 0 8 * * *"
+          onChange={(event) => onSyncCron(event.target.value)}
+        />
+        <CronPresets value={syncCron} onPick={onSyncCron} />
+      </label>
+      <label className="checkline">
+        <input
+          type="checkbox"
+          checked={showInHome}
+          onChange={(event) => onShowInHome(event.target.checked)}
+        />
+        在桌面端首页显示
+      </label>
+      <label className="checkline">
+        <input
+          type="checkbox"
+          checked={autoSync}
+          onChange={(event) => onAutoSync(event.target.checked)}
+        />
+        启用自动同步
+      </label>
+      {platform === 'douyin' ? (
+        <>
+          <label className="checkline">
+            <input
+              type="checkbox"
+              checked={liveRecord}
+              onChange={(event) => onLiveRecord(event.target.checked)}
+            />
+            录制抖音直播
+          </label>
+          {liveRecord ? (
+            <label className="field">
+              直播检测 Cron
+              <input
+                value={liveCheckCron}
+                placeholder="*/5 * * * *"
+                onChange={(event) => onLiveCheckCron(event.target.value)}
+              />
+            </label>
+          ) : null}
+        </>
+      ) : (
+        <BilibiliOptionFields value={bilibili} onChange={onBilibili} />
+      )}
+    </div>
+  )
+}
+
+function BilibiliOptionFields({
+  value,
+  onChange
+}: {
+  value: BilibiliCreatorSettings
+  onChange: (value: BilibiliCreatorSettings) => void
+}): React.JSX.Element {
+  return (
+    <>
+      <label className="field">
+        画质
+        <select
+          value={value.videoQuality}
+          onChange={(event) => onChange({ ...value, videoQuality: Number(event.target.value) })}
+        >
+          <option value={80}>1080P</option>
+          <option value={64}>720P</option>
+          <option value={116}>1080P 60帧</option>
+          <option value={120}>4K</option>
+          <option value={127}>8K</option>
+        </select>
+      </label>
+      <label className="field">
+        视频编码
+        <select
+          value={value.videoCodec}
+          onChange={(event) =>
+            onChange({
+              ...value,
+              videoCodec: event.target.value as BilibiliCreatorSettings['videoCodec']
+            })
+          }
+        >
+          <option value="avc">H.264 / AVC</option>
+          <option value="hevc">H.265 / HEVC</option>
+          <option value="av1">AV1</option>
+        </select>
+      </label>
+      <label className="field">
+        音质
+        <select
+          value={value.audioQuality}
+          onChange={(event) => onChange({ ...value, audioQuality: Number(event.target.value) })}
+        >
+          <option value={30232}>132K</option>
+          <option value={30280}>192K</option>
+          <option value={30250}>Hi-Res</option>
+          <option value={30251}>杜比全景声</option>
+        </select>
+      </label>
+      {(
+        [
+          ['downloadVideo', '下载视频'],
+          ['downloadAudio', '下载音频'],
+          ['downloadCover', '下载封面'],
+          ['downloadDanmaku', '下载弹幕'],
+          ['downloadSubtitle', '下载字幕'],
+          ['downloadAllPages', '下载全部分 P']
+        ] as const
+      ).map(([key, label]) => (
+        <label className="checkline" key={key}>
+          <input
+            type="checkbox"
+            checked={value[key]}
+            onChange={(event) => onChange({ ...value, [key]: event.target.checked })}
+          />
+          {label}
+        </label>
+      ))}
+    </>
+  )
+}
+
 function UserSettings({
   nodeId,
   user,
@@ -319,7 +537,13 @@ function UserSettings({
   const [syncCron, setSyncCron] = useState(user.syncCron || '')
   const [showInHome, setShowInHome] = useState(user.showInHome)
   const [autoSync, setAutoSync] = useState(user.autoSync)
+  const [liveRecord, setLiveRecord] = useState(Boolean(user.liveRecord))
+  const [liveCheckCron, setLiveCheckCron] = useState(user.liveCheckCron || '')
+  const [bilibili, setBilibili] = useState<BilibiliCreatorSettings>(
+    user.bilibili || defaultBilibiliCreatorSettings()
+  )
   const [saving, setSaving] = useState(false)
+  const platform = user.platform === 'bilibili' ? 'bilibili' : 'douyin'
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
@@ -331,7 +555,10 @@ function UserSettings({
         maxDownloadCount: Number(maxDownloadCount),
         syncCron,
         showInHome,
-        autoSync
+        autoSync,
+        liveRecord: platform === 'douyin' ? liveRecord : false,
+        liveCheckCron: platform === 'douyin' ? liveCheckCron : '',
+        bilibili: platform === 'bilibili' ? bilibili : undefined
       })
       toast('已保存')
       onSaved()
@@ -346,7 +573,7 @@ function UserSettings({
       <form className="dialog-pad" onSubmit={(event) => void onSubmit(event)}>
         <div className="spread">
           <div>
-            <p className="eyebrow">用户设置</p>
+            <p className="eyebrow">{CREATOR_PLATFORM_LABEL[platform]}创作者</p>
             <h2>{user.nickname || '未命名'}</h2>
           </div>
           <button className="ghost" type="button" onClick={onClose}>
@@ -397,7 +624,30 @@ function UserSettings({
             />
             启用自动同步
           </label>
+          {platform === 'douyin' ? (
+            <label className="checkline">
+              <input
+                type="checkbox"
+                checked={liveRecord}
+                onChange={(event) => setLiveRecord(event.target.checked)}
+              />
+              录制抖音直播
+            </label>
+          ) : null}
         </div>
+        {platform === 'douyin' && liveRecord ? (
+          <label className="field">
+            直播检测 Cron
+            <input
+              value={liveCheckCron}
+              placeholder="*/5 * * * *"
+              onChange={(event) => setLiveCheckCron(event.target.value)}
+            />
+          </label>
+        ) : null}
+        {platform === 'bilibili' ? (
+          <BilibiliOptionFields value={bilibili} onChange={setBilibili} />
+        ) : null}
         <div className="dialog-actions">
           <button className="primary" type="submit" disabled={saving}>
             保存

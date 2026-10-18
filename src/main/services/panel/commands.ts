@@ -38,6 +38,12 @@ import { validateCronExpression } from '../scheduler'
 import { getLiveOutputPath, stopLiveRecordingAndWait } from '../live/recorder'
 import { addUserByUrl } from '../users/add'
 import { refreshUserProfile } from '../users/refresh'
+import {
+  normalizeCreatorPlatform,
+  parseBilibiliCreatorSettings,
+  type BilibiliCreatorSettings
+} from '../../../shared/platforms'
+import { bilibiliCookie } from '../bilibili/client'
 import { takeDownloadProgress, takeSyncProgress } from './progress'
 
 const LOGIN_COOKIE = /(?:^|;\s*)(?:sessionid|sessionid_ss|sid_tt|sid_guard)=/
@@ -158,7 +164,7 @@ function readCounts(): PanelCounts {
 
 async function addUser(input: Record<string, unknown>): Promise<unknown> {
   const url = requireText(input.url, '请填写用户或作品链接', 2000)
-  const result = await addUserByUrl(url)
+  const result = await addUserByUrl(url, input)
   return {
     isNewUser: result.isNewUser,
     postDownload: result.postDownload,
@@ -207,14 +213,24 @@ function saveUserSettings(input: Record<string, unknown>): unknown {
     if (cron && !validateCronExpression(cron)) throw new Error('同步计划不是合法的 Cron 表达式')
     patch.sync_cron = cron
   }
+  if (typeof input.liveRecord === 'boolean') patch.live_record = input.liveRecord
+  if (typeof input.liveCheckCron === 'string') {
+    const cron = input.liveCheckCron.trim().slice(0, 100)
+    if (cron && !validateCronExpression(cron)) throw new Error('直播检测计划不是合法的 Cron 表达式')
+    patch.live_check_cron = cron
+  }
+  if (input.bilibili && typeof input.bilibili === 'object') {
+    patch.platform_settings = input.bilibili as BilibiliCreatorSettings
+  }
   const user = updateUserSettings(id, patch)
   if (!user) throw new Error('用户不存在')
   return { user: toUser(user) }
 }
 
 function beginSync(id: number): { started: boolean; syncing: boolean } {
-  if (!getUserById(id)) throw new Error('用户不存在')
-  requireDouyinLogin()
+  const user = getUserById(id)
+  if (!user) throw new Error('用户不存在')
+  requirePlatformLogin(user.platform)
   if (isUserSyncing(id)) return { started: false, syncing: true }
   void startUserSync(id, { source: 'manual' }).catch((error) => {
     console.error('[Panel] 同步失败:', error)
@@ -304,8 +320,11 @@ function removeTask(id: number): { ok: true } {
 }
 
 function beginTask(id: number): { started: boolean; running: boolean } {
-  if (!getTaskById(id)) throw new Error('任务不存在')
-  requireDouyinLogin()
+  const task = getTaskById(id)
+  if (!task) throw new Error('任务不存在')
+  const platforms = new Set(task.users.map((user) => normalizeCreatorPlatform(user.platform)))
+  if (platforms.has('douyin')) requirePlatformLogin('douyin')
+  if (platforms.has('bilibili')) requirePlatformLogin('bilibili')
   if (isTaskRunning(id)) return { started: false, running: true }
   void startDownloadTask(id, { source: 'manual' }).catch((error) => {
     console.error('[Panel] 下载任务失败:', error)
@@ -313,7 +332,11 @@ function beginTask(id: number): { started: boolean; running: boolean } {
   return { started: true, running: true }
 }
 
-function requireDouyinLogin(): void {
+function requirePlatformLogin(platform: string): void {
+  if (normalizeCreatorPlatform(platform) === 'bilibili') {
+    if (!bilibiliCookie()) throw new Error('这台客户端还没有登录哔哩哔哩')
+    return
+  }
   if (!(getSetting('douyin_cookie') || '').trim()) {
     throw new Error('这台客户端还没有登录抖音')
   }
@@ -357,6 +380,10 @@ interface PanelUserView {
   showInHome: boolean
   homepageUrl: string
   lastSyncAt: number | null
+  platform: 'douyin' | 'bilibili'
+  liveRecord: boolean
+  liveCheckCron: string
+  bilibili: BilibiliCreatorSettings | null
   progress: object | null
 }
 
@@ -380,6 +407,13 @@ function toUser(user: DbUser): PanelUserView {
     showInHome: user.show_in_home === 1,
     homepageUrl: user.homepage_url,
     lastSyncAt: user.last_sync_at,
+    platform: normalizeCreatorPlatform(user.platform),
+    liveRecord: user.live_record === 1,
+    liveCheckCron: user.live_check_cron || '',
+    bilibili:
+      normalizeCreatorPlatform(user.platform) === 'bilibili'
+        ? parseBilibiliCreatorSettings(user.platform_settings)
+        : null,
     progress: takeSyncProgress(user.id)
   }
 }

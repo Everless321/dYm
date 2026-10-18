@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { WelcomeDialog } from '../dialogs/WelcomeDialog'
 import { DEVELOPER_MODE_EVENT } from '@/lib/developer-mode'
+import { CREATOR_PLATFORM_LABEL, detectCreatorPlatform } from '@shared/platforms'
 
 const COLLAPSE_KEY = 'sidebar_collapsed'
 
@@ -41,8 +42,6 @@ const devNavItems = [{ path: '/scripts', label: '自定义脚本', icon: Code2 }
 export function AppLayout(): React.JSX.Element {
   const location = useLocation()
   const navigate = useNavigate()
-  const [pendingLink, setPendingLink] = useState<string | null>(null)
-  const [isAdding, setIsAdding] = useState(false)
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1')
   const [developerMode, setDeveloperMode] = useState(false)
 
@@ -78,13 +77,14 @@ export function AppLayout(): React.JSX.Element {
   useEffect(() => {
     const cleanup = window.api.clipboard.onDouyinLink((link) => {
       // 显示提示
-      toast('检测到抖音链接', {
+      const platform = detectCreatorPlatform(link)
+      toast(platform ? `检测到${CREATOR_PLATFORM_LABEL[platform]}链接` : '检测到创作者链接', {
         description: link.length > 50 ? link.substring(0, 50) + '...' : link,
         duration: 8000,
         action: {
-          label: '添加用户',
+          label: '添加创作者',
           onClick: () => {
-            setPendingLink(link)
+            navigate(`/users?draft=${encodeURIComponent(link)}`)
           }
         }
       })
@@ -92,36 +92,6 @@ export function AppLayout(): React.JSX.Element {
 
     return cleanup
   }, [])
-
-  // 处理添加用户
-  useEffect(() => {
-    if (!pendingLink || isAdding) return
-
-    const addUser = async (): Promise<void> => {
-      setIsAdding(true)
-      try {
-        const { user, isNewUser, postDownload } = await window.api.user.add(pendingLink)
-        const prefix = isNewUser ? `已添加用户: ${user.nickname}` : `用户 ${user.nickname} 已存在`
-        if (postDownload.status === 'downloading') {
-          toast.success(`${prefix}，正在后台下载作品...`)
-        } else if (postDownload.status === 'already-downloaded') {
-          toast.success(`${prefix}，该作品已下载过`)
-        } else if (isNewUser) {
-          toast.success(prefix)
-        } else {
-          toast.info(prefix)
-        }
-        navigate('/users')
-      } catch (error) {
-        toast.error(`添加失败: ${(error as Error).message}`)
-      } finally {
-        setIsAdding(false)
-        setPendingLink(null)
-      }
-    }
-
-    addUser()
-  }, [pendingLink, isAdding, navigate])
 
   useEffect(() => {
     const unsubscribe = window.api.user.onAddPostProgress((progress) => {

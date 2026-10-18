@@ -8,6 +8,8 @@ import {
   resetLoginBrowser
 } from '../services/douyin/cookie'
 import { refreshDouyinHandler } from '../services/douyin/client'
+import { fetchBilibiliCookie } from '../services/bilibili/cookie'
+import { clearWbiCache } from '../services/bilibili/client'
 
 export function registerSettingsIpc(): void {
   // Settings IPC handlers
@@ -17,6 +19,9 @@ export function registerSettingsIpc(): void {
     // 更新 cookie 时刷新抖音客户端
     if (key === 'douyin_cookie') {
       refreshDouyinHandler()
+    }
+    if (key === 'bilibili_cookie') {
+      clearWbiCache()
     }
   })
   ipcMain.handle('settings:getAll', () => getAllSettings())
@@ -36,6 +41,7 @@ export function registerSettingsIpc(): void {
   })
   ipcMain.handle('cookie:isRefreshing', () => isCookieRefreshing())
   ipcMain.handle('cookie:resetBrowser', () => resetLoginBrowser())
+  ipcMain.handle('cookie:fetchBilibili', () => fetchBilibiliCookie())
 
   // Download path IPC handler
   ipcMain.handle('settings:getDefaultDownloadPath', () => {

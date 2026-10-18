@@ -86,6 +86,8 @@ export function initDatabase(): void {
   ensureColumn(database, 'users', 'live_check_cron', "TEXT DEFAULT ''")
   ensureColumn(database, 'users', 'live_status', "TEXT DEFAULT 'idle'")
   ensureColumn(database, 'users', 'last_live_at', 'INTEGER')
+  ensureColumn(database, 'users', 'platform', "TEXT DEFAULT 'douyin'")
+  ensureColumn(database, 'users', 'platform_settings', "TEXT DEFAULT '{}'")
 
   // 任务-用户关联表
   database.exec(`
@@ -215,6 +217,7 @@ export function initDatabase(): void {
   // 初始化默认设置
   const defaultSettings = [
     { key: 'douyin_cookie', value: '' },
+    { key: 'bilibili_cookie', value: '' },
     { key: 'download_path', value: '' },
     { key: 'max_download_count', value: '50' },
     // 定时同步排队：同时几个、每个之间隔多少秒（带 ±50% 抖动）
