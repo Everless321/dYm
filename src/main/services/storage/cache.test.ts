@@ -12,13 +12,17 @@ let objects: {
   size: number
   content_type: string | null
 }[] = []
+/** 按作品指定云端对象；没指定的用 objects */
+const objectsById = new Map<string, typeof objects>()
 let cacheBytes = 1024 ** 3
 let port = 0
 const hits: string[] = []
 
 vi.mock('electron', () => ({ app: { getPath: () => userData } }))
 vi.mock('../media', () => ({ resolvePostFolder: () => null }))
-vi.mock('../../database', () => ({ getPostObjects: () => objects }))
+vi.mock('../../database', () => ({
+  getPostObjects: (id: string) => objectsById.get(id) ?? objects
+}))
 vi.mock('./config', () => ({ loadStorageConfig: () => ({ cacheBytes }) }))
 vi.mock('./client', () => ({
   remoteObjectUrl: (_config: unknown, key: string) => `http://127.0.0.1:${port}/${key}`
@@ -30,7 +34,9 @@ let server: Server
 beforeAll(async () => {
   server = createServer((req, res) => {
     hits.push(req.url!)
-    res.end(`body:${req.url}`)
+    // 模拟大文件：slow 开头的 key 晚一点才返回
+    const delay = req.url!.startsWith('/slow/') ? 300 : 0
+    setTimeout(() => res.end(`body:${req.url}`), delay)
   })
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
   port = (server.address() as { port: number }).port
@@ -39,6 +45,7 @@ afterAll(() => server.close())
 beforeEach(() => {
   hits.length = 0
   cacheBytes = 1024 ** 3
+  objectsById.clear()
 })
 
 const post = (id: string): { aweme_id: string; sec_uid: string; folder_name: string } => ({
@@ -90,5 +97,30 @@ describe('ensureLocalMedia', () => {
     const secondDir = (await ensureLocalMedia(post(second)))!
     expect(existsSync(secondDir)).toBe(true)
     expect(existsSync(firstDir)).toBe(false)
+  })
+
+  it('并发取回时，先完成的作品清理缓存不会删掉别的作品没下完的目录', async () => {
+    const slow = '7000000000000000005'
+    const fast = '7000000000000000006'
+    objectsById.set(slow, [
+      { key: `slow/${slow}`, kind: 'video', idx: 0, size: 1, content_type: null }
+    ])
+    objectsById.set(fast, [
+      { key: `fast/${fast}`, kind: 'video', idx: 0, size: 1, content_type: null }
+    ])
+    const [slowDir, fastDir] = await Promise.all([
+      ensureLocalMedia(post(slow)),
+      ensureLocalMedia(post(fast))
+    ])
+    expect(readdirSync(slowDir!)).toContain(`${slow}_video.mp4`)
+    expect(readdirSync(fastDir!)).toContain(`${fast}_video.mp4`)
+  })
+
+  it('同一作品并发取回只下载一次', async () => {
+    const id = '7000000000000000007'
+    objectsById.set(id, [{ key: `slow/${id}`, kind: 'video', idx: 0, size: 1, content_type: null }])
+    const [a, b] = await Promise.all([ensureLocalMedia(post(id)), ensureLocalMedia(post(id))])
+    expect(a).toBe(b)
+    expect(hits).toEqual([`/slow/${id}`])
   })
 })

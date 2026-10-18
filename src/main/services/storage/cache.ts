@@ -4,11 +4,11 @@ import { mkdir, readdir, rename, rm, stat, utimes, writeFile } from 'fs/promises
 import { join } from 'path'
 import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
-import { getPostObjects } from '../../database'
+import { getPostObjects, type PostObjectRow } from '../../database'
 import { describeNetworkError } from '../../utils/network-error'
 import { resolvePostFolder } from '../media'
 import { remoteObjectUrl } from './client'
-import { loadStorageConfig } from './config'
+import { loadStorageConfig, type StorageConfig } from './config'
 import { localFileNameFor, planPostObjects } from './keys'
 
 /**
@@ -65,10 +65,14 @@ async function dirSize(dir: string): Promise<number> {
   return total
 }
 
-async function evict(limitBytes: number, keep: string): Promise<void> {
+/** 正在取回的作品 → 取回结果。同一作品并发只下一次；evict 不能把它们没下完的目录当残留删掉 */
+const inflight = new Map<string, Promise<string>>()
+
+async function evict(limitBytes: number): Promise<void> {
   const root = cacheRoot()
   const entries: { dir: string; used: number; size: number }[] = []
   for (const name of await readdir(root)) {
+    if (inflight.has(name)) continue
     const dir = join(root, name)
     try {
       const marker = statSync(join(dir, COMPLETE_MARKER))
@@ -81,7 +85,6 @@ async function evict(limitBytes: number, keep: string): Promise<void> {
   let total = entries.reduce((sum, e) => sum + e.size, 0)
   for (const e of entries.sort((a, b) => a.used - b.used)) {
     if (total <= limitBytes) break
-    if (e.dir.endsWith(keep)) continue
     await rm(e.dir, { recursive: true, force: true })
     total -= e.size
   }
@@ -112,13 +115,30 @@ export async function ensureLocalMedia(post: {
     return dir
   }
 
+  let pending = inflight.get(post.aweme_id)
+  if (!pending) {
+    pending = fetchToCache(post.aweme_id, rows, config, dir).finally(() =>
+      inflight.delete(post.aweme_id)
+    )
+    inflight.set(post.aweme_id, pending)
+  }
+  return pending
+}
+
+async function fetchToCache(
+  awemeId: string,
+  rows: PostObjectRow[],
+  config: StorageConfig,
+  dir: string
+): Promise<string> {
   await mkdir(dir, { recursive: true })
   for (const row of rows) {
-    const name = localFileNameFor(post.aweme_id, row.kind, row.idx, row.content_type)
+    const name = localFileNameFor(awemeId, row.kind, row.idx, row.content_type)
     await download(remoteObjectUrl(config, row.key), join(dir, name))
   }
-  await writeFile(marker, '')
-  await evict(config.cacheBytes, post.aweme_id).catch((error) =>
+  await writeFile(join(dir, COMPLETE_MARKER), '')
+  // 自己还在 inflight 里，不会被这次淘汰
+  await evict(config.cacheBytes).catch((error) =>
     console.warn('[Storage] 清理取回缓存失败:', (error as Error).message)
   )
   return dir
