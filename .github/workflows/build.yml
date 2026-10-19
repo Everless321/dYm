@@ -108,6 +108,8 @@ jobs:
       # 放在 build 之前：安装包文件名和应用内显示的版本都取自 package.json
       - name: Set nightly version
         if: needs.precheck.outputs.nightly == 'true'
+        # Windows 默认是 PowerShell，$VERSION 会被当成 PowerShell 变量而不是环境变量
+        shell: bash
         env:
           VERSION: ${{ needs.precheck.outputs.version }}
         run: npm pkg set version="$VERSION"
