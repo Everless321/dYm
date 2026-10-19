@@ -23,6 +23,10 @@ export function registerUpdaterHandlers(): void {
     if (is.dev) {
       throw new Error('开发环境不支持自动更新')
     }
+    // 夜间版的 Release 里没有更新清单，检查只会报一个看不懂的错
+    if (app.getVersion().includes('-nightly')) {
+      throw new Error('夜间版不支持自动更新，请到 GitHub Releases 的 Nightly 页面手动下载')
+    }
     try {
       const result = await autoUpdater.checkForUpdates()
       return result?.updateInfo

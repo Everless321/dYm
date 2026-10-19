@@ -4,10 +4,53 @@ on:
   push:
     tags:
       - 'v*'
+  # 夜间版：每天北京时间 04:00 构建一次 main，发布到滚动的 nightly 预发布
+  schedule:
+    - cron: '0 20 * * *'
   workflow_dispatch:
+    inputs:
+      nightly:
+        description: '发布为夜间版（即使 main 没有新提交也构建）'
+        type: boolean
+        default: false
 
 jobs:
+  # 决定这次是不是夜间版、版本号是什么，以及 main 没变时跳过整次构建
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      nightly: ${{ steps.check.outputs.nightly }}
+      skip: ${{ steps.check.outputs.skip }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Check
+        id: check
+        env:
+          EVENT: ${{ github.event_name }}
+          FORCE_NIGHTLY: ${{ inputs.nightly }}
+        run: |
+          if [ "$EVENT" = schedule ] || [ "$FORCE_NIGHTLY" = true ]; then
+            echo "nightly=true" >> "$GITHUB_OUTPUT"
+            # 必须是合法 semver：electron-updater 启动时会解析 app.getVersion()
+            echo "version=$(node -p 'require("./package.json").version')-nightly.$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+          else
+            echo "nightly=false" >> "$GITHUB_OUTPUT"
+          fi
+          # 只有定时触发才去重：nightly 标签已指向当前提交，说明昨天之后 main 没有新提交
+          last=$(git ls-remote origin refs/tags/nightly | cut -f1)
+          if [ "$EVENT" = schedule ] && [ "$last" = "$GITHUB_SHA" ]; then
+            echo "main 自上次夜间版后没有新提交，跳过"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: precheck
+    if: needs.precheck.outputs.skip != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -61,6 +104,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
         timeout-minutes: 10
+
+      # 放在 build 之前：安装包文件名和应用内显示的版本都取自 package.json
+      - name: Set nightly version
+        if: needs.precheck.outputs.nightly == 'true'
+        env:
+          VERSION: ${{ needs.precheck.outputs.version }}
+        run: npm pkg set version="$VERSION"
 
       - name: Build
         run: npm run build
@@ -190,3 +240,67 @@ jobs:
           TAG: ${{ github.ref_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash .github/scripts/notify-telegram.sh
+
+  # 夜间版发布到同一个 nightly 预发布里，原地更新而不是每天新建，
+  # 否则关注 Releases 的人每天都会收到一封通知
+  nightly:
+    needs: [precheck, build]
+    if: needs.precheck.outputs.nightly == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # 要用历史和 tag 生成「自上个正式版以来的改动」
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+
+      # 不上传 latest*.yml 和 .blockmap：它们是自动更新用的，夜间版不参与自动更新。
+      # 正式版用户不受影响：electron-updater 只看 releases/latest，预发布不算在内
+      - name: Publish nightly release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.precheck.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir files
+          find artifacts -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' \
+            -o -name '*.AppImage' -o -name '*.deb' \) -exec cp {} files/ \;
+          ls files
+
+          stable=$(git describe --tags --abbrev=0 --match 'v*')
+          {
+            echo "main 分支的每日自动构建（$VERSION），没有经过发版测试，仅供尝鲜。"
+            echo
+            echo "夜间版不会自动更新，需要新版时请回到这里手动下载。"
+            echo
+            echo "提交：$GITHUB_SHA"
+            echo
+            echo "自 $stable 以来的改动："
+            echo
+            git log --no-merges --format='- %s' "$stable..HEAD"
+          } > notes.md
+
+          git tag -f nightly "$GITHUB_SHA"
+          git push -f origin refs/tags/nightly
+
+          if gh release view nightly > /dev/null 2>&1; then
+            gh release edit nightly --title "Nightly $VERSION" --notes-file notes.md \
+              --prerelease --latest=false
+          else
+            gh release create nightly --title "Nightly $VERSION" --notes-file notes.md \
+              --prerelease --latest=false --verify-tag
+          fi
+
+          # 先传新的再删旧的，下载链接不会出现空窗
+          gh release upload nightly files/* --clobber
+          gh release view nightly --json assets -q '.assets[].name' | while read -r name; do
+            [ -e "files/$name" ] || gh release delete-asset nightly "$name" -y
+          done
