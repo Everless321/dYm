@@ -850,7 +850,8 @@ export default function UsersPage() {
                     detailUser?.id === user.id ? 'bg-[#E8F0FE]/40' : ''
                   }`}
                 >
-                  <div className="w-10">
+                  {/* 行内控件自己处理点击，不冒泡到整行，否则会顺带打开详情 */}
+                  <div className="w-10" onClick={(e) => e.stopPropagation()}>
                     <Checkbox
                       checked={selectedIds.has(user.id)}
                       onCheckedChange={() => handleToggleSelect(user.id)}
@@ -916,13 +917,16 @@ export default function UsersPage() {
                       <span className="text-xs text-[#A1A1A6]">手动</span>
                     )}
                   </div>
-                  <div className="w-20 flex justify-center">
+                  <div className="w-20 flex justify-center" onClick={(e) => e.stopPropagation()}>
                     <Switch
                       checked={!!user.show_in_home}
                       onCheckedChange={() => handleToggleShowInHome(user)}
                     />
                   </div>
-                  <div className="w-44 flex justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                  <div
+                    className="w-44 flex justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     {syncingUserIds.has(user.id) ? (
                       <Button
                         variant="ghost"
