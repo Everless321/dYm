@@ -16,6 +16,63 @@ const ANON_DM_FIELDS = {
   dm_img_inter: '{"ds":[],"wh":[0,0,0],"of":[0,0,0]}'
 }
 
+/**
+ * 所有 api.bilibili.com 请求排成一队：两次之间至少隔 API_GAP_MS，再加随机抖动。
+ * 全局生效，并发下载、多个 UP 主同时同步也共用这一个间隔。
+ * 视频文件走 CDN，不经过这里。
+ */
+const API_GAP_MS = 3000
+const API_JITTER_MS = 2000
+/** 触发风控后这么久内不再请求任何 B 站接口，继续请求只会延长封禁 */
+const RISK_COOLDOWN_MS = 10 * 60_000
+/** -412 请求被拦截，-352 风控校验失败 */
+const RISK_CODES = new Set([-412, -352])
+
+let apiQueue: Promise<unknown> = Promise.resolve()
+let lastApiAt = 0
+let riskUntil = 0
+
+/** B 站风控拦截。调用方看到它应停止整次同步，而不是跳过当前作品继续 */
+export class BilibiliRiskControlError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'BilibiliRiskControlError'
+  }
+}
+
+function markRiskControl(reason: string): never {
+  riskUntil = Date.now() + RISK_COOLDOWN_MS
+  throw new BilibiliRiskControlError(
+    `哔哩哔哩触发风控（${reason}），已暂停访问 ${RISK_COOLDOWN_MS / 60_000} 分钟，请稍后再试`
+  )
+}
+
+function assertNotCoolingDown(): void {
+  const left = riskUntil - Date.now()
+  if (left > 0) {
+    throw new BilibiliRiskControlError(
+      `哔哩哔哩风控冷却中，约 ${Math.ceil(left / 60_000)} 分钟后再试`
+    )
+  }
+}
+
+/** 排队执行一次 B 站接口请求 */
+export function withApiThrottle<T>(task: () => Promise<T>): Promise<T> {
+  const run = apiQueue.then(async () => {
+    assertNotCoolingDown()
+    const wait = lastApiAt + API_GAP_MS + Math.random() * API_JITTER_MS - Date.now()
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait))
+    try {
+      return await task()
+    } finally {
+      lastApiAt = Date.now()
+    }
+  })
+  // 失败不能让后面排队的请求一起挂掉，调用方仍拿得到自己的错误
+  apiQueue = run.catch(() => undefined)
+  return run
+}
+
 interface Envelope<T> {
   code?: number
   message?: string
@@ -233,6 +290,7 @@ export async function fetchSubtitleTracks(
 
 export async function biliData<T>(url: string, referer = 'https://www.bilibili.com'): Promise<T> {
   const body = (await biliRequest(url, referer)) as Envelope<T>
+  if (body.code !== undefined && RISK_CODES.has(body.code)) markRiskControl(String(body.code))
   if (body.code !== 0 || body.data == null) {
     throw new Error(body.message || `哔哩哔哩接口错误 ${body.code ?? 'unknown'}`)
   }
@@ -253,13 +311,16 @@ export function bilibiliHeaders(referer: string): Record<string, string> {
   return headers
 }
 
-async function biliRequest(url: string, referer: string): Promise<unknown> {
-  const response = await net.fetch(url, {
-    headers: bilibiliHeaders(referer),
-    signal: AbortSignal.timeout(20_000)
+function biliRequest(url: string, referer: string): Promise<unknown> {
+  return withApiThrottle(async () => {
+    const response = await net.fetch(url, {
+      headers: bilibiliHeaders(referer),
+      signal: AbortSignal.timeout(20_000)
+    })
+    if (response.status === 412) markRiskControl('HTTP 412')
+    if (!response.ok) throw new Error(`哔哩哔哩接口 HTTP ${response.status}`)
+    return response.json()
   })
-  if (!response.ok) throw new Error(`哔哩哔哩接口 HTTP ${response.status}`)
-  return response.json()
 }
 
 async function signedQuery(parameters: Record<string, string | number>): Promise<string> {

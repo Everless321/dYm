@@ -15,6 +15,7 @@ import {
   type BilibiliCreatorSettings
 } from '../../../shared/platforms'
 import {
+  BilibiliRiskControlError,
   bilibiliCookie,
   bilibiliHeaders,
   fetchPlayUrl,
@@ -22,6 +23,7 @@ import {
   fetchSubtitleTracks,
   fetchVideoDetail,
   normalizeAssetUrl,
+  withApiThrottle,
   type BilibiliPage,
   type BilibiliVideoDetail
 } from './client'
@@ -106,6 +108,8 @@ export async function downloadBilibiliCreator(
   const total = pending.length
   let downloaded = 0
   let finished = 0
+  // 风控后立即停：已在下载的作品自然结束，不再领取新作品
+  let riskError: BilibiliRiskControlError | null = null
   hooks.onProgress?.({
     current: 0,
     total,
@@ -121,8 +125,9 @@ export async function downloadBilibiliCreator(
     }),
     hooks.concurrency,
     {
-      shouldStop: hooks.isAborted,
+      shouldStop: () => hooks.isAborted() || riskError !== null,
       onComplete: (_index, result) => {
+        if (result instanceof BilibiliRiskControlError) riskError = result
         finished += 1
         if (result === true) downloaded += 1
         hooks.onProgress?.({
@@ -136,6 +141,7 @@ export async function downloadBilibiliCreator(
     }
   )
 
+  if (riskError) throw riskError
   return { downloaded, skipped, aborted: hooks.isAborted() }
 }
 
@@ -195,6 +201,7 @@ async function downloadOneVideo(
   } catch (error) {
     console.error(`[Bilibili] 下载失败 ${bvid}:`, error)
     rmSync(folder, { recursive: true, force: true })
+    if (error instanceof BilibiliRiskControlError) throw error
     return false
   }
 }
@@ -264,9 +271,11 @@ async function downloadPage(
 }
 
 async function downloadDanmaku(cid: number, file: string, referer: string): Promise<void> {
-  const response = await net.fetch(`https://api.bilibili.com/x/v1/dm/list.so?oid=${cid}`, {
-    headers: bilibiliHeaders(referer)
-  })
+  const response = await withApiThrottle(() =>
+    net.fetch(`https://api.bilibili.com/x/v1/dm/list.so?oid=${cid}`, {
+      headers: bilibiliHeaders(referer)
+    })
+  )
   if (!response.ok) return
   const text = (await response.text()).trim()
   if (!text.startsWith('<?xml') && !text.startsWith('<i')) return

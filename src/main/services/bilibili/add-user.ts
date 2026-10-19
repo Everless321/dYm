@@ -101,12 +101,21 @@ export async function addBilibiliCreator(
         onlyBvids: [detail.bvid],
         page,
         source: 'single'
-      }).then((result) => {
-        const payload = { awemeId: detail.bvid, nickname: target.nickname }
-        if (result.downloaded > 0) broadcast({ ...payload, status: 'success' })
-        else if (result.skipped > 0) broadcast({ ...payload, status: 'already-downloaded' })
-        else broadcast({ ...payload, status: 'failed', error: '下载失败' })
       })
+        .then((result) => {
+          const payload = { awemeId: detail.bvid, nickname: target.nickname }
+          if (result.downloaded > 0) broadcast({ ...payload, status: 'success' })
+          else if (result.skipped > 0) broadcast({ ...payload, status: 'already-downloaded' })
+          else broadcast({ ...payload, status: 'failed', error: '下载失败' })
+        })
+        .catch((error: Error) =>
+          broadcast({
+            awemeId: detail.bvid,
+            nickname: target.nickname,
+            status: 'failed',
+            error: error.message
+          })
+        )
     }
   }
 
