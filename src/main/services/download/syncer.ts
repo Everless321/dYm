@@ -16,6 +16,7 @@ import { getDownloadPath } from '../media'
 import { diagnoseUserPost } from '../douyin/client'
 import { fetchUserPostPages } from '../douyin/user-post'
 import { emitPanelProgress } from '../panel/progress'
+import { isBackfillLimitMode } from './limit-mode'
 import { normalizeCreatorPlatform } from '../../../shared/platforms'
 import { bilibiliCookie } from '../bilibili/client'
 import { downloadBilibiliCreator, readBilibiliConcurrency } from '../bilibili/download'
@@ -133,7 +134,8 @@ export async function startUserSync(
       desc: true
     })
 
-    const maxCounts = maxDownloadCount > 0 ? maxDownloadCount : 0
+    // 「只看最新 N 个」时翻页只拉 N 个；「补齐」时不限翻页，靠下面凑够 N 个新作品后 break
+    const maxCounts = maxDownloadCount > 0 && !isBackfillLimitMode() ? maxDownloadCount : 0
     const syncState = runningSyncs.get(userId)
     console.log(`[Syncer] maxCounts: ${maxCounts}, sec_uid: ${user.sec_uid}`)
 

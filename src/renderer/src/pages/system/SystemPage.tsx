@@ -33,6 +33,7 @@ export default function SystemPage() {
   // 下载
   const [downloadPath, setDownloadPath] = useState('')
   const [maxDownloadCount, setMaxDownloadCount] = useState('0')
+  const [downloadLimitMode, setDownloadLimitMode] = useState<'latest' | 'backfill'>('latest')
   const [videoDownloadConcurrency, setVideoDownloadConcurrency] = useState('3')
   const [scheduleConcurrency, setScheduleConcurrency] = useState('1')
   const [scheduleGapSeconds, setScheduleGapSeconds] = useState('15')
@@ -110,6 +111,7 @@ export default function SystemPage() {
       setDownloadPath(savedPath)
       originalDownloadPath.current = savedPath
       setMaxDownloadCount(settings.max_download_count || '0')
+      setDownloadLimitMode(settings.download_limit_mode === 'backfill' ? 'backfill' : 'latest')
       setVideoDownloadConcurrency(settings.video_download_concurrency || '3')
       setScheduleConcurrency(settings.schedule_sync_concurrency || '1')
       setScheduleGapSeconds(settings.schedule_sync_gap_seconds || '15')
@@ -264,6 +266,7 @@ export default function SystemPage() {
   const saveDownloadSettings = async () => {
     await window.api.settings.set('download_path', downloadPath)
     await window.api.settings.set('max_download_count', maxDownloadCount)
+    await window.api.settings.set('download_limit_mode', downloadLimitMode)
     await window.api.settings.set('video_download_concurrency', videoDownloadConcurrency)
     await window.api.settings.set('schedule_sync_concurrency', scheduleConcurrency)
     await window.api.settings.set('schedule_sync_gap_seconds', scheduleGapSeconds)
@@ -556,6 +559,39 @@ export default function SystemPage() {
                           onChange={(e) => setMaxDownloadCount(e.target.value)}
                           className="w-full md:w-[140px] h-10 px-3 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20 text-center"
                         />
+                      </div>
+
+                      {/* Download limit mode */}
+                      <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="text-sm text-[#1D1D1F]">下载数量的计算方式</p>
+                          <p className="text-xs text-[#A1A1A6] mt-1">
+                            {downloadLimitMode === 'latest'
+                              ? '只检查最新的 N 个作品，缺哪个补哪个，不再往更旧的翻，请求最少'
+                              : '跳过已下载的，凑够 N 个未下载的为止，每次同步都会往更旧的作品多下 N 个'}
+                          </p>
+                        </div>
+                        <div className="flex rounded-lg bg-[#F2F2F4] p-0.5">
+                          {(
+                            [
+                              ['latest', '只看最新 N 个'],
+                              ['backfill', '补齐 N 个未下载']
+                            ] as const
+                          ).map(([mode, label]) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => setDownloadLimitMode(mode)}
+                              className={`px-4 py-1.5 rounded-md text-sm transition-colors ${
+                                downloadLimitMode === mode
+                                  ? 'bg-white text-[#1D1D1F] shadow-sm'
+                                  : 'text-[#6E6E73] hover:text-[#1D1D1F]'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
 
                       {/* Concurrency */}

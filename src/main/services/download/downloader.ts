@@ -24,6 +24,7 @@ import { diagnoseUserPost } from '../douyin/client'
 import { fetchUserPostPages } from '../douyin/user-post'
 import { runWithConcurrency } from '../../utils/concurrency'
 import { emitPanelProgress } from '../panel/progress'
+import { isBackfillLimitMode } from './limit-mode'
 import { normalizeCreatorPlatform } from '../../../shared/platforms'
 import { bilibiliCookie } from '../bilibili/client'
 import { downloadBilibiliCreator } from '../bilibili/download'
@@ -306,8 +307,8 @@ async function downloadUserVideos(
       desc: true
     })
 
-    // maxCounts: 0 表示无限制，有值则限制获取数量
-    const maxCounts = maxDownloadCount > 0 ? maxDownloadCount : 0
+    // maxCounts：「只看最新 N 个」时限制翻页数量；补齐模式或不限数量时为 0
+    const maxCounts = maxDownloadCount > 0 && !isBackfillLimitMode() ? maxDownloadCount : 0
 
     // 收集待下载的视频
     interface VideoToDownload {

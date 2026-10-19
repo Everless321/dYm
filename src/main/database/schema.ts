@@ -220,6 +220,8 @@ export function initDatabase(): void {
     { key: 'bilibili_cookie', value: '' },
     { key: 'download_path', value: '' },
     { key: 'max_download_count', value: '50' },
+    // 下载数量限制的算法，见 services/download/limit-mode.ts
+    { key: 'download_limit_mode', value: 'latest' },
     // 定时同步排队：同时几个、每个之间隔多少秒（带 ±50% 抖动）
     { key: 'schedule_sync_concurrency', value: '1' },
     { key: 'schedule_sync_gap_seconds', value: '15' },

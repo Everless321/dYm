@@ -8,6 +8,7 @@ import { net } from 'electron'
 import { createPost, getPostByAwemeId, getSetting, type DbUser } from '../../database'
 import { getDownloadPath } from '../media'
 import { emitPostDownloaded } from '../scripts/emit'
+import { isBackfillLimitMode } from '../download/limit-mode'
 import { ffmpegPath } from '../../utils/ffmpeg-path'
 import { runWithConcurrency } from '../../utils/concurrency'
 import {
@@ -81,6 +82,11 @@ export async function downloadBilibiliCreator(
       message: `正在获取 ${user.nickname} 的投稿列表...`
     })
     const limit = hooks.limit > 0 ? hooks.limit : 0
+    // 与抖音一致：默认只看最新的 limit 个投稿；补齐模式才继续往旧的翻，凑够 limit 个未下载的
+    const backfill = isBackfillLimitMode()
+    let examined = 0
+    const enough = (): boolean =>
+      limit > 0 && (backfill ? pending.length >= limit : examined >= limit)
     let page = 1
     let total = 0
     while (!hooks.isAborted()) {
@@ -88,14 +94,15 @@ export async function downloadBilibiliCreator(
       total = batch.total
       if (batch.videos.length === 0) break
       for (const video of batch.videos) {
+        if (enough()) break
+        examined += 1
         if (getPostByAwemeId(video.bvid)) {
           skipped += 1
           continue
         }
         pending.push({ bvid: video.bvid })
-        if (limit > 0 && pending.length >= limit) break
       }
-      if (limit > 0 && pending.length >= limit) break
+      if (enough()) break
       if (page * batch.pageSize >= total) break
       page += 1
     }
