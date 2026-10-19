@@ -242,7 +242,10 @@ export async function biliData<T>(url: string, referer = 'https://www.bilibili.c
 export function bilibiliHeaders(referer: string): Record<string, string> {
   const headers: Record<string, string> = {
     'User-Agent': BILIBILI_USER_AGENT,
-    Referer: referer,
+    // 只带来源域名：net.fetch 默认按 strict-origin-when-cross-origin 校验，
+    // 跨域带完整路径的 Referer 会被 Chromium 直接取消（ERR_BLOCKED_BY_CLIENT）。
+    // 浏览器里发给 B 站的也是这个形式
+    Referer: `${new URL(referer).origin}/`,
     Origin: 'https://www.bilibili.com'
   }
   const cookie = bilibiliCookie()
