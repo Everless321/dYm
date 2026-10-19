@@ -76,6 +76,20 @@ export interface PanelUser {
   homepageUrl?: string
   lastSyncAt?: number | null
   signature?: string
+  platform?: 'douyin' | 'bilibili'
+  liveRecord?: boolean
+  liveCheckCron?: string
+  bilibili?: {
+    videoQuality: number
+    videoCodec: 'avc' | 'hevc' | 'av1'
+    audioQuality: number
+    downloadVideo: boolean
+    downloadAudio: boolean
+    downloadDanmaku: boolean
+    downloadSubtitle: boolean
+    downloadCover: boolean
+    downloadAllPages: boolean
+  } | null
 }
 
 export interface PanelTask {

@@ -1,6 +1,14 @@
-import { getUserById, updateUser, getSetting, type DbUser, type CreateUserInput } from '../../database'
+import {
+  getUserById,
+  updateUser,
+  getSetting,
+  type DbUser,
+  type CreateUserInput
+} from '../../database'
 import { fetchUserProfileSmart } from '../douyin/client'
 import { downloadAvatar } from './avatar'
+import { normalizeCreatorPlatform } from '../../../shared/platforms'
+import { bilibiliHeaders, fetchCreatorProfile } from '../bilibili/client'
 
 export type RefreshStatus = 'success' | 'degraded' | 'failed'
 
@@ -48,6 +56,9 @@ function isDegradedProfile(fetched: any): boolean {
 export async function refreshUserProfile(id: number): Promise<RefreshOutcome> {
   const existing = getUserById(id)
   if (!existing) return { status: 'failed', error: '用户不存在' }
+  if (normalizeCreatorPlatform(existing.platform) === 'bilibili') {
+    return refreshBilibiliProfile(existing)
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let fetched: any
@@ -87,4 +98,34 @@ export async function refreshUserProfile(id: number): Promise<RefreshOutcome> {
   }
   const user = updateUser(id, update)
   return { status: 'success', user }
+}
+
+async function refreshBilibiliProfile(existing: DbUser): Promise<RefreshOutcome> {
+  const mid = Number(existing.uid)
+  if (!Number.isInteger(mid) || mid <= 0) return { status: 'failed', error: '缺少 UP 主 ID' }
+  try {
+    const profile = await fetchCreatorProfile(mid)
+    const update: Partial<CreateUserInput> = {
+      signature: profile.sign,
+      following_count: profile.following,
+      follower_count: profile.follower,
+      aweme_count: profile.videoCount
+    }
+    if (!profile.name) {
+      return { status: 'degraded', user: updateUser(existing.id, update) }
+    }
+    update.nickname = profile.name
+    if (profile.face) {
+      update.avatar = profile.face
+      const avatarPath = await downloadAvatar(
+        existing.sec_uid,
+        profile.face,
+        bilibiliHeaders(existing.homepage_url || 'https://www.bilibili.com')
+      )
+      if (avatarPath) update.avatar_path = avatarPath
+    }
+    return { status: 'success', user: updateUser(existing.id, update) }
+  } catch (error) {
+    return { status: 'failed', error: (error as Error).message }
+  }
 }

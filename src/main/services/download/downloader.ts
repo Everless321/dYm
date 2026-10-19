@@ -24,6 +24,9 @@ import { diagnoseUserPost } from '../douyin/client'
 import { fetchUserPostPages } from '../douyin/user-post'
 import { runWithConcurrency } from '../../utils/concurrency'
 import { emitPanelProgress } from '../panel/progress'
+import { normalizeCreatorPlatform } from '../../../shared/platforms'
+import { bilibiliCookie } from '../bilibili/client'
+import { downloadBilibiliCreator } from '../bilibili/download'
 
 /** 下载任务触发来源：手动点开始 / 定时调度 */
 export type DownloadSource = 'manual' | 'schedule'
@@ -89,10 +92,15 @@ export async function startDownloadTask(
     throw new Error('任务正在执行中')
   }
 
-  const cookie = getSetting('douyin_cookie')
-  if (!cookie) {
-    throw new Error('请先配置抖音 Cookie')
-  }
+  const cookie = getSetting('douyin_cookie') || ''
+  const needsDouyin =
+    task.users.length === 0 ||
+    task.users.some((user) => normalizeCreatorPlatform(user.platform) !== 'bilibili')
+  const needsBilibili = task.users.some(
+    (user) => normalizeCreatorPlatform(user.platform) === 'bilibili'
+  )
+  if (needsDouyin && !cookie) throw new Error('请先配置抖音 Cookie')
+  if (needsBilibili && !bilibiliCookie()) throw new Error('请先配置哔哩哔哩 Cookie')
 
   const globalMaxDownloadCount = Math.max(0, parseInt(getSetting('max_download_count') || '0') || 0)
   // 负数 / 0 会让分批循环 i += batchSize 永不前进
@@ -248,6 +256,28 @@ async function downloadUserVideos(
 ): Promise<number> {
   const taskState = runningTasks.get(taskId)
   if (taskState?.abort) return 0
+
+  if (normalizeCreatorPlatform(user.platform) === 'bilibili') {
+    const outcome = await downloadBilibiliCreator(user, {
+      limit: maxDownloadCount,
+      concurrency: videoConcurrency,
+      isAborted: () => runningTasks.get(taskId)?.abort === true,
+      source: 'task',
+      onProgress: (event) =>
+        sendProgress({
+          taskId,
+          status: 'running',
+          currentUser: user.nickname,
+          currentUserIndex: userIndex + 1,
+          totalUsers: task.users.length,
+          currentVideo: event.current,
+          totalVideos: event.total,
+          message: event.message,
+          downloadedPosts: historicalDownloads + event.downloaded
+        })
+    })
+    return outcome.downloaded
+  }
 
   const userPath = join(basePath, user.sec_uid)
   let downloadedCount = 0

@@ -41,6 +41,7 @@ declare global {
 
   interface CookieAPI {
     fetchDouyin: () => Promise<string>
+    fetchBilibili: () => Promise<string>
     refreshSilent: () => Promise<string>
     isRefreshing: () => Promise<boolean>
     /** 清空登录浏览器分区与已保存的 Cookie，之后需重新登录 */
@@ -99,6 +100,8 @@ declare global {
     live_check_cron: string
     live_status: 'idle' | 'recording'
     last_live_at: number | null
+    platform: string
+    platform_settings: string
     created_at: number
     updated_at: number
   }
@@ -111,6 +114,17 @@ declare global {
     sync_cron?: string
     live_record?: boolean
     live_check_cron?: string
+    platform_settings?: import('../shared/platforms').BilibiliCreatorSettings
+  }
+
+  interface AddCreatorOptions {
+    max_download_count?: number
+    show_in_home?: boolean
+    auto_sync?: boolean
+    sync_cron?: string
+    live_record?: boolean
+    live_check_cron?: string
+    platform_settings?: import('../shared/platforms').BilibiliCreatorSettings
   }
 
   interface BatchRefreshResult {
@@ -141,7 +155,7 @@ declare global {
 
   interface UserAPI {
     getAll: () => Promise<DbUser[]>
-    add: (url: string) => Promise<AddUserResult>
+    add: (url: string, options?: AddCreatorOptions) => Promise<AddUserResult>
     delete: (id: number, deleteFiles?: boolean) => Promise<void>
     refresh: (id: number) => Promise<DbUser>
     batchRefresh: (

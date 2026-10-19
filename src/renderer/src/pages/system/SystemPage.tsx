@@ -27,7 +27,9 @@ export default function SystemPage() {
   // Cookie
   const [cookie, setCookie] = useState('')
   const [uiVersion, setUiVersionState] = useState<UiVersion>('new')
+  const [bilibiliCookie, setBilibiliCookie] = useState('')
   const [fetchingCookie, setFetchingCookie] = useState(false)
+  const [fetchingBilibiliCookie, setFetchingBilibiliCookie] = useState(false)
   const [resettingBrowser, setResettingBrowser] = useState(false)
 
   // 下载
@@ -105,6 +107,7 @@ export default function SystemPage() {
     try {
       const settings = await window.api.settings.getAll()
       setCookie(settings.douyin_cookie || '')
+      setBilibiliCookie(settings.bilibili_cookie || '')
       const savedPath = settings.download_path || ''
       setDownloadPath(savedPath)
       originalDownloadPath.current = savedPath
@@ -179,6 +182,32 @@ export default function SystemPage() {
       toast.error('获取 Cookie 失败')
     } finally {
       setFetchingCookie(false)
+    }
+  }
+
+  const handleFetchBilibiliCookie = async () => {
+    setFetchingBilibiliCookie(true)
+    try {
+      const result = await window.api.cookie.fetchBilibili()
+      if (result) {
+        setBilibiliCookie(result)
+        toast.success('哔哩哔哩 Cookie 获取成功')
+      } else {
+        toast.warning('未检测到哔哩哔哩登录会话，Cookie 未更新')
+      }
+    } catch {
+      toast.error('获取哔哩哔哩 Cookie 失败')
+    } finally {
+      setFetchingBilibiliCookie(false)
+    }
+  }
+
+  const handleSaveBilibiliCookie = async () => {
+    try {
+      await window.api.settings.set('bilibili_cookie', bilibiliCookie)
+      toast.success('哔哩哔哩 Cookie 已保存')
+    } catch (error) {
+      toast.error(`保存失败: ${(error as Error).message}`)
     }
   }
 
@@ -411,6 +440,47 @@ export default function SystemPage() {
                         </button>
                         <button
                           onClick={handleSaveCookie}
+                          disabled={!settingsLoaded}
+                          className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors disabled:opacity-50"
+                        >
+                          保存 Cookie
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-[#E5E5E7] shadow-sm p-6">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="space-y-1">
+                        <h2 className="text-base font-semibold text-[#1D1D1F]">哔哩哔哩 Cookie</h2>
+                        <p className="text-xs text-[#A1A1A6]">
+                          登录后用于获取 UP 主投稿，并按 downkyicore 的方式请求高画质播放地址
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleFetchBilibiliCookie}
+                        disabled={fetchingBilibiliCookie}
+                        className="h-9 px-4 rounded-lg border border-[#E5E5E7] text-sm text-[#1D1D1F] hover:bg-[#F2F2F4] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 w-full sm:w-auto"
+                      >
+                        {fetchingBilibiliCookie ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Chrome className="h-4 w-4" />
+                        )}
+                        从浏览器获取
+                      </button>
+                    </div>
+                    <div className="space-y-3 mt-4">
+                      <textarea
+                        value={bilibiliCookie}
+                        onChange={(e) => setBilibiliCookie(e.target.value)}
+                        placeholder="粘贴 SESSDATA 等 Cookie，或点击上方按钮登录"
+                        rows={3}
+                        className="w-full px-3 py-2 rounded-lg bg-[#F5F5F7] border border-[#E5E5E7] text-sm text-[#1D1D1F] font-mono resize-none transition-colors focus:outline-none focus-visible:border-[#0A84FF] focus-visible:ring-2 focus-visible:ring-[#0A84FF]/20"
+                      />
+                      <div className="flex justify-end">
+                        <button
+                          onClick={handleSaveBilibiliCookie}
                           disabled={!settingsLoaded}
                           className="h-9 px-4 rounded-lg bg-[#0A84FF] text-sm text-white font-medium hover:bg-[#0060D5] transition-colors disabled:opacity-50"
                         >

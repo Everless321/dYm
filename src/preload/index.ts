@@ -49,7 +49,8 @@ const cookieAPI = {
   fetchDouyin: (): Promise<string> => ipcRenderer.invoke('cookie:fetchDouyin'),
   refreshSilent: (): Promise<string> => ipcRenderer.invoke('cookie:refreshSilent'),
   isRefreshing: (): Promise<boolean> => ipcRenderer.invoke('cookie:isRefreshing'),
-  resetBrowser: (): Promise<void> => ipcRenderer.invoke('cookie:resetBrowser')
+  resetBrowser: (): Promise<void> => ipcRenderer.invoke('cookie:resetBrowser'),
+  fetchBilibili: (): Promise<string> => ipcRenderer.invoke('cookie:fetchBilibili')
 }
 
 const douyinAPI = {
@@ -62,7 +63,8 @@ const douyinAPI = {
 
 const userAPI = {
   getAll: (): Promise<DbUser[]> => ipcRenderer.invoke('user:getAll'),
-  add: (url: string): Promise<AddUserResult> => ipcRenderer.invoke('user:add', url),
+  add: (url: string, options?: AddCreatorOptions): Promise<AddUserResult> =>
+    ipcRenderer.invoke('user:add', url, options),
   delete: (id: number, deleteFiles?: boolean): Promise<void> =>
     ipcRenderer.invoke('user:delete', id, deleteFiles),
   refresh: (id: number): Promise<DbUser> => ipcRenderer.invoke('user:refresh', id),

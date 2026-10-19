@@ -34,6 +34,7 @@
     "server.ts",
     "src/**/*.ts",
     "src/**/*.tsx",
+    "../src/shared/platforms.ts",
     ".next/types/**/*.ts"
   ],
   "exclude": [

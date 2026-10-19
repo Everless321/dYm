@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { WelcomeDialog } from '@/components/dialogs/WelcomeDialog'
 import { DEVELOPER_MODE_EVENT } from '@/lib/developer-mode'
+import { CREATOR_PLATFORM_LABEL, detectCreatorPlatform } from '@shared/platforms'
 import { Sidebar } from './Sidebar'
 
 export function AppLayout(): React.JSX.Element {
   const navigate = useNavigate()
   const location = useLocation()
   const [developerMode, setDeveloperMode] = useState<boolean | null>(null)
-  const [adding, setAdding] = useState(false)
 
   useEffect(() => {
     window.api.settings
@@ -30,46 +30,20 @@ export function AppLayout(): React.JSX.Element {
     }
   }, [developerMode, location.pathname, navigate])
 
-  const addLink = useCallback(
-    async (link: string) => {
-      if (adding) return
-      setAdding(true)
-      try {
-        const result = await window.api.user.add(link)
-        const prefix = result.isNewUser
-          ? `已添加创作者：${result.user.nickname}`
-          : `创作者 ${result.user.nickname} 已存在`
-        if (result.postDownload.status === 'downloading') {
-          toast.success(`${prefix}，正在后台下载作品…`)
-        } else if (result.postDownload.status === 'already-downloaded') {
-          toast.success(`${prefix}，该作品已下载过`)
-        } else if (result.isNewUser) {
-          toast.success(prefix)
-        } else {
-          toast.info(prefix)
-        }
-        navigate('/creators')
-      } catch (error) {
-        toast.error(`添加失败: ${(error as Error).message}`)
-      } finally {
-        setAdding(false)
-      }
-    },
-    [adding, navigate]
-  )
-
   useEffect(() => {
     return window.api.clipboard.onDouyinLink((link) => {
-      toast('检测到抖音链接', {
+      const platform = detectCreatorPlatform(link)
+      toast(platform ? `检测到${CREATOR_PLATFORM_LABEL[platform]}链接` : '检测到创作者链接', {
         description: link.length > 50 ? `${link.slice(0, 50)}…` : link,
         duration: 8000,
         action: {
           label: '添加创作者',
-          onClick: () => void addLink(link)
+          // 打开添加弹窗并预填链接，方便按平台设置下载内容
+          onClick: () => navigate(`/creators?draft=${encodeURIComponent(link)}`)
         }
       })
     })
-  }, [addLink])
+  }, [navigate])
 
   useEffect(() => {
     return window.api.user.onAddPostProgress((progress) => {

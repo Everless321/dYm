@@ -16,6 +16,9 @@ import { getDownloadPath } from '../media'
 import { diagnoseUserPost } from '../douyin/client'
 import { fetchUserPostPages } from '../douyin/user-post'
 import { emitPanelProgress } from '../panel/progress'
+import { normalizeCreatorPlatform } from '../../../shared/platforms'
+import { bilibiliCookie } from '../bilibili/client'
+import { downloadBilibiliCreator, readBilibiliConcurrency } from '../bilibili/download'
 
 /** 同步触发来源：手动 / 定时调度 */
 export type SyncSource = 'manual' | 'schedule'
@@ -74,6 +77,10 @@ export async function startUserSync(
   if (runningSyncs.has(userId)) {
     console.log(`[Syncer] User ${user.nickname} is already syncing`)
     throw new Error('该用户正在同步中')
+  }
+
+  if (normalizeCreatorPlatform(user.platform) === 'bilibili') {
+    return syncBilibiliUser(user, source)
   }
 
   const cookie = getSetting('douyin_cookie')
@@ -418,6 +425,95 @@ export async function startUserSync(
     skipped: skippedCount,
     error: failureMessage
   }
+}
+
+async function syncBilibiliUser(
+  user: NonNullable<ReturnType<typeof getUserById>>,
+  source: SyncSource
+): Promise<SyncResult> {
+  if (!bilibiliCookie()) throw new Error('请先配置哔哩哔哩 Cookie')
+
+  const userId = user.id
+  runningSyncs.set(userId, { abort: false })
+  updateUserSyncStatus(userId, 'syncing')
+
+  const globalMax = Math.max(0, parseInt(getSetting('max_download_count') || '0') || 0)
+  const limit = user.max_download_count > 0 ? user.max_download_count : globalMax
+  const concurrency = readBilibiliConcurrency()
+  let downloaded = 0
+  let skipped = 0
+  let finishStatus: SyncResult['status'] = 'failed'
+  let failureMessage: string | undefined
+
+  try {
+    const result = await downloadBilibiliCreator(user, {
+      limit,
+      concurrency,
+      isAborted: () => runningSyncs.get(userId)?.abort === true,
+      source: 'sync',
+      onProgress: (event) =>
+        sendProgress({
+          userId,
+          status: 'syncing',
+          nickname: user.nickname,
+          currentVideo: event.current,
+          totalVideos: event.total,
+          downloadedCount: event.downloaded,
+          skippedCount: event.skipped,
+          message: event.message
+        })
+    })
+    downloaded = result.downloaded
+    skipped = result.skipped
+    if (result.aborted) {
+      finishStatus = 'cancelled'
+      updateUserSyncStatus(userId, 'idle')
+      sendProgress({
+        userId,
+        status: 'stopped',
+        nickname: user.nickname,
+        currentVideo: downloaded,
+        totalVideos: downloaded + skipped,
+        downloadedCount: downloaded,
+        skippedCount: skipped,
+        message: '同步已取消'
+      })
+    } else {
+      finishStatus = 'completed'
+      updateUserSyncStatus(userId, 'idle', Math.floor(Date.now() / 1000))
+      const skipMsg = skipped > 0 ? `，跳过 ${skipped} 个已下载` : ''
+      sendProgress({
+        userId,
+        status: 'completed',
+        nickname: user.nickname,
+        currentVideo: downloaded,
+        totalVideos: downloaded,
+        downloadedCount: downloaded,
+        skippedCount: skipped,
+        message: `${user.nickname} 同步完成，新下载 ${downloaded} 个${skipMsg}`
+      })
+    }
+  } catch (error) {
+    finishStatus = 'failed'
+    failureMessage = (error as Error).message
+    console.error(`[Syncer] Error syncing bilibili user ${user.nickname}:`, error)
+    updateUserSyncStatus(userId, 'error')
+    sendProgress({
+      userId,
+      status: 'failed',
+      nickname: user.nickname,
+      currentVideo: downloaded,
+      totalVideos: 0,
+      downloadedCount: downloaded,
+      skippedCount: skipped,
+      message: `同步失败: ${failureMessage}`
+    })
+  } finally {
+    runningSyncs.delete(userId)
+    track('download_finished', { kind: 'sync', source, videos: downloaded, status: finishStatus })
+  }
+
+  return { status: finishStatus, downloaded, skipped, error: failureMessage }
 }
 
 export function stopUserSync(userId: number): void {

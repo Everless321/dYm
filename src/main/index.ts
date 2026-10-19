@@ -26,6 +26,7 @@ import {
 } from './database'
 import { initStorageUploader } from './services/storage/uploader'
 import { initDouyinHandler } from './services/douyin/client'
+import { extractCreatorLink } from '../shared/platforms'
 import {
   blockCustomProtocols,
   attachProtocolGuards,
@@ -71,22 +72,8 @@ let clipboardCheckTimer: NodeJS.Timeout | null = null // 防抖计时器
 const LINK_COOLDOWN = 30000 // 同一链接30秒内不重复提示
 const DEBOUNCE_DELAY = 500 // 防抖延迟500ms
 
-// 抖音链接正则匹配
-const douyinLinkPatterns = [
-  /https?:\/\/v\.douyin\.com\/\S+/i,
-  /https?:\/\/www\.douyin\.com\/user\/\S+/i,
-  /https?:\/\/www\.douyin\.com\/video\/\S+/i,
-  /https?:\/\/www\.iesdouyin\.com\/share\/user\/\S+/i,
-  /https?:\/\/www\.iesdouyin\.com\/share\/video\/\S+/i
-]
-
-// 检测文本中是否包含抖音链接
-function extractDouyinLink(text: string): string | null {
-  for (const pattern of douyinLinkPatterns) {
-    const match = text.match(pattern)
-    if (match) return match[0]
-  }
-  return null
+function extractClipboardCreatorLink(text: string): string | null {
+  return extractCreatorLink(text)?.url ?? null
 }
 
 function createTray(): void {
@@ -242,7 +229,7 @@ function createWindow(): BrowserWindow {
       const clipboardText = clipboard.readText()
       if (!clipboardText) return
 
-      const douyinLink = extractDouyinLink(clipboardText)
+      const douyinLink = extractClipboardCreatorLink(clipboardText)
       if (douyinLink) {
         const now = Date.now()
         // 同一链接在冷却时间内不重复提示
