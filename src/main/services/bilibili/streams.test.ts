@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pickAudioStream, pickVideoStream } from './streams'
+import { audioOnlyExtension, pickAudioStream, pickVideoStream } from './streams'
 
 const videos = [
   { id: 80, codecid: 7, baseUrl: 'https://cdn/avc80' },
@@ -54,5 +54,32 @@ describe('pickAudioStream', () => {
       30250
     )
     expect(fallback?.baseUrl).toBe('https://cdn/192')
+  })
+
+  it('0 表示最高可用：有 Hi-Res 取 Hi-Res，不自动取杜比', () => {
+    const dolby = { id: 30251, baseUrl: 'https://cdn/dolby' }
+    const flac = { id: 30250, baseUrl: 'https://cdn/flac' }
+    const regular = [
+      { id: 30232, baseUrl: 'https://cdn/132' },
+      { id: 30280, baseUrl: 'https://cdn/192' }
+    ]
+    expect(pickAudioStream({ audio: regular, flac: { audio: flac } }, 0)?.baseUrl).toBe(
+      'https://cdn/flac'
+    )
+    expect(pickAudioStream({ audio: regular, dolby: { audio: [dolby] } }, 0)?.baseUrl).toBe(
+      'https://cdn/192'
+    )
+  })
+})
+
+describe('audioOnlyExtension', () => {
+  it('按音轨来源选容器', () => {
+    const regular = { id: 30280, baseUrl: 'https://cdn/192' }
+    const flac = { id: 30250, baseUrl: 'https://cdn/flac' }
+    const dolby = { id: 30251, baseUrl: 'https://cdn/dolby' }
+    const dash = { audio: [regular], flac: { audio: flac }, dolby: { audio: [dolby] } }
+    expect(audioOnlyExtension(dash, regular)).toBe('m4a')
+    expect(audioOnlyExtension(dash, flac)).toBe('flac')
+    expect(audioOnlyExtension(dash, dolby)).toBe('mp4')
   })
 })

@@ -25,7 +25,7 @@ import {
   type BilibiliPage,
   type BilibiliVideoDetail
 } from './client'
-import { pickAudioStream, pickVideoStream, streamUrl } from './streams'
+import { audioOnlyExtension, pickAudioStream, pickVideoStream, streamUrl } from './streams'
 
 const execFileAsync = promisify(execFile)
 
@@ -245,7 +245,8 @@ async function downloadPage(
       unlinkSync(videoFile)
       if (audioFile) unlinkSync(audioFile)
     } else if (audioFile) {
-      await muxMedia('', audioFile, join(folder, `${stem}.m4a`))
+      const ext = audio ? audioOnlyExtension(play.dash, audio) : 'm4a'
+      await muxMedia('', audioFile, join(folder, `${stem}.${ext}`))
       unlinkSync(audioFile)
     }
     if ((settings.downloadVideo || settings.downloadAudio) && !videoFile && !audioFile) {

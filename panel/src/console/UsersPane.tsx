@@ -492,6 +492,7 @@ function BilibiliOptionFields({
           value={value.audioQuality}
           onChange={(event) => onChange({ ...value, audioQuality: Number(event.target.value) })}
         >
+          <option value={0}>最高可用</option>
           <option value={30232}>132K</option>
           <option value={30280}>192K</option>
           <option value={30250}>Hi-Res</option>

@@ -15,7 +15,7 @@ export interface BilibiliCreatorSettings {
   /** 期望画质 qn，拿不到时退到不超过它的最高一档；0 表示取最高可用画质 */
   videoQuality: number
   videoCodec: BilibiliVideoCodec
-  /** 期望音质 id */
+  /** 期望音质 id；0 表示取最高可用音质（Hi-Res 优先，不含杜比） */
   audioQuality: number
   downloadVideo: boolean
   downloadAudio: boolean
@@ -49,6 +49,7 @@ export const BILIBILI_CODECS: { id: BilibiliVideoCodec; label: string; codecId: 
 ]
 
 export const BILIBILI_AUDIO_QUALITIES: { id: number; label: string }[] = [
+  { id: 0, label: '最高可用' },
   { id: 30216, label: '64K' },
   { id: 30232, label: '132K' },
   { id: 30280, label: '192K' },
@@ -66,7 +67,7 @@ export function defaultBilibiliCreatorSettings(): BilibiliCreatorSettings {
   return {
     videoQuality: 0,
     videoCodec: 'avc',
-    audioQuality: 30280,
+    audioQuality: 0,
     downloadVideo: true,
     downloadAudio: true,
     downloadDanmaku: false,

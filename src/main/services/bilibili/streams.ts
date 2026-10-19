@@ -35,20 +35,33 @@ export function pickVideoStream(
   return sameTier.find((stream) => stream.codecid === BILIBILI_CODEC_ID[codec]) ?? tier
 }
 
-/** Hi-Res / 杜比优先走 flac、dolby 节点，缺失时退回普通音轨。 */
+/**
+ * Hi-Res / 杜比优先走 flac、dolby 节点，缺失时退回普通音轨。
+ * quality 为 0（最高可用）时按 Hi-Res 处理：杜比只在明确选择时才下载，
+ * 因为 Chromium 内核的播放器多半解不了它的 E-AC-3 音轨。
+ */
 export function pickAudioStream(dash: DashPayload | undefined, quality: number): DashStream | null {
   if (!dash) return null
   const regular = (dash.audio ?? []).filter((stream) => streamUrl(stream))
-  if (quality === 30250 && streamUrl(dash.flac?.audio)) return dash.flac?.audio ?? null
+  if ((quality <= 0 || quality === 30250) && streamUrl(dash.flac?.audio)) {
+    return dash.flac?.audio ?? null
+  }
   if (quality === 30251) {
     const dolby = asList(dash.dolby?.audio).find((stream) => streamUrl(stream))
     if (dolby) return dolby
   }
   // Hi-Res / 杜比的 id 插在普通音质中间，缺失时退到普通音质里的最高档
-  if (quality === 30250 || quality === 30251) {
+  if (quality <= 0 || quality === 30250 || quality === 30251) {
     return [...regular].sort((left, right) => right.id - left.id)[0] ?? null
   }
   return pickClosest(regular, quality)
+}
+
+/** 只下音频时的扩展名：m4a 装不下 FLAC 和杜比的 E-AC-3，要按音轨来源换容器 */
+export function audioOnlyExtension(dash: DashPayload | undefined, stream: DashStream): string {
+  if (stream === dash?.flac?.audio) return 'flac'
+  if (asList(dash?.dolby?.audio).includes(stream)) return 'mp4'
+  return 'm4a'
 }
 
 function pickClosest(streams: DashStream[], target: number): DashStream | null {
