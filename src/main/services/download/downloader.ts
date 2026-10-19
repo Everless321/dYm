@@ -28,6 +28,7 @@ import { isBackfillLimitMode } from './limit-mode'
 import { normalizeCreatorPlatform } from '../../../shared/platforms'
 import { bilibiliCookie } from '../bilibili/client'
 import { downloadBilibiliCreator } from '../bilibili/download'
+import { downloadKuaishouCreator } from '../kuaishou/download'
 
 /** 下载任务触发来源：手动点开始 / 定时调度 */
 export type DownloadSource = 'manual' | 'schedule'
@@ -96,7 +97,7 @@ export async function startDownloadTask(
   const cookie = getSetting('douyin_cookie') || ''
   const needsDouyin =
     task.users.length === 0 ||
-    task.users.some((user) => normalizeCreatorPlatform(user.platform) !== 'bilibili')
+    task.users.some((user) => normalizeCreatorPlatform(user.platform) === 'douyin')
   const needsBilibili = task.users.some(
     (user) => normalizeCreatorPlatform(user.platform) === 'bilibili'
   )
@@ -257,6 +258,28 @@ async function downloadUserVideos(
 ): Promise<number> {
   const taskState = runningTasks.get(taskId)
   if (taskState?.abort) return 0
+
+  if (normalizeCreatorPlatform(user.platform) === 'kuaishou') {
+    const outcome = await downloadKuaishouCreator(user, {
+      limit: maxDownloadCount,
+      concurrency: videoConcurrency,
+      isAborted: () => runningTasks.get(taskId)?.abort === true,
+      source: 'task',
+      onProgress: (event) =>
+        sendProgress({
+          taskId,
+          status: 'running',
+          currentUser: user.nickname,
+          currentUserIndex: userIndex + 1,
+          totalUsers: task.users.length,
+          currentVideo: event.current,
+          totalVideos: event.total,
+          message: event.message,
+          downloadedPosts: historicalDownloads + event.downloaded
+        })
+    })
+    return outcome.downloaded
+  }
 
   if (normalizeCreatorPlatform(user.platform) === 'bilibili') {
     const outcome = await downloadBilibiliCreator(user, {

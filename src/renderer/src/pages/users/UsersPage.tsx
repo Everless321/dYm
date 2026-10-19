@@ -45,10 +45,12 @@ import { formatCompactNumber } from '@/lib/format'
 import {
   CREATOR_PLATFORM_LABEL,
   defaultBilibiliCreatorSettings,
+  defaultKuaishouCreatorSettings,
   detectCreatorPlatform,
   extractCreatorLink,
   normalizeCreatorPlatform,
   parseBilibiliCreatorSettings,
+  parseKuaishouCreatorSettings,
   type CreatorPlatform
 } from '@shared/platforms'
 import { CreatorSettingsFields, type CreatorFormState } from './CreatorSettingsFields'
@@ -104,7 +106,8 @@ function blankCreatorForm(): CreatorFormState {
     sync_cron: '',
     live_record: false,
     live_check_cron: '',
-    bilibili: defaultBilibiliCreatorSettings()
+    bilibili: defaultBilibiliCreatorSettings(),
+    kuaishou: defaultKuaishouCreatorSettings()
   }
 }
 
@@ -142,7 +145,8 @@ export default function UsersPage() {
     sync_cron: '',
     live_record: false,
     live_check_cron: '',
-    bilibili: defaultBilibiliCreatorSettings()
+    bilibili: defaultBilibiliCreatorSettings(),
+    kuaishou: defaultKuaishouCreatorSettings()
   })
   const [editLoading, setEditLoading] = useState(false)
   const [cronValid, setCronValid] = useState(true)
@@ -366,7 +370,7 @@ export default function UsersPage() {
     const trimmed = url.trim()
     const platform = detectCreatorPlatform(trimmed)
     if (!trimmed || !platform) {
-      toast.error('请粘贴抖音或哔哩哔哩的创作者主页或作品链接')
+      toast.error('请粘贴抖音、哔哩哔哩或快手的创作者主页或作品链接')
       return
     }
     if (addForm.auto_sync && addForm.sync_cron) {
@@ -393,7 +397,8 @@ export default function UsersPage() {
         sync_cron: addForm.sync_cron,
         live_record: platform === 'douyin' ? addForm.live_record : false,
         live_check_cron: platform === 'douyin' ? addForm.live_check_cron : '',
-        platform_settings: platform === 'bilibili' ? addForm.bilibili : undefined
+        platform_settings: platform === 'bilibili' ? addForm.bilibili : undefined,
+        kuaishou: platform === 'kuaishou' ? addForm.kuaishou : undefined
       })
       const { user, isNewUser, postDownload } = result
       const prefix = isNewUser ? `用户 ${user.nickname} 添加成功` : `用户 ${user.nickname} 已存在`
@@ -498,7 +503,8 @@ export default function UsersPage() {
       sync_cron: user.sync_cron || '',
       live_record: !!user.live_record,
       live_check_cron: user.live_check_cron || '',
-      bilibili: parseBilibiliCreatorSettings(user.platform_settings)
+      bilibili: parseBilibiliCreatorSettings(user.platform_settings),
+      kuaishou: parseKuaishouCreatorSettings(user.platform_settings)
     })
     setCronValid(true)
     setLiveCronValid(true)
@@ -535,7 +541,9 @@ export default function UsersPage() {
         platform_settings:
           normalizeCreatorPlatform(editingUser.platform) === 'bilibili'
             ? editForm.bilibili
-            : undefined
+            : normalizeCreatorPlatform(editingUser.platform) === 'kuaishou'
+              ? editForm.kuaishou
+              : undefined
       })
       toast.success('保存成功')
       setEditingUser(null)
@@ -790,6 +798,7 @@ export default function UsersPage() {
                   <option value="all">平台: 全部</option>
                   <option value="douyin">平台: 抖音</option>
                   <option value="bilibili">平台: 哔哩哔哩</option>
+                  <option value="kuaishou">平台: 快手</option>
                 </select>
                 <select
                   value={downloadStatusFilter}
@@ -1076,7 +1085,7 @@ export default function UsersPage() {
               <Input
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="抖音或哔哩哔哩链接"
+                placeholder="抖音、哔哩哔哩或快手链接"
                 disabled={loading}
                 className="h-11 border-[#E5E5E7]"
               />

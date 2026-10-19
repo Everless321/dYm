@@ -3,7 +3,9 @@ import { appEvents } from '../services/app-events'
 import {
   normalizeBilibiliCreatorSettings,
   normalizeCreatorPlatform,
-  type BilibiliCreatorSettings
+  normalizeKuaishouCreatorSettings,
+  type BilibiliCreatorSettings,
+  type KuaishouCreatorSettings
 } from '../../shared/platforms'
 
 // User CRUD
@@ -181,7 +183,7 @@ export interface UpdateUserSettingsInput {
   sync_cron?: string
   live_record?: boolean
   live_check_cron?: string
-  platform_settings?: BilibiliCreatorSettings
+  platform_settings?: BilibiliCreatorSettings | KuaishouCreatorSettings
 }
 
 export function updateUserSettings(id: number, input: UpdateUserSettingsInput): DbUser | undefined {
@@ -223,6 +225,10 @@ export function updateUserSettings(id: number, input: UpdateUserSettingsInput): 
   if (platform === 'bilibili' && input.platform_settings !== undefined) {
     fields.push('platform_settings = ?')
     values.push(JSON.stringify(normalizeBilibiliCreatorSettings(input.platform_settings)))
+  }
+  if (platform === 'kuaishou' && input.platform_settings !== undefined) {
+    fields.push('platform_settings = ?')
+    values.push(JSON.stringify(normalizeKuaishouCreatorSettings(input.platform_settings)))
   }
 
   if (fields.length === 0) return getUserById(id)

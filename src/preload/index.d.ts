@@ -42,6 +42,7 @@ declare global {
   interface CookieAPI {
     fetchDouyin: () => Promise<string>
     fetchBilibili: () => Promise<string>
+    fetchKuaishou: () => Promise<string>
     refreshSilent: () => Promise<string>
     isRefreshing: () => Promise<boolean>
     /** 清空登录浏览器分区与已保存的 Cookie，之后需重新登录 */
@@ -114,7 +115,8 @@ declare global {
     sync_cron?: string
     live_record?: boolean
     live_check_cron?: string
-    platform_settings?: import('../shared/platforms').BilibiliCreatorSettings
+    platform_settings?: import('../shared/platforms').BilibiliCreatorSettings | import('../shared/platforms').KuaishouCreatorSettings
+    kuaishou?: import('../shared/platforms').KuaishouCreatorSettings
   }
 
   interface AddCreatorOptions {
@@ -125,6 +127,7 @@ declare global {
     live_record?: boolean
     live_check_cron?: string
     platform_settings?: import('../shared/platforms').BilibiliCreatorSettings
+    kuaishou?: import('../shared/platforms').KuaishouCreatorSettings
   }
 
   interface BatchRefreshResult {

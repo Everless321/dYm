@@ -41,7 +41,9 @@ import { refreshUserProfile } from '../users/refresh'
 import {
   normalizeCreatorPlatform,
   parseBilibiliCreatorSettings,
-  type BilibiliCreatorSettings
+  parseKuaishouCreatorSettings,
+  type BilibiliCreatorSettings,
+  type KuaishouCreatorSettings
 } from '../../../shared/platforms'
 import { bilibiliCookie } from '../bilibili/client'
 import { takeDownloadProgress, takeSyncProgress } from './progress'
@@ -222,6 +224,9 @@ function saveUserSettings(input: Record<string, unknown>): unknown {
   if (input.bilibili && typeof input.bilibili === 'object') {
     patch.platform_settings = input.bilibili as BilibiliCreatorSettings
   }
+  if (input.kuaishou && typeof input.kuaishou === 'object') {
+    patch.platform_settings = input.kuaishou as KuaishouCreatorSettings
+  }
   const user = updateUserSettings(id, patch)
   if (!user) throw new Error('用户不存在')
   return { user: toUser(user) }
@@ -333,7 +338,9 @@ function beginTask(id: number): { started: boolean; running: boolean } {
 }
 
 function requirePlatformLogin(platform: string): void {
-  if (normalizeCreatorPlatform(platform) === 'bilibili') {
+  const normalized = normalizeCreatorPlatform(platform)
+  if (normalized === 'kuaishou') return
+  if (normalized === 'bilibili') {
     if (!bilibiliCookie()) throw new Error('这台客户端还没有登录哔哩哔哩')
     return
   }
@@ -380,10 +387,11 @@ interface PanelUserView {
   showInHome: boolean
   homepageUrl: string
   lastSyncAt: number | null
-  platform: 'douyin' | 'bilibili'
+  platform: 'douyin' | 'bilibili' | 'kuaishou'
   liveRecord: boolean
   liveCheckCron: string
   bilibili: BilibiliCreatorSettings | null
+  kuaishou: KuaishouCreatorSettings | null
   progress: object | null
 }
 
@@ -413,6 +421,10 @@ function toUser(user: DbUser): PanelUserView {
     bilibili:
       normalizeCreatorPlatform(user.platform) === 'bilibili'
         ? parseBilibiliCreatorSettings(user.platform_settings)
+        : null,
+    kuaishou:
+      normalizeCreatorPlatform(user.platform) === 'kuaishou'
+        ? parseKuaishouCreatorSettings(user.platform_settings)
         : null,
     progress: takeSyncProgress(user.id)
   }

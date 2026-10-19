@@ -17,8 +17,10 @@ import { CronPresets, EmptyState, Loading, MediaImage, Modal, SyncBadge } from '
 import {
   CREATOR_PLATFORM_LABEL,
   defaultBilibiliCreatorSettings,
+  defaultKuaishouCreatorSettings,
   detectCreatorPlatform,
-  type BilibiliCreatorSettings
+  type BilibiliCreatorSettings,
+  type KuaishouCreatorSettings
 } from '../../../src/shared/platforms'
 
 export function UsersPane({
@@ -42,6 +44,7 @@ export function UsersPane({
   const [liveRecord, setLiveRecord] = useState(false)
   const [liveCheckCron, setLiveCheckCron] = useState('')
   const [bilibili, setBilibili] = useState<BilibiliCreatorSettings>(defaultBilibiliCreatorSettings)
+  const [kuaishou, setKuaishou] = useState<KuaishouCreatorSettings>(defaultKuaishouCreatorSettings)
   const [editing, setEditing] = useState<PanelUser | null>(null)
   const [keyword, setKeyword] = useState('')
   const [localReload, setLocalReload] = useState(0)
@@ -74,7 +77,7 @@ export function UsersPane({
     }
     const platform = detectCreatorPlatform(next)
     if (!platform) {
-      toast('请粘贴抖音或哔哩哔哩的创作者主页或作品链接')
+      toast('请粘贴抖音、哔哩哔哩或快手的创作者主页或作品链接')
       return
     }
     setAdding(true)
@@ -87,7 +90,8 @@ export function UsersPane({
         syncCron,
         liveRecord: platform === 'douyin' ? liveRecord : false,
         liveCheckCron: platform === 'douyin' ? liveCheckCron : '',
-        bilibili: platform === 'bilibili' ? bilibili : undefined
+        bilibili: platform === 'bilibili' ? bilibili : undefined,
+        kuaishou: platform === 'kuaishou' ? kuaishou : undefined
       })
       setUrl('')
       toast('已添加')
@@ -185,6 +189,7 @@ export function UsersPane({
           liveRecord={liveRecord}
           liveCheckCron={liveCheckCron}
           bilibili={bilibili}
+          kuaishou={kuaishou}
           onMaxDownloadCount={setMaxDownloadCount}
           onShowInHome={setShowInHome}
           onAutoSync={setAutoSync}
@@ -192,6 +197,7 @@ export function UsersPane({
           onLiveRecord={setLiveRecord}
           onLiveCheckCron={setLiveCheckCron}
           onBilibili={setBilibili}
+          onKuaishou={setKuaishou}
         />
       ) : null}
       {users && users.length ? (
@@ -234,7 +240,7 @@ export function UsersPane({
                 const home =
                   user.homepageUrl && /^https:\/\//.test(user.homepageUrl) ? user.homepageUrl : ''
                 const meta = [
-                  user.platform === 'bilibili' ? '哔哩哔哩' : '抖音',
+                  user.platform === 'bilibili' ? '哔哩哔哩' : user.platform === 'kuaishou' ? '快手' : '抖音',
                   user.uniqueId ? `@${user.uniqueId}` : '',
                   user.remark,
                   user.lastSyncAt ? `上次同步 ${formatUnixAgo(user.lastSyncAt)}` : ''
@@ -358,15 +364,17 @@ function AddCreatorOptions({
   liveRecord,
   liveCheckCron,
   bilibili,
+  kuaishou,
   onMaxDownloadCount,
   onShowInHome,
   onAutoSync,
   onSyncCron,
   onLiveRecord,
   onLiveCheckCron,
-  onBilibili
+  onBilibili,
+  onKuaishou
 }: {
-  platform: 'douyin' | 'bilibili'
+  platform: 'douyin' | 'bilibili' | 'kuaishou'
   maxDownloadCount: string
   showInHome: boolean
   autoSync: boolean
@@ -374,6 +382,7 @@ function AddCreatorOptions({
   liveRecord: boolean
   liveCheckCron: string
   bilibili: BilibiliCreatorSettings
+  kuaishou: KuaishouCreatorSettings
   onMaxDownloadCount: (value: string) => void
   onShowInHome: (value: boolean) => void
   onAutoSync: (value: boolean) => void
@@ -381,6 +390,7 @@ function AddCreatorOptions({
   onLiveRecord: (value: boolean) => void
   onLiveCheckCron: (value: string) => void
   onBilibili: (value: BilibiliCreatorSettings) => void
+  onKuaishou: (value: KuaishouCreatorSettings) => void
 }): React.JSX.Element {
   return (
     <div className="composer">
@@ -440,10 +450,41 @@ function AddCreatorOptions({
             </label>
           ) : null}
         </>
-      ) : (
+      ) : platform === 'bilibili' ? (
         <BilibiliOptionFields value={bilibili} onChange={onBilibili} />
+      ) : (
+        <KuaishouOptionFields value={kuaishou} onChange={onKuaishou} />
       )}
     </div>
+  )
+}
+
+function KuaishouOptionFields({
+  value,
+  onChange
+}: {
+  value: KuaishouCreatorSettings
+  onChange: (value: KuaishouCreatorSettings) => void
+}): React.JSX.Element {
+  return (
+    <>
+      {(
+        [
+          ['downloadWork', '下载作品'],
+          ['downloadCover', '下载封面'],
+          ['downloadMusic', '下载配乐']
+        ] as const
+      ).map(([key, label]) => (
+        <label className="checkline" key={key}>
+          <input
+            type="checkbox"
+            checked={value[key]}
+            onChange={(event) => onChange({ ...value, [key]: event.target.checked })}
+          />
+          {label}
+        </label>
+      ))}
+    </>
   )
 }
 
@@ -544,8 +585,12 @@ function UserSettings({
   const [bilibili, setBilibili] = useState<BilibiliCreatorSettings>(
     user.bilibili || defaultBilibiliCreatorSettings()
   )
+  const [kuaishou, setKuaishou] = useState<KuaishouCreatorSettings>(
+    user.kuaishou || defaultKuaishouCreatorSettings()
+  )
   const [saving, setSaving] = useState(false)
-  const platform = user.platform === 'bilibili' ? 'bilibili' : 'douyin'
+  const platform =
+    user.platform === 'bilibili' || user.platform === 'kuaishou' ? user.platform : 'douyin'
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
@@ -560,7 +605,8 @@ function UserSettings({
         autoSync,
         liveRecord: platform === 'douyin' ? liveRecord : false,
         liveCheckCron: platform === 'douyin' ? liveCheckCron : '',
-        bilibili: platform === 'bilibili' ? bilibili : undefined
+        bilibili: platform === 'bilibili' ? bilibili : undefined,
+        kuaishou: platform === 'kuaishou' ? kuaishou : undefined
       })
       toast('已保存')
       onSaved()
@@ -649,6 +695,9 @@ function UserSettings({
         ) : null}
         {platform === 'bilibili' ? (
           <BilibiliOptionFields value={bilibili} onChange={setBilibili} />
+        ) : null}
+        {platform === 'kuaishou' ? (
+          <KuaishouOptionFields value={kuaishou} onChange={setKuaishou} />
         ) : null}
         <div className="dialog-actions">
           <button className="primary" type="submit" disabled={saving}>

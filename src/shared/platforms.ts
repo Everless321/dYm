@@ -3,12 +3,13 @@
  * 哔哩哔哩的画质 / 编码选项与 downkyicore 的播放参数对齐。
  */
 
-export const CREATOR_PLATFORMS = ['douyin', 'bilibili'] as const
+export const CREATOR_PLATFORMS = ['douyin', 'bilibili', 'kuaishou'] as const
 export type CreatorPlatform = (typeof CREATOR_PLATFORMS)[number]
 
 export const CREATOR_PLATFORM_LABEL: Record<CreatorPlatform, string> = {
   douyin: '抖音',
-  bilibili: '哔哩哔哩'
+  bilibili: '哔哩哔哩',
+  kuaishou: '快手'
 }
 
 export interface BilibiliCreatorSettings {
@@ -63,6 +64,50 @@ export const BILIBILI_CODEC_ID: Record<BilibiliVideoCodec, number> = {
   av1: 13
 }
 
+/** 快手没有分档画质，下载的是 KS-Downloader 从作品页取出的那条地址。 */
+export interface KuaishouCreatorSettings {
+  downloadWork: boolean
+  downloadCover: boolean
+  downloadMusic: boolean
+}
+
+export function defaultKuaishouCreatorSettings(): KuaishouCreatorSettings {
+  return {
+    downloadWork: true,
+    downloadCover: true,
+    downloadMusic: false
+  }
+}
+
+export function normalizeKuaishouCreatorSettings(input: unknown): KuaishouCreatorSettings {
+  const defaults = defaultKuaishouCreatorSettings()
+  const raw = asRecord(input) ?? {}
+  return {
+    downloadWork: boolOr(raw.downloadWork, defaults.downloadWork),
+    downloadCover: boolOr(raw.downloadCover, defaults.downloadCover),
+    downloadMusic: boolOr(raw.downloadMusic, defaults.downloadMusic)
+  }
+}
+
+export function parseKuaishouCreatorSettings(
+  raw: string | null | undefined
+): KuaishouCreatorSettings {
+  if (!raw) return defaultKuaishouCreatorSettings()
+  try {
+    return normalizeKuaishouCreatorSettings(JSON.parse(raw))
+  } catch {
+    return defaultKuaishouCreatorSettings()
+  }
+}
+
+export function kuaishouSecUid(userId: string): string {
+  return `ks_${userId}`
+}
+
+export function kuaishouAwemeId(photoId: string): string {
+  return `ks_${photoId}`
+}
+
 export function defaultBilibiliCreatorSettings(): BilibiliCreatorSettings {
   return {
     videoQuality: 0,
@@ -78,7 +123,8 @@ export function defaultBilibiliCreatorSettings(): BilibiliCreatorSettings {
 }
 
 export function normalizeCreatorPlatform(value: unknown): CreatorPlatform {
-  return value === 'bilibili' ? 'bilibili' : 'douyin'
+  if (value === 'bilibili' || value === 'kuaishou') return value
+  return 'douyin'
 }
 
 export function bilibiliSecUid(mid: number): string {
@@ -128,6 +174,7 @@ export interface AddCreatorOptions {
   live_record?: boolean
   live_check_cron?: string
   platform_settings?: BilibiliCreatorSettings
+  kuaishou?: KuaishouCreatorSettings
 }
 
 /** 丢掉未知字段，把数字和 Cron 收到可入库的范围。无效 Cron 留空，由调用方决定要不要报错。 */
@@ -153,6 +200,9 @@ export function sanitizeAddCreatorOptions(input: unknown): AddCreatorOptions | u
       raw.platform_settings ?? raw.bilibili
     )
   }
+  if (raw.kuaishou !== undefined) {
+    options.kuaishou = normalizeKuaishouCreatorSettings(raw.kuaishou)
+  }
   return options
 }
 
@@ -175,6 +225,7 @@ export function extractCreatorLink(
 export function detectCreatorPlatform(input: string): CreatorPlatform | null {
   const text = input.trim()
   if (!text) return null
+  if (/kuaishou\.(?:com|cn)|chenzhongtech\.com|gifshow\.com/i.test(text)) return 'kuaishou'
   if (/bilibili\.com|b23\.tv|bili2233\.cn/i.test(text)) return 'bilibili'
   if (/^BV[0-9A-Za-z]{10}$/.test(text)) return 'bilibili'
   if (/^av\d+$/i.test(text)) return 'bilibili'

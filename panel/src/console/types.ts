@@ -76,7 +76,7 @@ export interface PanelUser {
   homepageUrl?: string
   lastSyncAt?: number | null
   signature?: string
-  platform?: 'douyin' | 'bilibili'
+  platform?: 'douyin' | 'bilibili' | 'kuaishou'
   liveRecord?: boolean
   liveCheckCron?: string
   bilibili?: {
@@ -89,6 +89,11 @@ export interface PanelUser {
     downloadSubtitle: boolean
     downloadCover: boolean
     downloadAllPages: boolean
+  } | null
+  kuaishou?: {
+    downloadWork: boolean
+    downloadCover: boolean
+    downloadMusic: boolean
   } | null
 }
 

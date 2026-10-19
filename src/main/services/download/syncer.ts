@@ -20,6 +20,7 @@ import { isBackfillLimitMode } from './limit-mode'
 import { normalizeCreatorPlatform } from '../../../shared/platforms'
 import { bilibiliCookie } from '../bilibili/client'
 import { downloadBilibiliCreator, readBilibiliConcurrency } from '../bilibili/download'
+import { downloadKuaishouCreator, readKuaishouConcurrency } from '../kuaishou/download'
 
 /** 同步触发来源：手动 / 定时调度 */
 export type SyncSource = 'manual' | 'schedule'
@@ -82,6 +83,9 @@ export async function startUserSync(
 
   if (normalizeCreatorPlatform(user.platform) === 'bilibili') {
     return syncBilibiliUser(user, source)
+  }
+  if (normalizeCreatorPlatform(user.platform) === 'kuaishou') {
+    return syncKuaishouUser(user, source)
   }
 
   const cookie = getSetting('douyin_cookie')
@@ -515,6 +519,89 @@ async function syncBilibiliUser(
     track('download_finished', { kind: 'sync', source, videos: downloaded, status: finishStatus })
   }
 
+  return { status: finishStatus, downloaded, skipped, error: failureMessage }
+}
+
+async function syncKuaishouUser(
+  user: NonNullable<ReturnType<typeof getUserById>>,
+  source: SyncSource
+): Promise<SyncResult> {
+  const userId = user.id
+  runningSyncs.set(userId, { abort: false })
+  updateUserSyncStatus(userId, 'syncing')
+  const globalMax = Math.max(0, parseInt(getSetting('max_download_count') || '0') || 0)
+  const limit = user.max_download_count > 0 ? user.max_download_count : globalMax
+  let downloaded = 0
+  let skipped = 0
+  let finishStatus: SyncResult['status'] = 'failed'
+  let failureMessage: string | undefined
+  try {
+    const result = await downloadKuaishouCreator(user, {
+      limit,
+      concurrency: readKuaishouConcurrency(),
+      isAborted: () => runningSyncs.get(userId)?.abort === true,
+      source: 'sync',
+      onProgress: (event) =>
+        sendProgress({
+          userId,
+          status: 'syncing',
+          nickname: user.nickname,
+          currentVideo: event.current,
+          totalVideos: event.total,
+          downloadedCount: event.downloaded,
+          skippedCount: event.skipped,
+          message: event.message
+        })
+    })
+    downloaded = result.downloaded
+    skipped = result.skipped
+    if (result.aborted) {
+      finishStatus = 'cancelled'
+      updateUserSyncStatus(userId, 'idle')
+      sendProgress({
+        userId,
+        status: 'stopped',
+        nickname: user.nickname,
+        currentVideo: downloaded,
+        totalVideos: downloaded + skipped,
+        downloadedCount: downloaded,
+        skippedCount: skipped,
+        message: '同步已取消'
+      })
+    } else {
+      finishStatus = 'completed'
+      updateUserSyncStatus(userId, 'idle', Math.floor(Date.now() / 1000))
+      const skipMsg = skipped > 0 ? `，跳过 ${skipped} 个已下载` : ''
+      sendProgress({
+        userId,
+        status: 'completed',
+        nickname: user.nickname,
+        currentVideo: downloaded,
+        totalVideos: downloaded,
+        downloadedCount: downloaded,
+        skippedCount: skipped,
+        message: `${user.nickname} 同步完成，新下载 ${downloaded} 个${skipMsg}`
+      })
+    }
+  } catch (error) {
+    finishStatus = 'failed'
+    failureMessage = (error as Error).message
+    console.error(`[Syncer] Error syncing kuaishou user ${user.nickname}:`, error)
+    updateUserSyncStatus(userId, 'error')
+    sendProgress({
+      userId,
+      status: 'failed',
+      nickname: user.nickname,
+      currentVideo: downloaded,
+      totalVideos: 0,
+      downloadedCount: downloaded,
+      skippedCount: skipped,
+      message: `同步失败: ${failureMessage}`
+    })
+  } finally {
+    runningSyncs.delete(userId)
+    track('download_finished', { kind: 'sync', source, videos: downloaded, status: finishStatus })
+  }
   return { status: finishStatus, downloaded, skipped, error: failureMessage }
 }
 

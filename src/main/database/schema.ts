@@ -218,6 +218,7 @@ export function initDatabase(): void {
   const defaultSettings = [
     { key: 'douyin_cookie', value: '' },
     { key: 'bilibili_cookie', value: '' },
+    { key: 'kuaishou_cookie', value: '' },
     { key: 'download_path', value: '' },
     { key: 'max_download_count', value: '50' },
     // 下载数量限制的算法，见 services/download/limit-mode.ts

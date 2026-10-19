@@ -50,7 +50,8 @@ const cookieAPI = {
   refreshSilent: (): Promise<string> => ipcRenderer.invoke('cookie:refreshSilent'),
   isRefreshing: (): Promise<boolean> => ipcRenderer.invoke('cookie:isRefreshing'),
   resetBrowser: (): Promise<void> => ipcRenderer.invoke('cookie:resetBrowser'),
-  fetchBilibili: (): Promise<string> => ipcRenderer.invoke('cookie:fetchBilibili')
+  fetchBilibili: (): Promise<string> => ipcRenderer.invoke('cookie:fetchBilibili'),
+  fetchKuaishou: (): Promise<string> => ipcRenderer.invoke('cookie:fetchKuaishou')
 }
 
 const douyinAPI = {
