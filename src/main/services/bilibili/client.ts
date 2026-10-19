@@ -185,7 +185,10 @@ export async function fetchVideoDetail(input: {
   }
 }
 
-/** fnval=4048、fourk=1，与 downkyicore GetVideoPlayUrlAsync 相同。 */
+/**
+ * fnval=4048、fourk=1，与 downkyicore GetVideoPlayUrlAsync 相同。
+ * quality 为 0（最高可用）时按 8K 请求，返回里会带上账号能拿到的全部档位。
+ */
 export async function fetchPlayUrl(
   bvid: string,
   cid: number,
@@ -196,7 +199,7 @@ export async function fetchPlayUrl(
     fnver: 0,
     fnval: 4048,
     cid,
-    qn: quality,
+    qn: quality > 0 ? quality : 127,
     bvid
   })
   return biliData<BilibiliPlayUrl>(

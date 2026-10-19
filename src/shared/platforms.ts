@@ -12,7 +12,7 @@ export const CREATOR_PLATFORM_LABEL: Record<CreatorPlatform, string> = {
 }
 
 export interface BilibiliCreatorSettings {
-  /** 期望画质 qn，拿不到时退到不超过它的最高一档 */
+  /** 期望画质 qn，拿不到时退到不超过它的最高一档；0 表示取最高可用画质 */
   videoQuality: number
   videoCodec: BilibiliVideoCodec
   /** 期望音质 id */
@@ -29,6 +29,7 @@ export interface BilibiliCreatorSettings {
 export type BilibiliVideoCodec = 'avc' | 'hevc' | 'av1'
 
 export const BILIBILI_VIDEO_QUALITIES: { id: number; label: string }[] = [
+  { id: 0, label: '最高可用' },
   { id: 16, label: '360P' },
   { id: 32, label: '480P' },
   { id: 64, label: '720P' },
@@ -63,7 +64,7 @@ export const BILIBILI_CODEC_ID: Record<BilibiliVideoCodec, number> = {
 
 export function defaultBilibiliCreatorSettings(): BilibiliCreatorSettings {
   return {
-    videoQuality: 80,
+    videoQuality: 0,
     videoCodec: 'avc',
     audioQuality: 30280,
     downloadVideo: true,

@@ -462,6 +462,7 @@ function BilibiliOptionFields({
           value={value.videoQuality}
           onChange={(event) => onChange({ ...value, videoQuality: Number(event.target.value) })}
         >
+          <option value={0}>最高可用</option>
           <option value={80}>1080P</option>
           <option value={64}>720P</option>
           <option value={116}>1080P 60帧</option>

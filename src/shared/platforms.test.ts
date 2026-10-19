@@ -39,7 +39,7 @@ describe('detectCreatorPlatform', () => {
         downloadAllPages: true
       })
     ).toMatchObject({
-      videoQuality: 80,
+      videoQuality: 0,
       videoCodec: 'hevc',
       audioQuality: 30216,
       downloadDanmaku: true,
@@ -63,7 +63,7 @@ describe('detectCreatorPlatform', () => {
       show_in_home: false,
       auto_sync: true,
       sync_cron: '0 8 * * *',
-      platform_settings: { videoCodec: 'av1', downloadSubtitle: true, videoQuality: 80 }
+      platform_settings: { videoCodec: 'av1', downloadSubtitle: true, videoQuality: 0 }
     })
   })
 })

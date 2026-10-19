@@ -19,15 +19,20 @@ export function streamUrl(stream: DashStream | null | undefined): string {
   return stream.baseUrl || stream.base_url || ''
 }
 
-/** 优先同一编码里不超过目标画质的最高档；没有该编码时退回任意编码。 */
+/**
+ * 先定画质，再挑编码：取不超过目标画质的最高一档（quality 为 0 时不设上限），
+ * 这一档里有偏好编码就用它，没有就用这一档的其他编码。
+ */
 export function pickVideoStream(
   streams: DashStream[] | undefined,
   quality: number,
   codec: BilibiliVideoCodec
 ): DashStream | null {
   const usable = (streams ?? []).filter((stream) => streamUrl(stream))
-  const sameCodec = usable.filter((stream) => stream.codecid === BILIBILI_CODEC_ID[codec])
-  return pickClosest(sameCodec.length > 0 ? sameCodec : usable, quality)
+  const tier = pickClosest(usable, quality > 0 ? quality : Infinity)
+  if (!tier) return null
+  const sameTier = usable.filter((stream) => stream.id === tier.id)
+  return sameTier.find((stream) => stream.codecid === BILIBILI_CODEC_ID[codec]) ?? tier
 }
 
 /** Hi-Res / 杜比优先走 flac、dolby 节点，缺失时退回普通音轨。 */
