@@ -90,11 +90,6 @@ export interface PanelUser {
     downloadCover: boolean
     downloadAllPages: boolean
   } | null
-  kuaishou?: {
-    downloadWork: boolean
-    downloadCover: boolean
-    downloadMusic: boolean
-  } | null
 }
 
 export interface PanelTask {

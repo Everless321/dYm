@@ -45,12 +45,10 @@ import { formatCompactNumber } from '@/lib/format'
 import {
   CREATOR_PLATFORM_LABEL,
   defaultBilibiliCreatorSettings,
-  defaultKuaishouCreatorSettings,
   detectCreatorPlatform,
   extractCreatorLink,
   normalizeCreatorPlatform,
   parseBilibiliCreatorSettings,
-  parseKuaishouCreatorSettings,
   type CreatorPlatform
 } from '@shared/platforms'
 import { CreatorSettingsFields, type CreatorFormState } from './CreatorSettingsFields'
@@ -106,8 +104,7 @@ function blankCreatorForm(): CreatorFormState {
     sync_cron: '',
     live_record: false,
     live_check_cron: '',
-    bilibili: defaultBilibiliCreatorSettings(),
-    kuaishou: defaultKuaishouCreatorSettings()
+    bilibili: defaultBilibiliCreatorSettings()
   }
 }
 
@@ -145,8 +142,7 @@ export default function UsersPage() {
     sync_cron: '',
     live_record: false,
     live_check_cron: '',
-    bilibili: defaultBilibiliCreatorSettings(),
-    kuaishou: defaultKuaishouCreatorSettings()
+    bilibili: defaultBilibiliCreatorSettings()
   })
   const [editLoading, setEditLoading] = useState(false)
   const [cronValid, setCronValid] = useState(true)
@@ -397,8 +393,7 @@ export default function UsersPage() {
         sync_cron: addForm.sync_cron,
         live_record: platform === 'douyin' ? addForm.live_record : false,
         live_check_cron: platform === 'douyin' ? addForm.live_check_cron : '',
-        platform_settings: platform === 'bilibili' ? addForm.bilibili : undefined,
-        kuaishou: platform === 'kuaishou' ? addForm.kuaishou : undefined
+        platform_settings: platform === 'bilibili' ? addForm.bilibili : undefined
       })
       const { user, isNewUser, postDownload } = result
       const prefix = isNewUser ? `用户 ${user.nickname} 添加成功` : `用户 ${user.nickname} 已存在`
@@ -503,8 +498,7 @@ export default function UsersPage() {
       sync_cron: user.sync_cron || '',
       live_record: !!user.live_record,
       live_check_cron: user.live_check_cron || '',
-      bilibili: parseBilibiliCreatorSettings(user.platform_settings),
-      kuaishou: parseKuaishouCreatorSettings(user.platform_settings)
+      bilibili: parseBilibiliCreatorSettings(user.platform_settings)
     })
     setCronValid(true)
     setLiveCronValid(true)
@@ -539,11 +533,7 @@ export default function UsersPage() {
         live_record: editForm.live_record,
         live_check_cron: editForm.live_check_cron,
         platform_settings:
-          normalizeCreatorPlatform(editingUser.platform) === 'bilibili'
-            ? editForm.bilibili
-            : normalizeCreatorPlatform(editingUser.platform) === 'kuaishou'
-              ? editForm.kuaishou
-              : undefined
+          normalizeCreatorPlatform(editingUser.platform) === 'bilibili' ? editForm.bilibili : undefined
       })
       toast.success('保存成功')
       setEditingUser(null)

@@ -8,11 +8,7 @@ import { getDownloadPath } from '../media'
 import { emitPostDownloaded } from '../scripts/emit'
 import { isBackfillLimitMode } from '../download/limit-mode'
 import { runWithConcurrency } from '../../utils/concurrency'
-import {
-  kuaishouAwemeId,
-  parseKuaishouCreatorSettings,
-  type KuaishouCreatorSettings
-} from '../../../shared/platforms'
+import { kuaishouAwemeId } from '../../../shared/platforms'
 import { fetchProfileFeed, kuaishouHeaders, kuaishouPause } from './client'
 import { mediaExtension } from './files'
 import type { KuaishouWork } from './feed'
@@ -35,10 +31,6 @@ export async function downloadKuaishouCreator(
   user: DbUser,
   hooks: KuaishouDownloadHooks
 ): Promise<{ downloaded: number; skipped: number; aborted: boolean }> {
-  const settings = parseKuaishouCreatorSettings(user.platform_settings)
-  if (!settings.downloadWork && !settings.downloadCover && !settings.downloadMusic) {
-    throw new Error('请至少为该快手创作者选择一种下载内容')
-  }
   const source = hooks.source ?? 'sync'
   let skipped = 0
   const pending: KuaishouWork[] = []
@@ -86,7 +78,7 @@ export async function downloadKuaishouCreator(
     message: total === 0 ? `${user.nickname} 没有新的投稿` : `准备下载 ${total} 个投稿`
   })
   await runWithConcurrency(
-    pending.map((work) => async () => downloadOneWork(user, work, settings, source)),
+    pending.map((work) => async () => downloadOneWork(user, work, source)),
     hooks.concurrency,
     {
       shouldStop: hooks.isAborted,
@@ -111,13 +103,12 @@ export async function downloadKuaishouWork(
   work: KuaishouWork,
   source: 'task' | 'sync' | 'single'
 ): Promise<boolean> {
-  return downloadOneWork(user, work, parseKuaishouCreatorSettings(user.platform_settings), source)
+  return downloadOneWork(user, work, source)
 }
 
 async function downloadOneWork(
   user: DbUser,
   work: KuaishouWork,
-  settings: KuaishouCreatorSettings,
   source: 'task' | 'sync' | 'single'
 ): Promise<boolean> {
   const awemeId = kuaishouAwemeId(work.photoId)
@@ -127,40 +118,33 @@ async function downloadOneWork(
   try {
     mkdirSync(folder, { recursive: true })
     let produced = false
-    if (settings.downloadWork) {
-      if (work.photoType === 'images') {
-        let index = 1
-        for (const url of work.downloadUrls) {
-          const file = await downloadAsset(url, join(folder, String(index)), referer)
-          if (file) {
-            produced = true
-            index += 1
-          }
+    if (work.photoType === 'images') {
+      let index = 1
+      for (const url of work.downloadUrls) {
+        const file = await downloadAsset(url, join(folder, String(index)), referer)
+        if (file) {
+          produced = true
+          index += 1
         }
-      } else if (work.downloadUrls[0]) {
-        const file = await downloadAsset(work.downloadUrls[0], join(folder, work.photoId), referer)
-        produced = Boolean(file)
       }
-      if (!produced) throw new Error(`没有可用的作品地址：${work.photoId}`)
+    } else if (work.downloadUrls[0]) {
+      const file = await downloadAsset(work.downloadUrls[0], join(folder, work.photoId), referer)
+      produced = Boolean(file)
     }
-    if (settings.downloadCover && work.coverUrl) {
-      try {
-        await downloadAsset(work.coverUrl, join(folder, `${work.photoId}_cover`), referer)
-        produced = true
-      } catch (error) {
-        console.warn(`[Kuaishou] 封面下载失败 ${work.photoId}:`, error)
-        if (!produced && !settings.downloadMusic) throw error
-      }
+    if (!produced) throw new Error(`没有可用的作品地址：${work.photoId}`)
+    if (work.coverUrl) {
+      await downloadAsset(work.coverUrl, join(folder, `${work.photoId}_cover`), referer).catch(
+        (error) => {
+          console.warn(`[Kuaishou] 封面下载失败 ${work.photoId}:`, error)
+        }
+      )
     }
-    if (settings.downloadMusic && work.musicUrl) {
+    if (work.musicUrl) {
       await downloadAsset(work.musicUrl, join(folder, `${work.photoId}_music`), referer).catch(
         (error) => {
           console.warn(`[Kuaishou] 配乐下载失败 ${work.photoId}:`, error)
         }
       )
-    }
-    if (!produced && !settings.downloadCover && !settings.downloadMusic) {
-      throw new Error('没有得到可保存的文件')
     }
     const post = createPost({
       aweme_id: awemeId,

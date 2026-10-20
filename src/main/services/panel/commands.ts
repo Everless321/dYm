@@ -41,9 +41,7 @@ import { refreshUserProfile } from '../users/refresh'
 import {
   normalizeCreatorPlatform,
   parseBilibiliCreatorSettings,
-  parseKuaishouCreatorSettings,
-  type BilibiliCreatorSettings,
-  type KuaishouCreatorSettings
+  type BilibiliCreatorSettings
 } from '../../../shared/platforms'
 import { bilibiliCookie } from '../bilibili/client'
 import { takeDownloadProgress, takeSyncProgress } from './progress'
@@ -224,9 +222,6 @@ function saveUserSettings(input: Record<string, unknown>): unknown {
   if (input.bilibili && typeof input.bilibili === 'object') {
     patch.platform_settings = input.bilibili as BilibiliCreatorSettings
   }
-  if (input.kuaishou && typeof input.kuaishou === 'object') {
-    patch.platform_settings = input.kuaishou as KuaishouCreatorSettings
-  }
   const user = updateUserSettings(id, patch)
   if (!user) throw new Error('用户不存在')
   return { user: toUser(user) }
@@ -391,7 +386,6 @@ interface PanelUserView {
   liveRecord: boolean
   liveCheckCron: string
   bilibili: BilibiliCreatorSettings | null
-  kuaishou: KuaishouCreatorSettings | null
   progress: object | null
 }
 
@@ -421,10 +415,6 @@ function toUser(user: DbUser): PanelUserView {
     bilibili:
       normalizeCreatorPlatform(user.platform) === 'bilibili'
         ? parseBilibiliCreatorSettings(user.platform_settings)
-        : null,
-    kuaishou:
-      normalizeCreatorPlatform(user.platform) === 'kuaishou'
-        ? parseKuaishouCreatorSettings(user.platform_settings)
         : null,
     progress: takeSyncProgress(user.id)
   }

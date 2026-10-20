@@ -61,8 +61,7 @@ export async function addKuaishouCreator(
       follower_count: profile.followers,
       aweme_count: profile.photoCount,
       homepage_url: `https://www.kuaishou.com/profile/${userId}`,
-      platform: 'kuaishou',
-      platform_settings: JSON.stringify(options?.kuaishou ?? {})
+      platform: 'kuaishou'
     })
     isNewUser = true
     emitUserAdded(user)
@@ -80,8 +79,7 @@ export async function addKuaishouCreator(
           max_download_count: options.max_download_count,
           show_in_home: options.show_in_home,
           auto_sync: options.auto_sync,
-          sync_cron: options.sync_cron,
-          ...(options.kuaishou ? { platform_settings: options.kuaishou } : {})
+          sync_cron: options.sync_cron
         }) ?? user
     }
   }

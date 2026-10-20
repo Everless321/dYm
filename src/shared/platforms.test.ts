@@ -67,10 +67,5 @@ describe('detectCreatorPlatform', () => {
       sync_cron: '0 8 * * *',
       platform_settings: { videoCodec: 'av1', downloadSubtitle: true, videoQuality: 0 }
     })
-    expect(
-      sanitizeAddCreatorOptions({ kuaishou: { downloadMusic: true, downloadWork: false } })
-    ).toMatchObject({
-      kuaishou: { downloadMusic: true, downloadWork: false, downloadCover: true }
-    })
   })
 })

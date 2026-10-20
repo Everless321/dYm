@@ -115,8 +115,7 @@ declare global {
     sync_cron?: string
     live_record?: boolean
     live_check_cron?: string
-    platform_settings?: import('../shared/platforms').BilibiliCreatorSettings | import('../shared/platforms').KuaishouCreatorSettings
-    kuaishou?: import('../shared/platforms').KuaishouCreatorSettings
+    platform_settings?: import('../shared/platforms').BilibiliCreatorSettings
   }
 
   interface AddCreatorOptions {
@@ -127,7 +126,6 @@ declare global {
     live_record?: boolean
     live_check_cron?: string
     platform_settings?: import('../shared/platforms').BilibiliCreatorSettings
-    kuaishou?: import('../shared/platforms').KuaishouCreatorSettings
   }
 
   interface BatchRefreshResult {

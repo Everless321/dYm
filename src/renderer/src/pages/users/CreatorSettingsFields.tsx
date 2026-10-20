@@ -4,8 +4,7 @@ import {
   BILIBILI_VIDEO_QUALITIES,
   CREATOR_PLATFORM_LABEL,
   type BilibiliCreatorSettings,
-  type CreatorPlatform,
-  type KuaishouCreatorSettings
+  type CreatorPlatform
 } from '@shared/platforms'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -20,7 +19,6 @@ export interface CreatorFormState {
   live_record: boolean
   live_check_cron: string
   bilibili: BilibiliCreatorSettings
-  kuaishou: KuaishouCreatorSettings
 }
 
 const SYNC_CRON_PRESETS: { label: string; value: string }[] = [
@@ -147,9 +145,6 @@ export function CreatorSettingsFields({
       ) : null}
       {platform === 'bilibili' ? (
         <BilibiliFields value={form.bilibili} onChange={(bilibili) => onChange({ bilibili })} />
-      ) : null}
-      {platform === 'kuaishou' ? (
-        <KuaishouFields value={form.kuaishou} onChange={(kuaishou) => onChange({ kuaishou })} />
       ) : null}
     </div>
   )
@@ -299,41 +294,6 @@ function SelectField({
         ))}
       </select>
     </label>
-  )
-}
-
-function KuaishouFields({
-  value,
-  onChange
-}: {
-  value: KuaishouCreatorSettings
-  onChange: (value: KuaishouCreatorSettings) => void
-}): React.JSX.Element {
-  return (
-    <div className="border-t border-[#E5E5E7] pt-4 space-y-4">
-      <div>
-        <Label>下载内容</Label>
-        <p className="text-xs text-muted-foreground">
-          按 KS-Downloader 的方式保存作品页给出的视频或图集
-        </p>
-      </div>
-      <Toggle
-        label="下载作品"
-        checked={value.downloadWork}
-        onChange={(downloadWork) => onChange({ ...value, downloadWork })}
-      />
-      <Toggle
-        label="下载封面"
-        checked={value.downloadCover}
-        onChange={(downloadCover) => onChange({ ...value, downloadCover })}
-      />
-      <Toggle
-        label="下载配乐"
-        hint="快手配乐地址不稳定，失败时仍保留作品"
-        checked={value.downloadMusic}
-        onChange={(downloadMusic) => onChange({ ...value, downloadMusic })}
-      />
-    </div>
   )
 }
 

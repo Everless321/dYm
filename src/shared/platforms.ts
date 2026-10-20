@@ -64,42 +64,6 @@ export const BILIBILI_CODEC_ID: Record<BilibiliVideoCodec, number> = {
   av1: 13
 }
 
-/** 快手没有分档画质，下载的是 KS-Downloader 从作品页取出的那条地址。 */
-export interface KuaishouCreatorSettings {
-  downloadWork: boolean
-  downloadCover: boolean
-  downloadMusic: boolean
-}
-
-export function defaultKuaishouCreatorSettings(): KuaishouCreatorSettings {
-  return {
-    downloadWork: true,
-    downloadCover: true,
-    downloadMusic: false
-  }
-}
-
-export function normalizeKuaishouCreatorSettings(input: unknown): KuaishouCreatorSettings {
-  const defaults = defaultKuaishouCreatorSettings()
-  const raw = asRecord(input) ?? {}
-  return {
-    downloadWork: boolOr(raw.downloadWork, defaults.downloadWork),
-    downloadCover: boolOr(raw.downloadCover, defaults.downloadCover),
-    downloadMusic: boolOr(raw.downloadMusic, defaults.downloadMusic)
-  }
-}
-
-export function parseKuaishouCreatorSettings(
-  raw: string | null | undefined
-): KuaishouCreatorSettings {
-  if (!raw) return defaultKuaishouCreatorSettings()
-  try {
-    return normalizeKuaishouCreatorSettings(JSON.parse(raw))
-  } catch {
-    return defaultKuaishouCreatorSettings()
-  }
-}
-
 export function kuaishouSecUid(userId: string): string {
   return `ks_${userId}`
 }
@@ -174,7 +138,6 @@ export interface AddCreatorOptions {
   live_record?: boolean
   live_check_cron?: string
   platform_settings?: BilibiliCreatorSettings
-  kuaishou?: KuaishouCreatorSettings
 }
 
 /** 丢掉未知字段，把数字和 Cron 收到可入库的范围。无效 Cron 留空，由调用方决定要不要报错。 */
@@ -199,9 +162,6 @@ export function sanitizeAddCreatorOptions(input: unknown): AddCreatorOptions | u
     options.platform_settings = normalizeBilibiliCreatorSettings(
       raw.platform_settings ?? raw.bilibili
     )
-  }
-  if (raw.kuaishou !== undefined) {
-    options.kuaishou = normalizeKuaishouCreatorSettings(raw.kuaishou)
   }
   return options
 }
