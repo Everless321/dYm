@@ -25,9 +25,16 @@ export async function fetchKuaishouCookie(): Promise<string> {
         contextIsolation: true
       }
     })
-    prepareKuaishouWindow(win)
-    blockCustomProtocols(win)
-    win.loadURL('https://www.kuaishou.com')
+    void prepareKuaishouWindow(win).then(
+      () => {
+        blockCustomProtocols(win)
+        if (!win.isDestroyed()) win.loadURL('https://www.kuaishou.com')
+      },
+      (error: Error) => {
+        console.warn('[Kuaishou] 登录窗口指纹设置失败:', error.message)
+        if (!win.isDestroyed()) win.loadURL('https://www.kuaishou.com')
+      }
+    )
 
     win.on('closed', async () => {
       try {

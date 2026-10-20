@@ -35,18 +35,19 @@ function platformVersionOf(profile: DeviceProfile, systemVersion: string): strin
   return build >= 22000 ? '15.0.0' : '10.0.0'
 }
 
-export function applyClientHints(
+export async function applyClientHints(
   contents: WebContents,
   profile: DeviceProfile,
   systemVersion: string
-): void {
+): Promise<void> {
   const hints = clientHintsOf(profile)
   const brands = parseBrands(hints['Sec-Ch-Ua'])
   const fullVersion = profile.browserVersion
   try {
     if (!contents.debugger.isAttached()) contents.debugger.attach('1.3')
-    // 不 detach：override 跟着这个调试会话，断开就失效
-    void contents.debugger.sendCommand('Emulation.setUserAgentOverride', {
+    // 不 detach：override 跟着这个调试会话，断开就失效。
+    // 必须等这条命令完成再加载页面，否则首屏仍是 Electron 的指纹。
+    await contents.debugger.sendCommand('Emulation.setUserAgentOverride', {
       userAgent: userAgentOf(profile),
       acceptLanguage: profile.language,
       userAgentMetadata: {

@@ -584,6 +584,9 @@ async function syncKuaishouUser(
       })
     }
   } catch (error) {
+    const counted = error as Error & { downloaded?: number; skipped?: number }
+    if (typeof counted.downloaded === 'number') downloaded = counted.downloaded
+    if (typeof counted.skipped === 'number') skipped = counted.skipped
     finishStatus = 'failed'
     failureMessage = (error as Error).message
     console.error(`[Syncer] Error syncing kuaishou user ${user.nickname}:`, error)

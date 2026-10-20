@@ -2,7 +2,7 @@ import { closeSync, createWriteStream, mkdirSync, openSync, readSync, renameSync
 import { join } from 'path'
 import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
-import { net } from 'electron'
+import { session, type Session } from 'electron'
 import { createPost, getPostByAwemeId, getSetting, type DbUser } from '../../database'
 import { getDownloadPath } from '../media'
 import { emitPostDownloaded } from '../scripts/emit'
@@ -47,7 +47,7 @@ export async function downloadKuaishouCreator(
   const backfill = isBackfillLimitMode()
   let examined = 0
   let cursor = ''
-  let quotaError: KuaishouQuotaError | null = null
+  let listingError: Error | null = null
   const enough = (): boolean =>
     limit > 0 && (backfill ? pending.length >= limit : examined >= limit)
   while (!hooks.isAborted()) {
@@ -55,11 +55,8 @@ export async function downloadKuaishouCreator(
     try {
       page = await fetchProfileFeed(user.uid, cursor)
     } catch (error) {
-      if (error instanceof KuaishouQuotaError) {
-        quotaError = error
-        break
-      }
-      throw error
+      listingError = error instanceof Error ? error : new Error(String(error))
+      break
     }
     if (page.works.length === 0) break
     for (const work of page.works) {
@@ -75,7 +72,9 @@ export async function downloadKuaishouCreator(
     cursor = page.cursor
   }
 
-  if (quotaError && pending.length === 0) throw quotaError
+  if (listingError && pending.length === 0) {
+    throw rememberProgress(listingError, 0, skipped)
+  }
   if (hooks.isAborted()) return { downloaded: 0, skipped, aborted: true }
 
   let downloaded = 0
@@ -106,8 +105,15 @@ export async function downloadKuaishouCreator(
       }
     }
   )
-  if (quotaError) throw quotaError
+  if (listingError) throw rememberProgress(listingError, downloaded, skipped)
   return { downloaded, skipped, aborted: hooks.isAborted() }
+}
+
+function rememberProgress(error: Error, downloaded: number, skipped: number): Error {
+  const counted = error as Error & { downloaded?: number; skipped?: number }
+  counted.downloaded = downloaded
+  counted.skipped = skipped
+  return error
 }
 
 export async function downloadKuaishouWork(
@@ -176,31 +182,42 @@ async function downloadOneWork(
   }
 }
 
+/** 空分区，不带登录 Cookie。CDN 不需要快手请求头。 */
+function cdnSession(): Session {
+  return session.fromPartition('kuaishou-cdn')
+}
+
 async function downloadAsset(url: string, fileWithoutExt: string): Promise<string> {
   const assetUrl = url.startsWith('//') ? `https:${url}` : url.replace(/^http:\/\//i, 'https://')
   if (!/^https:\/\//i.test(assetUrl)) throw new Error('作品地址不是 HTTPS')
-  const response = await withKuaishouDownloadThrottle(() =>
-    net.fetch(assetUrl, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) })
-  )
-  if (!response.ok || !response.body) throw new Error(`下载文件失败 HTTP ${response.status}`)
-  const temporary = `${fileWithoutExt}.download`
-  const body = response.body
-  const stream =
-    typeof (body as unknown as Readable).pipe === 'function'
-      ? (body as unknown as Readable)
-      : Readable.fromWeb(body as unknown as import('stream/web').ReadableStream<Uint8Array>)
-  await pipeline(stream, createWriteStream(temporary))
-  const header = new Uint8Array(16)
-  const handle = openSync(temporary, 'r')
-  try {
-    readSync(handle, header, 0, header.length, 0)
-  } finally {
-    closeSync(handle)
-  }
-  const extension = mediaExtension(header)
-  const finalName = `${fileWithoutExt}.${extension === 'bin' ? 'mp4' : extension}`
-  renameSync(temporary, finalName)
-  return finalName
+  return withKuaishouDownloadThrottle(async () => {
+    const signal = AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)
+    const temporary = `${fileWithoutExt}.download`
+    try {
+      const response = await cdnSession().fetch(assetUrl, { signal, credentials: 'omit' })
+      if (!response.ok || !response.body) throw new Error(`下载文件失败 HTTP ${response.status}`)
+      const body = response.body
+      const stream =
+        typeof (body as unknown as Readable).pipe === 'function'
+          ? (body as unknown as Readable)
+          : Readable.fromWeb(body as unknown as import('stream/web').ReadableStream<Uint8Array>)
+      await pipeline(stream, createWriteStream(temporary), { signal })
+      const header = new Uint8Array(16)
+      const handle = openSync(temporary, 'r')
+      try {
+        readSync(handle, header, 0, header.length, 0)
+      } finally {
+        closeSync(handle)
+      }
+      const extension = mediaExtension(header)
+      const finalName = `${fileWithoutExt}.${extension === 'bin' ? 'mp4' : extension}`
+      renameSync(temporary, finalName)
+      return finalName
+    } catch (error) {
+      rmSync(temporary, { force: true })
+      throw error
+    }
+  })
 }
 
 function formatPublishTime(timestampMs: number): string {

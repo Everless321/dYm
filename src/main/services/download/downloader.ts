@@ -162,6 +162,8 @@ export async function startDownloadTask(
     const failedUsers: { nickname: string; message: string }[] = []
     for (const [index, result] of results.entries()) {
       if (result instanceof Error) {
+        const counted = result as Error & { downloaded?: number }
+        if (typeof counted.downloaded === 'number') totalDownloaded += counted.downloaded
         const nickname = task.users[index]?.nickname ?? String(index)
         console.error(`[Downloader] 用户 ${nickname} 下载失败:`, result.message)
         failedUsers.push({ nickname, message: result.message })

@@ -189,7 +189,7 @@ async function ensurePage(): Promise<BrowserWindow> {
     }
   })
   created.webContents.setUserAgent(userAgent)
-  applyClientHints(created.webContents, getDeviceProfile(), release())
+  await applyClientHints(created.webContents, getDeviceProfile(), release())
   blockCustomProtocols(created)
 
   // 不 await：抖音个人页是长连接型 SPA，loadURL 常常不 resolve

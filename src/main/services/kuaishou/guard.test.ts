@@ -82,6 +82,28 @@ describe('kuaishou throttle', () => {
     expect(startedAt[1] - startedAt[0]).toBeGreaterThanOrEqual(DOWNLOAD_GAP_MS)
   })
 
+  it('限额冷却只拦住接口，已经列出来的文件仍可以下载', async () => {
+    try {
+      markKuaishouQuota()
+    } catch {
+      // 标记限额本身就会抛出
+    }
+    let ran = false
+    const download = withKuaishouDownloadThrottle(async () => {
+      ran = true
+    })
+    await vi.runAllTimersAsync()
+    await download
+    expect(ran).toBe(true)
+
+    const blocked = withKuaishouApiThrottle(async () => {
+      ran = false
+    }).catch((error: Error) => error)
+    await vi.runAllTimersAsync()
+    expect(await blocked).toBeInstanceOf(KuaishouQuotaError)
+    expect(ran).toBe(true)
+  })
+
   it('触发限额后，冷却期内不再执行排队任务', async () => {
     const first = withKuaishouApiThrottle(async () => {
       markKuaishouQuota()

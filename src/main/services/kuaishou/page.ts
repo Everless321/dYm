@@ -16,6 +16,9 @@ import {
 const PARTITION = 'persist:kuaishou-login'
 const HOME_URL = 'https://www.kuaishou.com/'
 const REALM_TIMEOUT_MS = 25_000
+const PAGE_REQUEST_TIMEOUT_MS = 30_000
+/** 比外层 executeJavaScript 超时更短，让页面里的 fetch 先自己中止 */
+const PAGE_FETCH_TIMEOUT_MS = 25_000
 const IDLE_CLOSE_MS = 5 * 60_000
 
 /**
@@ -90,12 +93,12 @@ export function kuaishouUserAgent(): string {
   return userAgentOf(getDeviceProfile())
 }
 
-export function prepareKuaishouWindow(target: BrowserWindow): void {
+/** 登录窗口和签名窗口共用：设备指纹要在 loadURL 之前落地。 */
+export async function prepareKuaishouWindow(target: BrowserWindow): Promise<void> {
   const profile = getDeviceProfile()
   const userAgent = userAgentOf(profile)
   target.webContents.setUserAgent(userAgent)
-  applyClientHints(target.webContents, profile, release())
-  installCaptureScript(target)
+  await applyClientHints(target.webContents, profile, release())
 }
 
 async function injectCookies(ses: Session): Promise<void> {
@@ -121,10 +124,10 @@ async function injectCookies(ses: Session): Promise<void> {
   }
 }
 
-function installCaptureScript(target: BrowserWindow): void {
+async function installCaptureScript(target: BrowserWindow): Promise<void> {
   try {
     if (!target.webContents.debugger.isAttached()) target.webContents.debugger.attach('1.3')
-    void target.webContents.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
+    await target.webContents.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
       source: SIGN_CAPTURE_SCRIPT
     })
   } catch (error) {
@@ -153,10 +156,13 @@ async function ensurePage(): Promise<BrowserWindow> {
       // 和抖音页内签名一样：关隔离才能碰到页面自己的 $encode
       contextIsolation: false,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      // 隐藏窗口默认会拖慢定时器，页内 25 秒中止会晚于外层超时
+      backgroundThrottling: false
     }
   })
-  prepareKuaishouWindow(created)
+  await prepareKuaishouWindow(created)
+  await installCaptureScript(created)
   blockCustomProtocols(created)
   created.loadURL(HOME_URL).catch(() => {})
   win = created
@@ -184,6 +190,29 @@ async function waitForRealm(target: BrowserWindow): Promise<void> {
   throw new Error('快手页面没有准备好 $encode 签名环境，请检查网络后重试')
 }
 
+function runInPage(target: BrowserWindow, script: string): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const finish = (settle: () => void): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      settle()
+    }
+    const timer = setTimeout(() => {
+      finish(() => {
+        // 页内脚本还没结束就关掉窗口，避免下一次请求和它叠在同一个页面上
+        closeKuaishouPage()
+        reject(new Error('快手页面请求超时'))
+      })
+    }, PAGE_REQUEST_TIMEOUT_MS)
+    target.webContents
+      .executeJavaScript(script)
+      .then((value) => finish(() => resolve(value)))
+      .catch((error: Error) => finish(() => reject(error)))
+  })
+}
+
 function serialize<T>(task: () => Promise<T>): Promise<T> {
   const run = queue.then(task, task)
   queue = run.catch(() => undefined)
@@ -197,14 +226,21 @@ export async function fetchTextInPage(url: string): Promise<string> {
       const target = await ensurePage()
       const script = `
         (async () => {
-          const response = await fetch(${JSON.stringify(url)}, {
-            credentials: 'include',
-            redirect: 'follow'
-          })
-          return { url: response.url, status: response.status, text: await response.text() }
+          const controller = new AbortController()
+          const timer = setTimeout(() => controller.abort(), ${PAGE_FETCH_TIMEOUT_MS})
+          try {
+            const response = await fetch(${JSON.stringify(url)}, {
+              credentials: 'include',
+              redirect: 'follow',
+              signal: controller.signal
+            })
+            return { url: response.url, status: response.status, text: await response.text() }
+          } finally {
+            clearTimeout(timer)
+          }
         })()
       `
-      const result = (await target.webContents.executeJavaScript(script)) as {
+      const result = (await runInPage(target, script)) as {
         url: string
         status: number
         text: string
@@ -222,14 +258,21 @@ export async function resolveInPage(url: string): Promise<string> {
       const target = await ensurePage()
       const script = `
         (async () => {
-          const response = await fetch(${JSON.stringify(url)}, {
-            credentials: 'include',
-            redirect: 'follow'
-          })
-          return response.url || ${JSON.stringify(url)}
+          const controller = new AbortController()
+          const timer = setTimeout(() => controller.abort(), ${PAGE_FETCH_TIMEOUT_MS})
+          try {
+            const response = await fetch(${JSON.stringify(url)}, {
+              credentials: 'include',
+              redirect: 'follow',
+              signal: controller.signal
+            })
+            return response.url || ${JSON.stringify(url)}
+          } finally {
+            clearTimeout(timer)
+          }
         })()
       `
-      return (await target.webContents.executeJavaScript(script)) as string
+      return (await runInPage(target, script)) as string
     })
   )
 }
@@ -246,25 +289,38 @@ export async function fetchSignedProfileFeed(
       const script = `
         (async () => {
           const input = ${JSON.stringify(input)}
-          const sign = await new Promise((resolve, reject) => {
-            window.__ks_realm.call('$encode', [
-              input,
-              { suc: (value) => resolve(value), err: (error) => reject(new Error(String(error))) }
-            ])
-          })
-          const response = await fetch(
-            'https://www.kuaishou.com/rest/v/profile/feed?__NS_hxfalcon=' + encodeURIComponent(sign) + '&caver=2',
-            {
-              method: 'POST',
-              credentials: 'include',
-              headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-              body: JSON.stringify(input.requestBody)
-            }
-          )
-          return response.json()
+          const controller = new AbortController()
+          const timer = setTimeout(() => controller.abort(), ${PAGE_FETCH_TIMEOUT_MS})
+          try {
+            const sign = await new Promise((resolve, reject) => {
+              const fail = () => reject(new Error('快手签名超时'))
+              if (controller.signal.aborted) {
+                fail()
+                return
+              }
+              controller.signal.addEventListener('abort', fail, { once: true })
+              window.__ks_realm.call('$encode', [
+                input,
+                { suc: (value) => resolve(value), err: (error) => reject(new Error(String(error))) }
+              ])
+            })
+            const response = await fetch(
+              'https://www.kuaishou.com/rest/v/profile/feed?__NS_hxfalcon=' + encodeURIComponent(sign) + '&caver=2',
+              {
+                method: 'POST',
+                credentials: 'include',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify(input.requestBody),
+                signal: controller.signal
+              }
+            )
+            return await response.json()
+          } finally {
+            clearTimeout(timer)
+          }
         })()
       `
-      const payload = (await target.webContents.executeJavaScript(script)) as {
+      const payload = (await runInPage(target, script)) as {
         result?: unknown
         error_msg?: unknown
         feeds?: unknown

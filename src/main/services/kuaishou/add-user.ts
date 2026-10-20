@@ -20,7 +20,7 @@ import type { AddUserPostDownload, AddUserResult } from '../users/add'
 import { fetchProfileFeed, loadKuaishouWork, resolveKuaishouAddress } from './client'
 import { downloadKuaishouWork } from './download'
 import type { KuaishouWork } from './feed'
-import type { KuaishouPageDetail } from './html'
+import { classifyPageMedia, type KuaishouPageDetail } from './html'
 import { parseKuaishouInput } from './parse'
 
 export async function addKuaishouCreator(
@@ -133,14 +133,15 @@ async function loadProfile(
 }
 
 function workFromDetail(detail: KuaishouPageDetail, profile: { avatar: string }): KuaishouWork {
+  const images = detail.imageUrls.filter((url) => url.length > 0)
   return {
     photoId: detail.photoId,
     caption: detail.caption,
     coverUrl: detail.coverUrl,
-    downloadUrls: detail.photoUrl ? [detail.photoUrl] : [],
-    musicUrl: '',
+    downloadUrls: images.length > 0 ? images : detail.photoUrl ? [detail.photoUrl] : [],
+    musicUrl: detail.musicUrl,
     timestampMs: detail.timestampMs,
-    photoType: 'video',
+    photoType: classifyPageMedia(images.length),
     authorId: detail.authorId,
     authorName: detail.authorName,
     avatarUrl: profile.avatar,

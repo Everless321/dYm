@@ -9,6 +9,8 @@ export interface KuaishouPageDetail {
   durationMs: number
   likeCount: number
   viewCount: number
+  musicUrl: string
+  imageUrls: string[]
 }
 
 const WEB_MARKER = 'window.__APOLLO_STATE__='
@@ -67,7 +69,9 @@ function detailFromApollo(
     timestampMs: number(photo.timestamp),
     durationMs: number(photo.duration),
     likeCount: number(photo.realLikeCount),
-    viewCount: number(photo.viewCount)
+    viewCount: number(photo.viewCount),
+    musicUrl: audioUrl(photo.soundTrack) || audioUrl(photo.music),
+    imageUrls: atlasUrls(photo)
   }
 }
 
@@ -88,8 +92,35 @@ function detailFromInit(
     timestampMs: number(photo.timestamp),
     durationMs: number(photo.duration),
     likeCount: number(photo.likeCount),
-    viewCount: number(photo.viewCount)
+    viewCount: number(photo.viewCount),
+    musicUrl: audioUrl(photo.soundTrack) || audioUrl(photo.music),
+    imageUrls: atlasUrls(photo)
   }
+}
+
+/** 作品页里只要抽出了图集地址，就按图文保存，单张也一样。 */
+export function classifyPageMedia(imageCount: number): 'video' | 'images' {
+  return imageCount > 0 ? 'images' : 'video'
+}
+
+function audioUrl(value: unknown): string {
+  return firstUrl(asRecord(value)?.audioUrls)
+}
+
+function atlasUrls(photo: Record<string, unknown>): string[] {
+  const atlas = asRecord(photo.atlas) ?? asRecord(asRecord(photo.ext_params)?.atlas)
+  if (!atlas) return []
+  const cdnList = Array.isArray(atlas.cdn) ? atlas.cdn : []
+  const cdn = typeof cdnList[0] === 'string' ? cdnList[0] : ''
+  const list = Array.isArray(atlas.list) ? atlas.list : []
+  if (!cdn) return []
+  return list
+    .filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+    .map((path) => {
+      if (path.startsWith('http')) return path
+      const slash = path.startsWith('/') ? '' : '/'
+      return `https://${cdn}${slash}${path}`
+    })
 }
 
 function firstUrl(value: unknown): string {

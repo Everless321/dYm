@@ -14,6 +14,10 @@ export const DOWNLOAD_TIMEOUT_MS = 120_000
 export const QUOTA_COOLDOWN_MS = 3 * 60 * 60_000
 
 export class KuaishouQuotaError extends Error {
+  /** 限额触发前已经保存的作品数，方便同步结果不要报成 0 */
+  downloaded = 0
+  skipped = 0
+
   constructor(message: string) {
     super(message)
     this.name = 'KuaishouQuotaError'
@@ -106,11 +110,15 @@ export function withKuaishouApiThrottle<T>(task: () => Promise<T>): Promise<T> {
     (at) => {
       lastApiAt = at
     },
-    task
+    task,
+    true
   )
 }
 
-/** 文件下载单独排队，并和接口隔开，避免并发把连接打满 */
+/**
+ * 文件下载单独排队。不看接口限额：result=2 只封投稿列表，
+ * 已经列出来的作品仍应下完，不能因为冷却把文件请求一起丢掉。
+ */
 export function withKuaishouDownloadThrottle<T>(task: () => Promise<T>): Promise<T> {
   return enqueue(
     () => downloadQueue,
@@ -123,7 +131,8 @@ export function withKuaishouDownloadThrottle<T>(task: () => Promise<T>): Promise
     (at) => {
       lastDownloadAt = at
     },
-    task
+    task,
+    false
   )
 }
 
@@ -134,10 +143,11 @@ function enqueue<T>(
   gapMs: number,
   jitterMs: number,
   setLastAt: (at: number) => void,
-  task: () => Promise<T>
+  task: () => Promise<T>,
+  checkQuota: boolean
 ): Promise<T> {
   const run = getQueue().then(async () => {
-    assertKuaishouAvailable()
+    if (checkQuota) assertKuaishouAvailable()
     const wait = getLastAt() + gapMs + Math.random() * jitterMs - Date.now()
     if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait))
     try {
