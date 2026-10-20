@@ -9,9 +9,10 @@ import { emitPostDownloaded } from '../scripts/emit'
 import { isBackfillLimitMode } from '../download/limit-mode'
 import { runWithConcurrency } from '../../utils/concurrency'
 import { kuaishouAwemeId } from '../../../shared/platforms'
-import { fetchProfileFeed, kuaishouHeaders, kuaishouPause } from './client'
+import { fetchProfileFeed } from './client'
 import { mediaExtension } from './files'
 import type { KuaishouWork } from './feed'
+import { DOWNLOAD_TIMEOUT_MS, KuaishouQuotaError, withKuaishouDownloadThrottle } from './guard'
 
 export interface KuaishouDownloadHooks {
   limit: number
@@ -46,10 +47,20 @@ export async function downloadKuaishouCreator(
   const backfill = isBackfillLimitMode()
   let examined = 0
   let cursor = ''
+  let quotaError: KuaishouQuotaError | null = null
   const enough = (): boolean =>
     limit > 0 && (backfill ? pending.length >= limit : examined >= limit)
   while (!hooks.isAborted()) {
-    const page = await fetchProfileFeed(user.uid, cursor)
+    let page: Awaited<ReturnType<typeof fetchProfileFeed>>
+    try {
+      page = await fetchProfileFeed(user.uid, cursor)
+    } catch (error) {
+      if (error instanceof KuaishouQuotaError) {
+        quotaError = error
+        break
+      }
+      throw error
+    }
     if (page.works.length === 0) break
     for (const work of page.works) {
       if (enough()) break
@@ -62,9 +73,9 @@ export async function downloadKuaishouCreator(
     }
     if (enough() || page.finished) break
     cursor = page.cursor
-    await kuaishouPause()
   }
 
+  if (quotaError && pending.length === 0) throw quotaError
   if (hooks.isAborted()) return { downloaded: 0, skipped, aborted: true }
 
   let downloaded = 0
@@ -95,6 +106,7 @@ export async function downloadKuaishouCreator(
       }
     }
   )
+  if (quotaError) throw quotaError
   return { downloaded, skipped, aborted: hooks.isAborted() }
 }
 
@@ -114,37 +126,32 @@ async function downloadOneWork(
   const awemeId = kuaishouAwemeId(work.photoId)
   if (getPostByAwemeId(awemeId)) return false
   const folder = join(getDownloadPath(), user.sec_uid, work.photoId)
-  const referer = `https://www.kuaishou.com/short-video/${work.photoId}`
   try {
     mkdirSync(folder, { recursive: true })
     let produced = false
     if (work.photoType === 'images') {
       let index = 1
       for (const url of work.downloadUrls) {
-        const file = await downloadAsset(url, join(folder, String(index)), referer)
+        const file = await downloadAsset(url, join(folder, String(index)))
         if (file) {
           produced = true
           index += 1
         }
       }
     } else if (work.downloadUrls[0]) {
-      const file = await downloadAsset(work.downloadUrls[0], join(folder, work.photoId), referer)
+      const file = await downloadAsset(work.downloadUrls[0], join(folder, work.photoId))
       produced = Boolean(file)
     }
     if (!produced) throw new Error(`没有可用的作品地址：${work.photoId}`)
     if (work.coverUrl) {
-      await downloadAsset(work.coverUrl, join(folder, `${work.photoId}_cover`), referer).catch(
-        (error) => {
-          console.warn(`[Kuaishou] 封面下载失败 ${work.photoId}:`, error)
-        }
-      )
+      await downloadAsset(work.coverUrl, join(folder, `${work.photoId}_cover`)).catch((error) => {
+        console.warn(`[Kuaishou] 封面下载失败 ${work.photoId}:`, error)
+      })
     }
     if (work.musicUrl) {
-      await downloadAsset(work.musicUrl, join(folder, `${work.photoId}_music`), referer).catch(
-        (error) => {
-          console.warn(`[Kuaishou] 配乐下载失败 ${work.photoId}:`, error)
-        }
-      )
+      await downloadAsset(work.musicUrl, join(folder, `${work.photoId}_music`)).catch((error) => {
+        console.warn(`[Kuaishou] 配乐下载失败 ${work.photoId}:`, error)
+      })
     }
     const post = createPost({
       aweme_id: awemeId,
@@ -162,20 +169,19 @@ async function downloadOneWork(
     emitPostDownloaded(post, folder, source)
     return true
   } catch (error) {
+    if (error instanceof KuaishouQuotaError) throw error
     console.error(`[Kuaishou] 下载失败 ${work.photoId}:`, error)
     rmSync(folder, { recursive: true, force: true })
     return false
   }
 }
 
-async function downloadAsset(
-  url: string,
-  fileWithoutExt: string,
-  referer: string
-): Promise<string> {
+async function downloadAsset(url: string, fileWithoutExt: string): Promise<string> {
   const assetUrl = url.startsWith('//') ? `https:${url}` : url.replace(/^http:\/\//i, 'https://')
   if (!/^https:\/\//i.test(assetUrl)) throw new Error('作品地址不是 HTTPS')
-  const response = await net.fetch(assetUrl, { headers: kuaishouHeaders(referer) })
+  const response = await withKuaishouDownloadThrottle(() =>
+    net.fetch(assetUrl, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) })
+  )
   if (!response.ok || !response.body) throw new Error(`下载文件失败 HTTP ${response.status}`)
   const temporary = `${fileWithoutExt}.download`
   const body = response.body

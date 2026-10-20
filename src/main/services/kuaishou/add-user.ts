@@ -17,12 +17,7 @@ import {
   sanitizeAddCreatorOptions
 } from '../../../shared/platforms'
 import type { AddUserPostDownload, AddUserResult } from '../users/add'
-import {
-  fetchProfileFeed,
-  kuaishouHeaders,
-  loadKuaishouWork,
-  resolveKuaishouAddress
-} from './client'
+import { fetchProfileFeed, loadKuaishouWork, resolveKuaishouAddress } from './client'
 import { downloadKuaishouWork } from './download'
 import type { KuaishouWork } from './feed'
 import type { KuaishouPageDetail } from './html'
@@ -66,11 +61,7 @@ export async function addKuaishouCreator(
     isNewUser = true
     emitUserAdded(user)
     if (profile.avatar) {
-      const avatarPath = await downloadAvatar(
-        secUid,
-        profile.avatar,
-        kuaishouHeaders(user.homepage_url)
-      )
+      const avatarPath = await downloadAvatar(secUid, profile.avatar)
       if (avatarPath) user = updateUser(user.id, { avatar_path: avatarPath }) ?? user
     }
     if (options) {
@@ -130,19 +121,14 @@ async function loadProfile(
   following: number
   photoCount: number
 }> {
-  try {
-    const page = await fetchProfileFeed(userId)
-    const sample = page.works[0]
-    return {
-      name: sample?.authorName || detail?.authorName || userId,
-      avatar: sample?.avatarUrl || '',
-      followers: sample?.fanCount || 0,
-      following: sample?.followCount || 0,
-      photoCount: sample?.photoCount || 0
-    }
-  } catch (error) {
-    if (!detail?.authorName) throw error
-    return { name: detail.authorName, avatar: '', followers: 0, following: 0, photoCount: 0 }
+  const page = await fetchProfileFeed(userId)
+  const sample = page.works[0]
+  return {
+    name: sample?.authorName || detail?.authorName || userId,
+    avatar: sample?.avatarUrl || '',
+    followers: sample?.fanCount || 0,
+    following: sample?.followCount || 0,
+    photoCount: sample?.photoCount || 0
   }
 }
 

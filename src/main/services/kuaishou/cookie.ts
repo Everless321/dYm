@@ -1,16 +1,19 @@
 import { BrowserWindow, session } from 'electron'
 import { setSetting } from '../../database'
 import { blockCustomProtocols } from '../../utils/block-protocols'
-import { KUAISHOU_USER_AGENT } from './client'
+import { installKuaishouClientHints, kuaishouUserAgent, prepareKuaishouWindow } from './page'
 
 const PARTITION = 'persist:kuaishou-login'
 
 /**
- * 打开快手网页。KS-Downloader 的 Cookie 不要求登录，
- * 但浏览器访问后拿到的 did 等会话能让投稿接口更稳定。关掉窗口时写回。
+ * 打开快手网页。窗口使用和抖音同一套设备指纹与 Client Hints，
+ * 否则首页会被快手直接拦住。关掉窗口时把会话 Cookie 写回。
  */
 export async function fetchKuaishouCookie(): Promise<string> {
   const ses = session.fromPartition(PARTITION)
+  const userAgent = kuaishouUserAgent()
+  ses.setUserAgent(userAgent)
+  installKuaishouClientHints(ses)
   return new Promise((resolve, reject) => {
     const win = new BrowserWindow({
       width: 1100,
@@ -22,7 +25,7 @@ export async function fetchKuaishouCookie(): Promise<string> {
         contextIsolation: true
       }
     })
-    win.webContents.setUserAgent(KUAISHOU_USER_AGENT)
+    prepareKuaishouWindow(win)
     blockCustomProtocols(win)
     win.loadURL('https://www.kuaishou.com')
 

@@ -9,7 +9,7 @@ import { fetchUserProfileSmart } from '../douyin/client'
 import { downloadAvatar } from './avatar'
 import { normalizeCreatorPlatform } from '../../../shared/platforms'
 import { bilibiliHeaders, fetchCreatorProfile } from '../bilibili/client'
-import { fetchProfileFeed, kuaishouHeaders } from '../kuaishou/client'
+import { fetchProfileFeed } from '../kuaishou/client'
 
 export type RefreshStatus = 'success' | 'degraded' | 'failed'
 
@@ -149,11 +149,7 @@ async function refreshKuaishouProfile(existing: DbUser): Promise<RefreshOutcome>
     update.nickname = sample.authorName
     if (sample.avatarUrl) {
       update.avatar = sample.avatarUrl
-      const avatarPath = await downloadAvatar(
-        existing.sec_uid,
-        sample.avatarUrl,
-        kuaishouHeaders(existing.homepage_url || 'https://www.kuaishou.com/')
-      )
+      const avatarPath = await downloadAvatar(existing.sec_uid, sample.avatarUrl)
       if (avatarPath) update.avatar_path = avatarPath
     }
     return { status: 'success', user: updateUser(existing.id, update) }
