@@ -16,6 +16,8 @@ describe('detectCreatorPlatform', () => {
     expect(detectCreatorPlatform('https://b23.tv/abc')).toBe('bilibili')
     expect(detectCreatorPlatform('BV1xx411c7mD')).toBe('bilibili')
     expect(detectCreatorPlatform('uid:88')).toBe('bilibili')
+    expect(detectCreatorPlatform('https://www.kuaishou.com/profile/3xabc')).toBe('kuaishou')
+    expect(detectCreatorPlatform('https://v.kuaishou.com/abcd')).toBe('kuaishou')
     expect(detectCreatorPlatform('hello')).toBeNull()
   })
 

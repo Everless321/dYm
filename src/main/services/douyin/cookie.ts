@@ -72,9 +72,11 @@ export async function fetchDouyinCookie(): Promise<string> {
     })
 
     win.webContents.setUserAgent(userAgent)
-    applyClientHints(win.webContents, candidate ?? getDeviceProfile(), release())
-    blockCustomProtocols(win)
-    win.loadURL('https://www.douyin.com')
+    void applyClientHints(win.webContents, candidate ?? getDeviceProfile(), release()).then(() => {
+      if (win.isDestroyed()) return
+      blockCustomProtocols(win)
+      win.loadURL('https://www.douyin.com')
+    })
 
     win.on('closed', async () => {
       try {
@@ -202,9 +204,11 @@ export async function refreshDouyinCookieSilent(): Promise<string> {
     })
 
     win.webContents.setUserAgent(getBrowserUserAgent())
-    applyClientHints(win.webContents, getDeviceProfile(), release())
-    blockCustomProtocols(win)
-    win.loadURL('https://www.douyin.com')
+    void applyClientHints(win.webContents, getDeviceProfile(), release()).then(() => {
+      if (win.isDestroyed()) return
+      blockCustomProtocols(win)
+      win.loadURL('https://www.douyin.com')
+    })
   })
 }
 

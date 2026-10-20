@@ -366,7 +366,7 @@ export default function UsersPage() {
     const trimmed = url.trim()
     const platform = detectCreatorPlatform(trimmed)
     if (!trimmed || !platform) {
-      toast.error('请粘贴抖音或哔哩哔哩的创作者主页或作品链接')
+      toast.error('请粘贴抖音、哔哩哔哩或快手的创作者主页或作品链接')
       return
     }
     if (addForm.auto_sync && addForm.sync_cron) {
@@ -533,9 +533,7 @@ export default function UsersPage() {
         live_record: editForm.live_record,
         live_check_cron: editForm.live_check_cron,
         platform_settings:
-          normalizeCreatorPlatform(editingUser.platform) === 'bilibili'
-            ? editForm.bilibili
-            : undefined
+          normalizeCreatorPlatform(editingUser.platform) === 'bilibili' ? editForm.bilibili : undefined
       })
       toast.success('保存成功')
       setEditingUser(null)
@@ -790,6 +788,7 @@ export default function UsersPage() {
                   <option value="all">平台: 全部</option>
                   <option value="douyin">平台: 抖音</option>
                   <option value="bilibili">平台: 哔哩哔哩</option>
+                  <option value="kuaishou">平台: 快手</option>
                 </select>
                 <select
                   value={downloadStatusFilter}
@@ -1076,7 +1075,7 @@ export default function UsersPage() {
               <Input
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="抖音或哔哩哔哩链接"
+                placeholder="抖音、哔哩哔哩或快手链接"
                 disabled={loading}
                 className="h-11 border-[#E5E5E7]"
               />

@@ -42,6 +42,7 @@ declare global {
   interface CookieAPI {
     fetchDouyin: () => Promise<string>
     fetchBilibili: () => Promise<string>
+    fetchKuaishou: () => Promise<string>
     refreshSilent: () => Promise<string>
     isRefreshing: () => Promise<boolean>
     /** 清空登录浏览器分区与已保存的 Cookie，之后需重新登录 */
