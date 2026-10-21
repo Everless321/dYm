@@ -15,7 +15,7 @@ import {
   type DbScriptSchedule
 } from '../database'
 import { appEvents } from './app-events'
-import { startUserSync, isUserSyncing, stopUserSync } from './download/syncer'
+import { startUserSync, isUserSyncing, stopUserSync, getAllSyncingUserIds } from './download/syncer'
 import { startDownloadTask, isTaskRunning, stopDownloadTask } from './download/downloader'
 import { addUserByUrl } from './users/add'
 import { isCollectSyncEnabled, getCollectCron, pullCollectedItems } from './download/collect-sync'
@@ -98,6 +98,9 @@ function readIntSetting(key: string, fallback: number, min: number, max: number)
   return Number.isFinite(n) ? Math.min(Math.max(n, min), max) : fallback
 }
 
+/** 手动批量下载的创作者：和定时同步排同一个队列（共用并发和间隔），但不要求开着自动同步 */
+const manualSyncIds = new Set<number>()
+
 const userSyncQueue = new SyncQueue({
   concurrency: () =>
     readIntSetting(
@@ -114,12 +117,39 @@ const userSyncQueue = new SyncQueue({
       MAX_SCHEDULE_GAP_SECONDS
     ) * 1000,
   run: async (userId) => {
+    const manual = manualSyncIds.delete(userId)
     // 排队期间作者可能被删除或关掉了自动同步，以执行时的最新状态为准
     const user = getUserById(userId)
-    if (!user || !user.auto_sync) return
+    if (!user) return
+    if (manual) {
+      await startUserSync(userId, { source: 'manual' })
+      return
+    }
+    if (!user.auto_sync) return
     await executeUserSync(user)
   }
 })
+
+/** 批量下载：逐个排进同步队列。正在同步或已在排队的跳过 */
+export function enqueueManualSyncs(userIds: number[]): { queued: number; skipped: number } {
+  let queued = 0
+  for (const userId of userIds) {
+    if (isUserSyncing(userId)) continue
+    manualSyncIds.add(userId)
+    if (userSyncQueue.enqueue(userId)) queued++
+    else manualSyncIds.delete(userId)
+  }
+  return { queued, skipped: userIds.length - queued }
+}
+
+/** 停止所有同步：清空排队，再停掉正在跑的。定时任务本身不取消，下次到点照常排队 */
+export function stopAllUserSyncs(): number {
+  userSyncQueue.clear()
+  manualSyncIds.clear()
+  const running = getAllSyncingUserIds()
+  for (const userId of running) stopUserSync(userId)
+  return running.length
+}
 
 function enqueueScheduledSync(user: DbUser): void {
   if (isUserSyncing(user.id)) {

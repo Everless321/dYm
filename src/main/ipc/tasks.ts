@@ -24,7 +24,9 @@ import {
   getSchedulerLogs,
   clearSchedulerLogs,
   scheduleCollectSync,
-  executeCollectSync
+  executeCollectSync,
+  enqueueManualSyncs,
+  stopAllUserSyncs
 } from '../services/scheduler'
 
 export function registerTaskIpc(): void {
@@ -77,6 +79,8 @@ export function registerTaskIpc(): void {
   ipcMain.handle('sync:isRunning', (_event, userId: number) => isUserSyncing(userId))
   ipcMain.handle('sync:getAnySyncing', () => getAnyUserSyncing())
   ipcMain.handle('sync:getAllSyncing', () => getAllSyncingUserIds())
+  ipcMain.handle('sync:enqueueMany', (_event, userIds: number[]) => enqueueManualSyncs(userIds))
+  ipcMain.handle('sync:stopAll', () => stopAllUserSyncs())
   ipcMain.handle('sync:validateCron', (_event, expression: string) =>
     validateCronExpression(expression)
   )

@@ -20,7 +20,7 @@ import { validateDownloadFolder, cleanupFailedDownload, expectsMusic } from './v
 import { emitPostDownloaded } from '../scripts/emit'
 import { track } from '../telemetry'
 import { getDownloadPath } from '../media'
-import { diagnoseUserPost } from '../douyin/client'
+import { diagnosePostDetail, diagnoseUserPost, fetchVideoDetail } from '../douyin/client'
 import { fetchUserPostPages } from '../douyin/user-post'
 import { runWithConcurrency } from '../../utils/concurrency'
 import { emitPanelProgress } from '../panel/progress'
@@ -599,6 +599,27 @@ export function downloadSinglePost(
   awemeData: SinglePostAwemeData
 ): Promise<SinglePostResult> {
   return enqueueSinglePost(() => downloadSinglePostInner(user, awemeData))
+}
+
+/**
+ * 按 aweme_id 重新下载一个作品。详情也放进串行队列里取：
+ * 批量重下几百个作品时，不会一下子并发请求几百次作品详情。
+ */
+export function redownloadSinglePost(user: DbUser, awemeId: string): Promise<SinglePostResult> {
+  return enqueueSinglePost(async () => {
+    let awemeData: SinglePostAwemeData
+    try {
+      const detail = await fetchVideoDetail(awemeId)
+      // polydl 主接口失败时静默回退到分享页，拿到的数据不全，按失败处理（见 add.ts）
+      if (!('toAwemeData' in detail) || !detail.secUserId) {
+        return { status: 'failed', error: await diagnosePostDetail(awemeId) }
+      }
+      awemeData = detail.toAwemeData() as SinglePostAwemeData
+    } catch (error) {
+      return { status: 'failed', error: `获取作品详情失败：${(error as Error).message}` }
+    }
+    return downloadSinglePostInner(user, awemeData)
+  })
 }
 
 async function downloadSinglePostInner(

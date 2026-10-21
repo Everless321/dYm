@@ -72,9 +72,9 @@ const PostCard = memo(function PostCard({
   const handleRedownload = async (): Promise<void> => {
     try {
       await window.api.post.redownload(post.aweme_id)
-      toast.success('已标记重新下载，下次同步时将重新下载此作品')
+      toast.success('已开始重新下载')
     } catch (e) {
-      toast.error('重新下载标记失败: ' + (e as Error).message)
+      toast.error('重新下载失败: ' + (e as Error).message)
     }
   }
 

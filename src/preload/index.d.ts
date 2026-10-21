@@ -250,6 +250,10 @@ declare global {
     isRunning: (userId: number) => Promise<boolean>
     getAnySyncing: () => Promise<number | null>
     getAllSyncing: () => Promise<number[]>
+    /** 批量下载：排进同步队列逐个执行，正在同步或已在排队的计入 skipped */
+    enqueueMany: (userIds: number[]) => Promise<{ queued: number; skipped: number }>
+    /** 清空同步排队并停掉正在跑的，返回停掉的个数 */
+    stopAll: () => Promise<number>
     validateCron: (expression: string) => Promise<boolean>
     updateUserSchedule: (userId: number) => Promise<void>
     onProgress: (callback: (progress: SyncProgress) => void) => () => void
@@ -794,7 +798,8 @@ declare global {
       pageSize?: number,
       sort?: PostSortConfig
     ) => Promise<{ posts: DbPost[]; total: number }>
-    fixAllTitles: () => Promise<{
+    /** 传 secUid 只修这位创作者，不传修全部 */
+    fixAllTitles: (secUid?: string) => Promise<{
       success: boolean
       result?: { fixed: number; skipped: number; failed: number }
       error?: string

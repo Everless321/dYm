@@ -17,6 +17,7 @@ import {
   getPostsByUserIdAll,
   deletePostByAwemeId,
   getAwemeIdsWithCloudCopy,
+  type DbPost,
   type PostFilters,
   type PostSortConfig
 } from '../database'
@@ -24,6 +25,7 @@ import { deleteCloudCopy, forgetCloudCopy } from '../services/storage/lifecycle'
 import { findCoverFile, findMediaFiles, getDownloadPath } from '../services/media'
 import { assertFolderName, assertSecUid } from '../utils/path-segment'
 import { checkPostFileIntegrity, cleanupFailedDownload } from '../services/download/validator'
+import { startRedownload } from '../services/download/redownload'
 
 // 文件页挂载时会对每个用户遍历全部作品目录做 stat（几万作品 = 十几万次 stat）；
 // 短时间内反复进出文件页直接复用上次结果，删除作品时按作者失效
@@ -71,9 +73,9 @@ export function registerPostIpc(): void {
   )
 
   // 批量修复历史视频标题（从 _desc.txt 回填原始文案）
-  ipcMain.handle('files:fixAllTitles', async () => {
+  ipcMain.handle('files:fixAllTitles', async (_event, secUid?: string) => {
     try {
-      const result = fixAllPostTitles()
+      const result = fixAllPostTitles(secUid == null ? undefined : assertSecUid(secUid))
       return { success: true, result }
     } catch (error) {
       console.error('[IPC] fixAllTitles failed:', error)
@@ -218,12 +220,14 @@ export function registerPostIpc(): void {
       }
     }
 
-    return { success: true, message: '已删除记录，下次同步时将重新下载' }
+    startRedownload([post], { quiet: false })
+    return { success: true, message: '已开始重新下载' }
   })
 
   ipcMain.handle('post:batchRedownload', async (_event, awemeIds: string[]) => {
     let success = 0
     let failed = 0
+    const removed: DbPost[] = []
 
     for (const awemeId of awemeIds) {
       try {
@@ -244,12 +248,14 @@ export function registerPostIpc(): void {
             }
           }
         }
+        removed.push(post)
         success++
       } catch {
         failed++
       }
     }
 
+    startRedownload(removed, { quiet: true })
     return { success, failed }
   })
 

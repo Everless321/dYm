@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  Activity,
   AlertCircle,
   ArrowDownToLine,
   BellDot,
   CheckCircle2,
   CircleDot,
+  Pause,
   Radio,
   RefreshCw,
   Sparkles
@@ -280,6 +280,20 @@ export default function DashboardPage(): React.JSX.Element {
     }
   }
 
+  // 停同步（含排队）和分析，不停直播录制
+  const pauseSyncAndAnalysis = async (): Promise<void> => {
+    try {
+      const toPause = jobs.filter((job) => job.status === 'running' || job.status === 'queued')
+      const [stopped] = await Promise.all([
+        window.api.sync.stopAll(),
+        ...toPause.map((job) => window.api.analysis.pauseJob(job.id))
+      ])
+      toast.success(`已停止 ${stopped} 个同步，暂停 ${toPause.length} 个分析作业`)
+    } catch (error) {
+      toast.error(`暂停失败：${(error as Error).message}`)
+    }
+  }
+
   const trendData = trend.map((point) => ({ ...point, label: point.date.slice(5) }))
   const dayLabel = new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric',
@@ -385,7 +399,14 @@ export default function DashboardPage(): React.JSX.Element {
                     {recordings.length + runningTasks.length + activeJobs.length}
                   </span>
                 </div>
-                <Activity size={16} className="text-[var(--text-tertiary)]" />
+                <button
+                  type="button"
+                  onClick={() => void pauseSyncAndAnalysis()}
+                  title="停止所有同步并暂停分析，直播录制不受影响"
+                  className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
+                >
+                  <Pause size={13} /> 暂停同步与分析
+                </button>
               </div>
               <div className="space-y-3">
                 {recordings.map((user) => (

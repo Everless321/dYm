@@ -128,6 +128,9 @@ const syncAPI = {
   isRunning: (userId: number): Promise<boolean> => ipcRenderer.invoke('sync:isRunning', userId),
   getAnySyncing: (): Promise<number | null> => ipcRenderer.invoke('sync:getAnySyncing'),
   getAllSyncing: (): Promise<number[]> => ipcRenderer.invoke('sync:getAllSyncing'),
+  enqueueMany: (userIds: number[]): Promise<{ queued: number; skipped: number }> =>
+    ipcRenderer.invoke('sync:enqueueMany', userIds),
+  stopAll: (): Promise<number> => ipcRenderer.invoke('sync:stopAll'),
   validateCron: (expression: string): Promise<boolean> =>
     ipcRenderer.invoke('sync:validateCron', expression),
   updateUserSchedule: (userId: number): Promise<void> =>
@@ -392,11 +395,13 @@ const filesAPI = {
     sort?: PostSortConfig
   ): Promise<{ posts: DbPost[]; total: number }> =>
     ipcRenderer.invoke('files:getUserPosts', userId, page, pageSize, sort),
-  fixAllTitles: (): Promise<{
+  fixAllTitles: (
+    secUid?: string
+  ): Promise<{
     success: boolean
     result?: { fixed: number; skipped: number; failed: number }
     error?: string
-  }> => ipcRenderer.invoke('files:fixAllTitles'),
+  }> => ipcRenderer.invoke('files:fixAllTitles', secUid),
   getFileSizes: (secUid: string): Promise<{ totalSize: number; folderCount: number }> =>
     ipcRenderer.invoke('files:getFileSizes', secUid),
   getPostSize: (secUid: string, folderName: string): Promise<number> =>

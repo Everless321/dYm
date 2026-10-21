@@ -106,13 +106,39 @@ export function CreatorDetailPanel({
   const scanBroken = async (): Promise<void> => {
     try {
       const results = await window.api.post.scanBroken()
-      const mine = results.filter((item) => item.nickname === user.nickname)
-      toast.success(mine.length ? `发现 ${mine.length} 个损坏/缺失文件` : '该创作者没有损坏文件', {
-        description: mine.length ? '共 ' + results.length + ' 个' : undefined
+      // 扫描是全局的，按作品目录里的 sec_uid 段筛出这位创作者的
+      const mine = results.filter((item) => item.folderPath.split(/[\\/]/).includes(user.sec_uid))
+      if (mine.length === 0) {
+        toast.success('该创作者没有损坏文件')
+        return
+      }
+      toast.warning(`发现 ${mine.length} 个损坏或缺失的作品`, {
+        duration: 15_000,
+        action: {
+          label: '全部重新下载',
+          onClick: () => {
+            window.api.post
+              .batchRedownload(mine.map((item) => item.awemeId))
+              .then((r) => toast.success(`已开始重新下载 ${r.success} 个作品`))
+              .catch((error: Error) => toast.error(`重新下载失败：${error.message}`))
+          }
+        }
       })
     } catch (error) {
       toast.error(`扫描失败：${(error as Error).message}`)
     }
+  }
+
+  const fixTitles = async (): Promise<void> => {
+    const res = await window.api.files.fixAllTitles(user.sec_uid)
+    if (!res.success || !res.result) {
+      toast.error(`修复标题失败：${res.error ?? '未知错误'}`)
+      return
+    }
+    const { fixed, skipped, failed } = res.result
+    toast.success(`已修复 ${fixed} 个标题`, {
+      description: `无需修改 ${skipped} 个，读不到原始文案 ${failed} 个`
+    })
   }
 
   const clearFiles = async (): Promise<void> => {
@@ -326,7 +352,7 @@ export function CreatorDetailPanel({
             variant="outline"
             size="sm"
             className="h-7 flex-1 text-[11px]"
-            onClick={() => onEdit(user)}
+            onClick={() => void fixTitles()}
           >
             <RefreshCw size={12} className="mr-1" /> 修复标题
           </Button>

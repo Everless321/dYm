@@ -729,7 +729,7 @@ function BrowseCard({
   const redownload = async (): Promise<void> => {
     try {
       await window.api.post.redownload(post.aweme_id)
-      toast.success('已标记重新下载')
+      toast.success('已开始重新下载')
     } catch (error) {
       toast.error(`重新下载失败：${(error as Error).message}`)
     }

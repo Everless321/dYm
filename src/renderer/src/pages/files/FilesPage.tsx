@@ -492,10 +492,10 @@ export default function FilesPage() {
     async (post: DbPost): Promise<void> => {
       try {
         await window.api.post.redownload(post.aweme_id)
-        toast.success('已标记重新下载，下次同步时将重新下载此作品')
+        toast.success('已开始重新下载')
         await reloadCurrentUser()
       } catch (e) {
-        toast.error('重新下载标记失败: ' + (e as Error).message)
+        toast.error('重新下载失败: ' + (e as Error).message)
       }
     },
     [reloadCurrentUser]
@@ -533,7 +533,7 @@ export default function FilesPage() {
     try {
       const awemeIds = brokenPosts.map((p) => p.awemeId)
       const result = await window.api.post.batchRedownload(awemeIds)
-      toast.success(`已标记 ${result.success} 个作品重新下载`)
+      toast.success(`已开始重新下载 ${result.success} 个作品`)
       setBrokenPosts([])
       setShowBrokenDialog(false)
       await reloadCurrentUser()
@@ -778,7 +778,7 @@ export default function FilesPage() {
             <DialogDescription>
               {brokenPosts.length === 0
                 ? '所有文件完好'
-                : `发现 ${brokenPosts.length} 个损坏文件，标记重新下载后将在下次同步时修复`}
+                : `发现 ${brokenPosts.length} 个损坏文件，可以直接重新下载`}
             </DialogDescription>
           </DialogHeader>
           {brokenPosts.length > 0 && (

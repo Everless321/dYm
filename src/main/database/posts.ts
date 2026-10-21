@@ -128,12 +128,19 @@ function readDescFromFile(folderPath: string | null, awemeId: string): string | 
   return null
 }
 
-export function fixAllPostTitles(): { fixed: number; skipped: number; failed: number } {
+/** 传 secUid 只修这位创作者的作品，不传修全部 */
+export function fixAllPostTitles(secUid?: string): {
+  fixed: number
+  skipped: number
+  failed: number
+} {
   const database = getDatabase()
-  const posts = database.prepare('SELECT id, aweme_id, video_path, desc FROM posts').all() as Pick<
-    DbPost,
-    'id' | 'aweme_id' | 'video_path' | 'desc'
-  >[]
+  const columns = 'SELECT id, aweme_id, video_path, desc FROM posts'
+  const posts = (
+    secUid
+      ? database.prepare(`${columns} WHERE sec_uid = ?`).all(secUid)
+      : database.prepare(columns).all()
+  ) as Pick<DbPost, 'id' | 'aweme_id' | 'video_path' | 'desc'>[]
 
   let fixed = 0
   let skipped = 0

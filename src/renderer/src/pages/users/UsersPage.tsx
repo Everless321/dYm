@@ -648,28 +648,21 @@ export default function UsersPage() {
     }
   }
 
-  const handleBatchCreateDownloadTask = async () => {
+  const handleBatchDownload = async (): Promise<void> => {
     if (selectedIds.size === 0) {
       toast.error('请先选择用户')
       return
     }
     try {
-      const selectedUsers = users.filter((u) => selectedIds.has(u.id))
-      const names = selectedUsers.map((u) => u.nickname).join('、')
-      const displayName = names.length > 20 ? names.substring(0, 20) + '...' : names
-      const task = await window.api.task.create({
-        name: `下载 ${displayName}`,
-        user_ids: Array.from(selectedIds)
-      })
-      toast.success(`已创建任务: ${task.name}`, {
-        action: {
-          label: '开始下载',
-          onClick: () => window.api.download.start(task.id)
-        }
-      })
+      const { queued, skipped } = await window.api.sync.enqueueMany(Array.from(selectedIds))
+      toast.success(
+        skipped > 0
+          ? `已加入同步队列 ${queued} 位，${skipped} 位已在同步或排队`
+          : `已加入同步队列 ${queued} 位`
+      )
       setSelectedIds(new Set())
-    } catch {
-      toast.error('创建任务失败')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '批量下载失败')
     }
   }
 
@@ -710,7 +703,7 @@ export default function UsersPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={handleBatchCreateDownloadTask}
+                        onClick={handleBatchDownload}
                         className="border-[#E5E5E7] text-[#1D1D1F]"
                       >
                         <Download className="h-4 w-4 mr-2" />

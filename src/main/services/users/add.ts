@@ -41,7 +41,7 @@ interface AddPostProgressPayload {
   error?: string
 }
 
-function broadcastAddPostProgress(payload: AddPostProgressPayload): void {
+export function broadcastAddPostProgress(payload: AddPostProgressPayload): void {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('user:addPostProgress', payload)
   }
