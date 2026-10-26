@@ -5,6 +5,8 @@ export interface DashStream {
   codecid?: number
   baseUrl?: string
   base_url?: string
+  backupUrl?: string[]
+  backup_url?: string[]
 }
 
 export interface DashPayload {
@@ -17,6 +19,11 @@ export interface DashPayload {
 export function streamUrl(stream: DashStream | null | undefined): string {
   if (!stream) return ''
   return stream.baseUrl || stream.base_url || ''
+}
+
+/** 主地址在前，备用地址在后。主地址常是 PCDN 节点，卡住时换备用的 upos 源 */
+export function streamUrls(stream: DashStream): string[] {
+  return [streamUrl(stream), ...(stream.backupUrl ?? stream.backup_url ?? [])].filter(Boolean)
 }
 
 /**

@@ -24,7 +24,7 @@ import {
   fetchVideoDetail,
   resolveBilibiliAddress
 } from './client'
-import { downloadBilibiliCreator } from './download'
+import { PREVIEW_ONLY_MESSAGE, downloadBilibiliCreator } from './download'
 import { parseBilibiliInput } from './parse'
 
 export async function addBilibiliCreator(
@@ -106,7 +106,9 @@ export async function addBilibiliCreator(
           const payload = { awemeId: detail.bvid, nickname: target.nickname }
           if (result.downloaded > 0) broadcast({ ...payload, status: 'success' })
           else if (result.skipped > 0) broadcast({ ...payload, status: 'already-downloaded' })
-          else broadcast({ ...payload, status: 'failed', error: '下载失败' })
+          else if (result.locked > 0) {
+            broadcast({ ...payload, status: 'failed', error: PREVIEW_ONLY_MESSAGE })
+          } else broadcast({ ...payload, status: 'failed', error: '下载失败' })
         })
         .catch((error: Error) =>
           broadcast({

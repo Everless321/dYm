@@ -26,11 +26,20 @@ import {
   normalizeAssetUrl,
   withApiThrottle,
   type BilibiliPage,
+  type BilibiliPlayUrl,
   type BilibiliVideoDetail
 } from './client'
-import { audioOnlyExtension, pickAudioStream, pickVideoStream, streamUrl } from './streams'
+import { audioOnlyExtension, pickAudioStream, pickVideoStream, streamUrls } from './streams'
 
 const execFileAsync = promisify(execFile)
+/** 这么久收不到任何数据就放弃这个地址，换下一个。不限总时长，大文件本来就要下很久 */
+const ASSET_IDLE_TIMEOUT_MS = 30_000
+const SIDE_FILE_TIMEOUT_MS = 20_000
+
+export const PREVIEW_ONLY_MESSAGE = '充电专属或付费作品，当前账号只能试看'
+
+/** 只能拿到试看片段（充电专属、付费）。跳过，不当成下载失败 */
+class BilibiliPreviewOnlyError extends Error {}
 
 export interface BilibiliDownloadHooks {
   limit: number
@@ -54,7 +63,7 @@ export interface BilibiliDownloadProgress {
 export async function downloadBilibiliCreator(
   user: DbUser,
   hooks: BilibiliDownloadHooks
-): Promise<{ downloaded: number; skipped: number; aborted: boolean }> {
+): Promise<{ downloaded: number; skipped: number; locked: number; aborted: boolean }> {
   if (!bilibiliCookie()) throw new Error('请先配置哔哩哔哩 Cookie')
   const settings = parseBilibiliCreatorSettings(user.platform_settings)
   if (!hasRequestedOutput(settings)) {
@@ -109,11 +118,12 @@ export async function downloadBilibiliCreator(
   }
 
   if (hooks.isAborted()) {
-    return { downloaded: 0, skipped, aborted: true }
+    return { downloaded: 0, skipped, locked: 0, aborted: true }
   }
 
   const total = pending.length
   let downloaded = 0
+  let locked = 0
   let finished = 0
   // 风控后立即停：已在下载的作品自然结束，不再领取新作品
   let riskError: BilibiliRiskControlError | null = null
@@ -126,30 +136,32 @@ export async function downloadBilibiliCreator(
   })
 
   await runWithConcurrency(
-    pending.map((item) => async () => {
-      const ok = await downloadOneVideo(user, item.bvid, settings, source, item.page)
-      return ok
-    }),
+    pending.map((item) => () => downloadOneVideo(user, item.bvid, settings, source, item.page)),
     hooks.concurrency,
     {
       shouldStop: () => hooks.isAborted() || riskError !== null,
       onComplete: (_index, result) => {
         if (result instanceof BilibiliRiskControlError) riskError = result
         finished += 1
-        if (result === true) downloaded += 1
+        if (result === 'downloaded') downloaded += 1
+        if (result === 'locked') locked += 1
         hooks.onProgress?.({
           current: finished,
           total,
           downloaded,
           skipped,
-          message: `已完成 ${finished}/${total}`
+          message: `已完成 ${finished}/${total}${lockedNote(locked)}`
         })
       }
     }
   )
 
   if (riskError) throw riskError
-  return { downloaded, skipped, aborted: hooks.isAborted() }
+  return { downloaded, skipped, locked, aborted: hooks.isAborted() }
+}
+
+export function lockedNote(locked: number): string {
+  return locked > 0 ? `，${locked} 个充电专属或付费作品只能试看，已跳过` : ''
 }
 
 async function downloadOneVideo(
@@ -158,11 +170,13 @@ async function downloadOneVideo(
   settings: BilibiliCreatorSettings,
   source: 'task' | 'sync' | 'single',
   requestedPage?: number
-): Promise<boolean> {
-  if (getPostByAwemeId(bvid)) return false
+): Promise<'downloaded' | 'failed' | 'locked'> {
+  if (getPostByAwemeId(bvid)) return 'failed'
   const folder = join(getDownloadPath(), user.sec_uid, bvid)
   try {
     const detail = await fetchVideoDetail({ bvid })
+    // 不请求播放地址：充电专属拿到的只有试看片段
+    if (detail.chargeLocked) throw new BilibiliPreviewOnlyError('充电专属')
     const pages = selectPages(detail, settings, requestedPage)
     mkdirSync(folder, { recursive: true })
     let producedVideo = false
@@ -204,12 +218,16 @@ async function downloadOneVideo(
       video_path: folder
     })
     emitPostDownloaded(post, folder, source)
-    return true
+    return 'downloaded'
   } catch (error) {
-    console.error(`[Bilibili] 下载失败 ${bvid}:`, error)
     rmSync(folder, { recursive: true, force: true })
+    if (error instanceof BilibiliPreviewOnlyError) {
+      console.warn(`[Bilibili] 只能试看，跳过 ${bvid}：${error.message}`)
+      return 'locked'
+    }
+    console.error(`[Bilibili] 下载失败 ${bvid}:`, error)
     if (error instanceof BilibiliRiskControlError) throw error
-    return false
+    return 'failed'
   }
 }
 
@@ -237,20 +255,23 @@ async function downloadPage(
 
   if (settings.downloadVideo || settings.downloadAudio) {
     const play = await fetchPlayUrl(detail.bvid, page.cid, settings.videoQuality)
+    if (isPreviewOnly(play)) throw new BilibiliPreviewOnlyError('播放地址只有试看片段')
     const video = settings.downloadVideo
       ? pickVideoStream(play.dash?.video, settings.videoQuality, settings.videoCodec)
       : null
     const audio = settings.downloadAudio ? pickAudioStream(play.dash, settings.audioQuality) : null
     if (video) {
       videoFile = join(folder, `${stem}.video.m4s`)
-      await downloadAsset(streamUrl(video), videoFile, referer)
+      await downloadAsset(streamUrls(video), videoFile, referer)
     }
     if (audio) {
       audioFile = join(folder, `${stem}.audio.m4s`)
-      await downloadAsset(streamUrl(audio), audioFile, referer)
+      await downloadAsset(streamUrls(audio), audioFile, referer)
     }
-    if (!videoFile && !audioFile && play.durl?.[0]?.url) {
-      await downloadAsset(play.durl[0].url, join(folder, `${stem}.mp4`), referer)
+    const durl = play.durl?.[0]
+    if (!videoFile && !audioFile && durl?.url) {
+      const urls = [durl.url, ...(durl.backup_url ?? [])]
+      await downloadAsset(urls, join(folder, `${stem}.mp4`), referer)
       videoFile = 'durl'
     }
     if (videoFile && videoFile !== 'durl') {
@@ -280,7 +301,9 @@ async function downloadPage(
 async function downloadDanmaku(cid: number, file: string, referer: string): Promise<void> {
   const response = await withApiThrottle(() =>
     net.fetch(`https://api.bilibili.com/x/v1/dm/list.so?oid=${cid}`, {
-      headers: bilibiliHeaders(referer)
+      headers: bilibiliHeaders(referer),
+      // 弹幕请求占着全局接口队列，卡住会拖住所有 B 站请求
+      signal: AbortSignal.timeout(SIDE_FILE_TIMEOUT_MS)
     })
   )
   if (!response.ok) return
@@ -298,7 +321,10 @@ async function downloadSubtitles(
 ): Promise<void> {
   const tracks = await fetchSubtitleTracks(bvid, cid)
   for (const track of tracks) {
-    const response = await net.fetch(track.url, { headers: bilibiliHeaders(referer) })
+    const response = await net.fetch(track.url, {
+      headers: bilibiliHeaders(referer),
+      signal: AbortSignal.timeout(SIDE_FILE_TIMEOUT_MS)
+    })
     if (!response.ok) continue
     const payload = (await response.json()) as {
       body?: Array<{ from?: number; to?: number; content?: string }>
@@ -316,20 +342,70 @@ async function downloadSubtitles(
   }
 }
 
-async function downloadAsset(url: string, file: string, referer: string): Promise<void> {
-  const assetUrl = normalizeAssetUrl(url)
-  if (!/^https:\/\//i.test(assetUrl)) throw new Error('播放地址不是 HTTPS')
-  const response = await net.fetch(assetUrl, { headers: bilibiliHeaders(referer) })
-  if (!response.ok || !response.body) {
-    throw new Error(`下载文件失败 HTTP ${response.status}`)
+/** 不是 DASH、只有 durl，而且各段加起来明显短于完整时长：这是试看片段 */
+function isPreviewOnly(play: BilibiliPlayUrl): boolean {
+  if (play.dash || !play.durl?.length || !play.timelength) return false
+  const length = play.durl.reduce((sum, part) => sum + (Number(part.length) || 0), 0)
+  return length > 0 && length < play.timelength * 0.9
+}
+
+/** 依次尝试各个地址，一个失败或卡住就换下一个 */
+async function downloadAsset(
+  urls: string | string[],
+  file: string,
+  referer: string
+): Promise<void> {
+  const candidates = (Array.isArray(urls) ? urls : [urls]).map(normalizeAssetUrl)
+  let lastError: Error = new Error('没有可用的下载地址')
+  for (const url of candidates) {
+    try {
+      await downloadFrom(url, file, referer)
+      return
+    } catch (error) {
+      lastError = error as Error
+      console.warn(`[Bilibili] 下载地址失败，换下一个 ${url.slice(0, 60)}:`, lastError.message)
+    }
   }
-  const body = response.body
-  if (!body) throw new Error('下载文件失败：响应为空')
-  const stream =
-    typeof (body as unknown as Readable).pipe === 'function'
-      ? (body as unknown as Readable)
-      : Readable.fromWeb(body as unknown as import('stream/web').ReadableStream<Uint8Array>)
-  await pipeline(stream, createWriteStream(file))
+  throw lastError
+}
+
+async function downloadFrom(url: string, file: string, referer: string): Promise<void> {
+  if (!/^https:\/\//i.test(url)) throw new Error('播放地址不是 HTTPS')
+  const controller = new AbortController()
+  const idle = setTimeout(() => controller.abort(), ASSET_IDLE_TIMEOUT_MS)
+  try {
+    const response = await net.fetch(url, {
+      headers: bilibiliHeaders(referer),
+      signal: controller.signal
+    })
+    if (!response.ok || !response.body) {
+      throw new Error(`下载文件失败 HTTP ${response.status}`)
+    }
+    const body = response.body
+    const stream =
+      typeof (body as unknown as Readable).pipe === 'function'
+        ? (body as unknown as Readable)
+        : Readable.fromWeb(body as unknown as import('stream/web').ReadableStream<Uint8Array>)
+    await pipeline(
+      stream,
+      async function* (source: AsyncIterable<Uint8Array>) {
+        for await (const chunk of source) {
+          idle.refresh()
+          yield chunk
+        }
+      },
+      createWriteStream(file),
+      // 超时由 pipeline 自己销毁数据流，不依赖 fetch 把中断传到响应体
+      { signal: controller.signal }
+    )
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`${ASSET_IDLE_TIMEOUT_MS / 1000} 秒没有收到数据`)
+    }
+    throw error
+  } finally {
+    clearTimeout(idle)
+  }
 }
 
 async function muxMedia(video: string, audio: string, output: string): Promise<void> {

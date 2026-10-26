@@ -19,7 +19,7 @@ import { emitPanelProgress } from '../panel/progress'
 import { isBackfillLimitMode } from './limit-mode'
 import { normalizeCreatorPlatform } from '../../../shared/platforms'
 import { bilibiliCookie } from '../bilibili/client'
-import { downloadBilibiliCreator, readBilibiliConcurrency } from '../bilibili/download'
+import { downloadBilibiliCreator, lockedNote, readBilibiliConcurrency } from '../bilibili/download'
 
 /** 同步触发来源：手动 / 定时调度 */
 export type SyncSource = 'manual' | 'schedule'
@@ -444,6 +444,7 @@ async function syncBilibiliUser(
   const concurrency = readBilibiliConcurrency()
   let downloaded = 0
   let skipped = 0
+  let locked = 0
   let finishStatus: SyncResult['status'] = 'failed'
   let failureMessage: string | undefined
 
@@ -467,6 +468,7 @@ async function syncBilibiliUser(
     })
     downloaded = result.downloaded
     skipped = result.skipped
+    locked = result.locked
     if (result.aborted) {
       finishStatus = 'cancelled'
       updateUserSyncStatus(userId, 'idle')
@@ -492,7 +494,7 @@ async function syncBilibiliUser(
         totalVideos: downloaded,
         downloadedCount: downloaded,
         skippedCount: skipped,
-        message: `${user.nickname} 同步完成，新下载 ${downloaded} 个${skipMsg}`
+        message: `${user.nickname} 同步完成，新下载 ${downloaded} 个${skipMsg}${lockedNote(locked)}`
       })
     }
   } catch (error) {

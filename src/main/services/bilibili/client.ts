@@ -114,11 +114,16 @@ export interface BilibiliVideoDetail {
   ownerName: string
   ownerFace: string
   pages: BilibiliPage[]
+  /** 充电专属且当前账号没有充电：播放地址只给几十秒试看 */
+  chargeLocked: boolean
 }
 
 export interface BilibiliPlayUrl {
+  /** 完整时长，毫秒 */
+  timelength?: number
   dash?: DashPayload
-  durl?: { url?: string }[]
+  /** length 是这一段的毫秒数；试看时所有段加起来远小于 timelength */
+  durl?: { url?: string; length?: number; backup_url?: string[] }[]
 }
 
 let wbiCache: { imgKey: string; subKey: string; at: number } | null = null
@@ -217,6 +222,8 @@ export async function fetchVideoDetail(input: {
     pubdate?: number
     owner?: { mid?: number; name?: string; face?: string }
     pages?: Array<{ cid?: number; page?: number; part?: string }>
+    is_upower_exclusive?: boolean
+    is_upower_play?: boolean
   }>(`https://api.bilibili.com/x/web-interface/view?${query}`)
   const pages = (data.pages ?? [])
     .map((page) => ({
@@ -238,7 +245,8 @@ export async function fetchVideoDetail(input: {
     ownerMid: Number(data.owner?.mid) || 0,
     ownerName: data.owner?.name || '',
     ownerFace: normalizeAssetUrl(data.owner?.face || ''),
-    pages
+    pages,
+    chargeLocked: Boolean(data.is_upower_exclusive) && !data.is_upower_play
   }
 }
 
