@@ -23,8 +23,10 @@ vi.mock('./guard', async (importOriginal) => ({
 // 投稿按 12 个一页，从新到旧编号 w0 起
 const TOTAL = 30
 const fetchKuaishouFeedPage = vi.fn()
+const fetchKuaishouWork = vi.fn()
 vi.mock('./client', () => ({
-  fetchKuaishouFeedPage: (...args: unknown[]) => fetchKuaishouFeedPage(...args)
+  fetchKuaishouFeedPage: (...args: unknown[]) => fetchKuaishouFeedPage(...args),
+  fetchKuaishouWork: (...args: unknown[]) => fetchKuaishouWork(...args)
 }))
 
 // 下载器只在临时目录里造文件，按 polydl 的文件名返回结果
@@ -41,6 +43,7 @@ const { downloadKuaishouCreator, downloadKuaishouWork } = await import('./downlo
 const work = (index: number, overrides: object = {}): Record<string, unknown> => ({
   workId: `w${index}`,
   workType: 'video',
+  videoUrl: 'https://cdn.example/v.mp4',
   caption: '',
   desc: '',
   createTime: '',
@@ -138,6 +141,7 @@ describe('downloadKuaishouCreator', () => {
 
 describe('downloadKuaishouWork', () => {
   beforeEach(() => {
+    fetchKuaishouWork.mockReset()
     existing.clear()
     createPost.mockClear()
     downloadWork.mockReset().mockImplementation(async (item, dir) => fakeDownload(item, dir))
@@ -163,6 +167,22 @@ describe('downloadKuaishouWork', () => {
       'w2_image_2.webp'
     ])
     expect(createPost).toHaveBeenCalledWith(expect.objectContaining({ aweme_type: 68 }))
+  })
+
+  it('列表只给 HLS 地址：改用作品详情里的 mp4', async () => {
+    fetchKuaishouWork.mockResolvedValueOnce(work(4, { videoUrl: 'https://cdn.example/d.mp4' }))
+    const hls = work(4, { videoUrl: 'https://cdn.example/x_hlsob.m3u8?k=1' })
+    expect(await downloadKuaishouWork(creator, hls as never, 'single')).toBe(true)
+    expect(fetchKuaishouWork).toHaveBeenCalledWith('w4')
+    expect(downloadWork.mock.calls[0][0]).toMatchObject({ videoUrl: 'https://cdn.example/d.mp4' })
+  })
+
+  it('详情里也只有 HLS：按失败处理，不把播放列表存成视频', async () => {
+    fetchKuaishouWork.mockResolvedValueOnce(work(5, { videoUrl: 'https://cdn.example/y.m3u8' }))
+    const hls = work(5, { videoUrl: 'https://cdn.example/y.m3u8' })
+    expect(await downloadKuaishouWork(creator, hls as never, 'single')).toBe(false)
+    expect(downloadWork).not.toHaveBeenCalled()
+    expect(createPost).not.toHaveBeenCalled()
   })
 
   it('媒体文件下载失败：删掉目录，不入库', async () => {

@@ -7,7 +7,7 @@ import { emitPostDownloaded } from '../scripts/emit'
 import { isBackfillLimitMode } from '../download/limit-mode'
 import { runWithConcurrency } from '../../utils/concurrency'
 import { kuaishouAwemeId } from '../../../shared/platforms'
-import { fetchKuaishouFeedPage } from './client'
+import { fetchKuaishouFeedPage, fetchKuaishouWork } from './client'
 import { KuaishouCooldownError, withKuaishouDownloadThrottle } from './guard'
 
 /** 每个文件单次尝试的总时长上限。polydl 按总时长算，不是空闲时长，所以给足 */
@@ -139,8 +139,9 @@ export async function downloadKuaishouWork(
   const userFolder = join(getDownloadPath(), user.sec_uid)
   const folder = join(userFolder, work.workId)
   try {
+    const playable = await withMp4Address(work)
     const results = await withKuaishouDownloadThrottle(() =>
-      downloader.downloadWork(work, userFolder)
+      downloader.downloadWork(playable, userFolder)
     )
     const media = results.filter((item) => item.kind === 'video' || item.kind === 'image')
     const failed = media.find((item) => !item.success)
@@ -168,6 +169,21 @@ export async function downloadKuaishouWork(
     rmSync(folder, { recursive: true, force: true })
     return false
   }
+}
+
+const isHls = (url: string): boolean => /\.m3u8(?:[?#]|$)/i.test(url)
+
+/**
+ * 投稿列表里有些视频只给 HLS（m3u8）地址，直接下只会存下一个播放列表文本。
+ * 这时再请求一次作品详情，详情里有无水印的 mp4（photoUrl）。
+ */
+async function withMp4Address(work: KuaishouWork): Promise<KuaishouWork> {
+  if (work.workType !== 'video' || (work.videoUrl && !isHls(work.videoUrl))) return work
+  const detail = await fetchKuaishouWork(work.workId)
+  if (!detail.videoUrl || isHls(detail.videoUrl)) {
+    throw new Error(`作品只有 HLS 播放地址，没有可下载的 mp4：${work.workId}`)
+  }
+  return { ...work, videoUrl: detail.videoUrl, coverUrl: work.coverUrl || detail.coverUrl }
 }
 
 /**

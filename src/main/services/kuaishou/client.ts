@@ -4,6 +4,7 @@ import {
   KuaishouRestClient,
   KuaishouRiskError,
   normalizeWorks,
+  parseCount,
   parseKuaishouTarget,
   resolveShortUrl,
   userAgentOf,
@@ -90,10 +91,11 @@ export async function fetchKuaishouProfile(userId: string): Promise<KuaishouProf
     name: (profile.user_name || '').trim(),
     avatar: profile.headurl || '',
     signature: profile.user_text || '',
-    follower: ownerCount.fan || 0,
-    following: ownerCount.follow || 0,
+    // 计数可能是「203.4万」这样的字符串
+    follower: parseCount(ownerCount.fan),
+    following: parseCount(ownerCount.follow),
     // photo 字段常为 null，公开作品数在 photo_public
-    photoCount: ownerCount.photo_public || ownerCount.photo || 0
+    photoCount: parseCount(ownerCount.photo_public) || parseCount(ownerCount.photo)
   }
 }
 
