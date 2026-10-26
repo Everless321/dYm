@@ -74,7 +74,7 @@ export function UsersPane({
     }
     const platform = detectCreatorPlatform(next)
     if (!platform) {
-      toast('请粘贴抖音或哔哩哔哩的创作者主页或作品链接')
+      toast('请粘贴抖音、哔哩哔哩或快手的创作者主页或作品链接')
       return
     }
     setAdding(true)
@@ -234,7 +234,11 @@ export function UsersPane({
                 const home =
                   user.homepageUrl && /^https:\/\//.test(user.homepageUrl) ? user.homepageUrl : ''
                 const meta = [
-                  user.platform === 'bilibili' ? '哔哩哔哩' : '抖音',
+                  user.platform === 'bilibili'
+                    ? '哔哩哔哩'
+                    : user.platform === 'kuaishou'
+                      ? '快手'
+                      : '抖音',
                   user.uniqueId ? `@${user.uniqueId}` : '',
                   user.remark,
                   user.lastSyncAt ? `上次同步 ${formatUnixAgo(user.lastSyncAt)}` : ''
@@ -366,7 +370,7 @@ function AddCreatorOptions({
   onLiveCheckCron,
   onBilibili
 }: {
-  platform: 'douyin' | 'bilibili'
+  platform: 'douyin' | 'bilibili' | 'kuaishou'
   maxDownloadCount: string
   showInHome: boolean
   autoSync: boolean
@@ -440,9 +444,9 @@ function AddCreatorOptions({
             </label>
           ) : null}
         </>
-      ) : (
+      ) : platform === 'bilibili' ? (
         <BilibiliOptionFields value={bilibili} onChange={onBilibili} />
-      )}
+      ) : null}
     </div>
   )
 }
@@ -545,7 +549,8 @@ function UserSettings({
     user.bilibili || defaultBilibiliCreatorSettings()
   )
   const [saving, setSaving] = useState(false)
-  const platform = user.platform === 'bilibili' ? 'bilibili' : 'douyin'
+  const platform =
+    user.platform === 'bilibili' || user.platform === 'kuaishou' ? user.platform : 'douyin'
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()

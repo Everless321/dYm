@@ -3,12 +3,13 @@
  * 哔哩哔哩的画质 / 编码选项与 downkyicore 的播放参数对齐。
  */
 
-export const CREATOR_PLATFORMS = ['douyin', 'bilibili'] as const
+export const CREATOR_PLATFORMS = ['douyin', 'bilibili', 'kuaishou'] as const
 export type CreatorPlatform = (typeof CREATOR_PLATFORMS)[number]
 
 export const CREATOR_PLATFORM_LABEL: Record<CreatorPlatform, string> = {
   douyin: '抖音',
-  bilibili: '哔哩哔哩'
+  bilibili: '哔哩哔哩',
+  kuaishou: '快手'
 }
 
 export interface BilibiliCreatorSettings {
@@ -63,6 +64,14 @@ export const BILIBILI_CODEC_ID: Record<BilibiliVideoCodec, number> = {
   av1: 13
 }
 
+export function kuaishouSecUid(userId: string): string {
+  return `ks_${userId}`
+}
+
+export function kuaishouAwemeId(photoId: string): string {
+  return `ks_${photoId}`
+}
+
 export function defaultBilibiliCreatorSettings(): BilibiliCreatorSettings {
   return {
     videoQuality: 0,
@@ -78,7 +87,8 @@ export function defaultBilibiliCreatorSettings(): BilibiliCreatorSettings {
 }
 
 export function normalizeCreatorPlatform(value: unknown): CreatorPlatform {
-  return value === 'bilibili' ? 'bilibili' : 'douyin'
+  if (value === 'bilibili' || value === 'kuaishou') return value
+  return 'douyin'
 }
 
 export function bilibiliSecUid(mid: number): string {
@@ -175,6 +185,7 @@ export function extractCreatorLink(
 export function detectCreatorPlatform(input: string): CreatorPlatform | null {
   const text = input.trim()
   if (!text) return null
+  if (/kuaishou\.(?:com|cn)|chenzhongtech\.com|gifshow\.com/i.test(text)) return 'kuaishou'
   if (/bilibili\.com|b23\.tv|bili2233\.cn/i.test(text)) return 'bilibili'
   if (/^BV[0-9A-Za-z]{10}$/.test(text)) return 'bilibili'
   if (/^av\d+$/i.test(text)) return 'bilibili'

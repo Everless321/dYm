@@ -20,6 +20,7 @@ import { emitUserAdded } from '../scripts/emit'
 import { detectCreatorPlatform, sanitizeAddCreatorOptions } from '../../../shared/platforms'
 import { validate as validateCronExpression } from 'node-cron'
 import { addBilibiliCreator } from '../bilibili/add-user'
+import { addKuaishouCreator } from '../kuaishou/add-user'
 
 export type AddUserPostDownload =
   | { status: 'downloading'; awemeId: string }
@@ -62,8 +63,9 @@ export async function addUserByUrl(url: string, rawOptions?: unknown): Promise<A
   }
   const platform = detectCreatorPlatform(url)
   if (platform === 'bilibili') return addBilibiliCreator(url, options)
+  if (platform === 'kuaishou') return addKuaishouCreator(url, options)
   if (!platform) {
-    throw new Error('无法识别的链接，请粘贴抖音或哔哩哔哩的创作者主页或作品链接')
+    throw new Error('无法识别的链接，请粘贴抖音、哔哩哔哩或快手的创作者主页或作品链接')
   }
   console.log('[User:add] Input url:', url)
 

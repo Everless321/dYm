@@ -333,7 +333,9 @@ function beginTask(id: number): { started: boolean; running: boolean } {
 }
 
 function requirePlatformLogin(platform: string): void {
-  if (normalizeCreatorPlatform(platform) === 'bilibili') {
+  const normalized = normalizeCreatorPlatform(platform)
+  if (normalized === 'kuaishou') return
+  if (normalized === 'bilibili') {
     if (!bilibiliCookie()) throw new Error('这台客户端还没有登录哔哩哔哩')
     return
   }
@@ -380,7 +382,7 @@ interface PanelUserView {
   showInHome: boolean
   homepageUrl: string
   lastSyncAt: number | null
-  platform: 'douyin' | 'bilibili'
+  platform: 'douyin' | 'bilibili' | 'kuaishou'
   liveRecord: boolean
   liveCheckCron: string
   bilibili: BilibiliCreatorSettings | null

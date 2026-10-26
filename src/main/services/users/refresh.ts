@@ -9,6 +9,7 @@ import { fetchUserProfileSmart } from '../douyin/client'
 import { downloadAvatar } from './avatar'
 import { normalizeCreatorPlatform } from '../../../shared/platforms'
 import { bilibiliHeaders, fetchCreatorProfile } from '../bilibili/client'
+import { fetchKuaishouProfile } from '../kuaishou/client'
 
 export type RefreshStatus = 'success' | 'degraded' | 'failed'
 
@@ -58,6 +59,9 @@ export async function refreshUserProfile(id: number): Promise<RefreshOutcome> {
   if (!existing) return { status: 'failed', error: '用户不存在' }
   if (normalizeCreatorPlatform(existing.platform) === 'bilibili') {
     return refreshBilibiliProfile(existing)
+  }
+  if (normalizeCreatorPlatform(existing.platform) === 'kuaishou') {
+    return refreshKuaishouProfile(existing)
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -122,6 +126,29 @@ async function refreshBilibiliProfile(existing: DbUser): Promise<RefreshOutcome>
         profile.face,
         bilibiliHeaders(existing.homepage_url || 'https://www.bilibili.com')
       )
+      if (avatarPath) update.avatar_path = avatarPath
+    }
+    return { status: 'success', user: updateUser(existing.id, update) }
+  } catch (error) {
+    return { status: 'failed', error: (error as Error).message }
+  }
+}
+
+async function refreshKuaishouProfile(existing: DbUser): Promise<RefreshOutcome> {
+  if (!existing.uid) return { status: 'failed', error: '缺少快手创作者 ID' }
+  try {
+    const profile = await fetchKuaishouProfile(existing.uid)
+    const update: Partial<CreateUserInput> = {
+      following_count: profile.following,
+      follower_count: profile.follower,
+      aweme_count: profile.photoCount
+    }
+    if (!profile.name) return { status: 'degraded', user: updateUser(existing.id, update) }
+    update.nickname = profile.name
+    update.signature = profile.signature
+    if (profile.avatar) {
+      update.avatar = profile.avatar
+      const avatarPath = await downloadAvatar(existing.sec_uid, profile.avatar)
       if (avatarPath) update.avatar_path = avatarPath
     }
     return { status: 'success', user: updateUser(existing.id, update) }

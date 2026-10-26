@@ -10,6 +10,7 @@ import {
 import { refreshDouyinHandler } from '../services/douyin/client'
 import { fetchBilibiliCookie } from '../services/bilibili/cookie'
 import { clearWbiCache } from '../services/bilibili/client'
+import { fetchKuaishouCookie } from '../services/kuaishou/cookie'
 
 export function registerSettingsIpc(): void {
   // Settings IPC handlers
@@ -42,6 +43,7 @@ export function registerSettingsIpc(): void {
   ipcMain.handle('cookie:isRefreshing', () => isCookieRefreshing())
   ipcMain.handle('cookie:resetBrowser', () => resetLoginBrowser())
   ipcMain.handle('cookie:fetchBilibili', () => fetchBilibiliCookie())
+  ipcMain.handle('cookie:fetchKuaishou', () => fetchKuaishouCookie())
 
   // Download path IPC handler
   ipcMain.handle('settings:getDefaultDownloadPath', () => {

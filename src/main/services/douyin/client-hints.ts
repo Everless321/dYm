@@ -72,15 +72,19 @@ export function applyClientHints(
 }
 
 /**
- * 给分区里发往抖音的请求补上 sec-ch-ua 系列请求头。
+ * 给分区里发往抖音（或 urls 指定的站点）的请求补上 sec-ch-ua 系列请求头。
  *
  * 只补真实 Chrome 一定会发的三个低熵头，值与 polydl 直连用的同源（clientHintsOf）。
  * 完整版本号、平台版本这些高熵头不补：Chrome 只在服务端用 Accept-CH 要时才发，
  * 无条件发出去反而是新的破绽。
  */
-export function installClientHintHeaders(ses: Session, profile: DeviceProfile): void {
+export function installClientHintHeaders(
+  ses: Session,
+  profile: DeviceProfile,
+  urls: string[] = ['*://*.douyin.com/*']
+): void {
   const hints = clientHintsOf(profile)
-  ses.webRequest.onBeforeSendHeaders({ urls: ['*://*.douyin.com/*'] }, (details, callback) => {
+  ses.webRequest.onBeforeSendHeaders({ urls }, (details, callback) => {
     callback({
       requestHeaders: {
         ...details.requestHeaders,
