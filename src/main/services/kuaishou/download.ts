@@ -8,10 +8,17 @@ import { isBackfillLimitMode } from '../download/limit-mode'
 import { runWithConcurrency } from '../../utils/concurrency'
 import { kuaishouAwemeId } from '../../../shared/platforms'
 import { fetchKuaishouFeedPage, fetchKuaishouWork } from './client'
-import { KuaishouCooldownError, withKuaishouDownloadThrottle } from './guard'
+import {
+  KuaishouCooldownError,
+  kuaishouCooldownLeft,
+  waitKuaishouCooldown,
+  withKuaishouDownloadThrottle
+} from './guard'
 
 /** 每个文件单次尝试的总时长上限。polydl 按总时长算，不是空闲时长，所以给足 */
 const FILE_TIMEOUT_MS = 5 * 60_000
+/** 冷却结束后第一页又被限流的次数上限，超过就不再等 */
+const MAX_QUOTA_WAITS = 3
 
 export interface KuaishouDownloadHooks {
   limit: number
@@ -31,7 +38,7 @@ export interface KuaishouDownloadOutcome {
   downloaded: number
   skipped: number
   aborted: boolean
-  /** 翻页中途遇到限额或验证码：已列出的作品照常下完，这里说明为什么没翻完 */
+  /** 翻页没翻完（验证码，或连续限流）：已列出的作品照常下完，这里说明原因 */
   notice?: string
 }
 
@@ -70,6 +77,7 @@ export async function downloadKuaishouCreator(
   const backfill = isBackfillLimitMode()
   let examined = 0
   let pcursor = ''
+  let quotaWaits = 0
   const enough = (): boolean =>
     limit > 0 && (backfill ? pending.length >= limit : examined >= limit)
   while (!hooks.isAborted()) {
@@ -77,11 +85,26 @@ export async function downloadKuaishouCreator(
     try {
       page = await fetchKuaishouFeedPage(user.uid, pcursor)
     } catch (error) {
-      // 限额和验证码只封接口，已经列出来的作品还能下；其他错误（未登录等）直接失败
-      if (!(error instanceof KuaishouCooldownError) || pending.length === 0) throw error
+      if (!(error instanceof KuaishouCooldownError)) throw error
+      // 限流：等冷却结束，从同一页接着翻
+      if (error.kind === 'quota' && quotaWaits < MAX_QUOTA_WAITS) {
+        quotaWaits += 1
+        hooks.onProgress?.({
+          current: 0,
+          total: 0,
+          downloaded: 0,
+          skipped,
+          message: `快手限流，已看过 ${examined} 个投稿，约 ${Math.ceil(kuaishouCooldownLeft() / 60_000)} 分钟后接着翻`
+        })
+        await waitKuaishouCooldown(hooks.isAborted)
+        continue
+      }
+      // 验证码或连续限流只封接口，已经列出来的作品还能下；一个都没列出就直接失败
+      if (pending.length === 0) throw error
       notice = error.message
       break
     }
+    quotaWaits = 0
     for (const work of page.works) {
       if (enough()) break
       examined += 1

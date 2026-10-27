@@ -37,7 +37,8 @@ vi.mock('polydl', () => ({
   }
 }))
 
-const { KuaishouCooldownError } = await import('./guard')
+const { KuaishouCooldownError, markKuaishouQuota, resetKuaishouGuardForTests } =
+  await import('./guard')
 const { downloadKuaishouCreator, downloadKuaishouWork } = await import('./download')
 
 const work = (index: number, overrides: object = {}): Record<string, unknown> => ({
@@ -95,6 +96,7 @@ async function plan(limit: number): Promise<{ pending: number; pages: number }> 
 describe('downloadKuaishouCreator', () => {
   beforeEach(() => {
     for (const key of Object.keys(settings)) delete settings[key]
+    resetKuaishouGuardForTests()
     existing.clear()
     createPost.mockClear()
     fetchKuaishouFeedPage.mockReset().mockImplementation(async (_uid, cursor) => page(cursor))
@@ -117,18 +119,61 @@ describe('downloadKuaishouCreator', () => {
     expect(await plan(0)).toEqual({ pending: TOTAL, pages: 3 })
   })
 
-  it('翻页中途限额：已列出的作品照常下完，并说明为什么没翻完', async () => {
+  it('翻页中途限流：等冷却结束，从同一页接着翻完', async () => {
     fetchKuaishouFeedPage
       .mockReset()
+      .mockImplementation(async (_uid, cursor) => page(cursor))
       .mockResolvedValueOnce(page(''))
-      .mockRejectedValueOnce(new KuaishouCooldownError('投稿接口到了条数限额'))
+      .mockRejectedValueOnce(new KuaishouCooldownError('快手限流', 'quota'))
     const result = await downloadKuaishouCreator(creator, {
       limit: 0,
       concurrency: 1,
       isAborted: () => false
     })
-    expect(result.downloaded).toBe(12)
-    expect(result.notice).toContain('限额')
+    expect(result).toMatchObject({ downloaded: TOTAL, notice: undefined })
+    expect(fetchKuaishouFeedPage.mock.calls.map((call) => call[1])).toEqual(['', '12', '12', '24'])
+  })
+
+  it('连续限流超过 3 次：不再等，已列出的照常下完并说明原因', async () => {
+    fetchKuaishouFeedPage
+      .mockReset()
+      .mockResolvedValueOnce(page(''))
+      .mockRejectedValue(new KuaishouCooldownError('快手限流', 'quota'))
+    const result = await downloadKuaishouCreator(creator, {
+      limit: 0,
+      concurrency: 1,
+      isAborted: () => false
+    })
+    expect(result).toMatchObject({ downloaded: 12, notice: '快手限流' })
+    expect(fetchKuaishouFeedPage).toHaveBeenCalledTimes(5)
+  })
+
+  it('等待限流恢复时取消同步：立刻结束，不下载', async () => {
+    let aborted = false
+    fetchKuaishouFeedPage.mockReset().mockImplementation(async () => markKuaishouQuota())
+    const result = await downloadKuaishouCreator(creator, {
+      limit: 0,
+      concurrency: 1,
+      isAborted: () => aborted,
+      onProgress: (event) => {
+        if (event.message.includes('限流')) aborted = true
+      }
+    })
+    expect(result.aborted).toBe(true)
+    expect(downloadWork).not.toHaveBeenCalled()
+  })
+
+  it('翻页中途要滑块验证：不等，已列出的作品照常下完', async () => {
+    fetchKuaishouFeedPage
+      .mockReset()
+      .mockResolvedValueOnce(page(''))
+      .mockRejectedValueOnce(new KuaishouCooldownError('快手要求滑块验证', 'captcha'))
+    const result = await downloadKuaishouCreator(creator, {
+      limit: 0,
+      concurrency: 1,
+      isAborted: () => false
+    })
+    expect(result).toMatchObject({ downloaded: 12, notice: '快手要求滑块验证' })
   })
 
   it('第一页就失败（未登录）：直接抛错', async () => {

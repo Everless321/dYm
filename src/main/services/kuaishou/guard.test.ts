@@ -3,7 +3,9 @@ import {
   API_GAP_MS,
   KuaishouCooldownError,
   markKuaishouQuota,
+  QUOTA_COOLDOWN_MS,
   resetKuaishouGuardForTests,
+  waitKuaishouCooldown,
   withKuaishouApiThrottle,
   withKuaishouDownloadThrottle
 } from './guard'
@@ -47,6 +49,23 @@ describe('快手请求排队与冷却', () => {
     expect(error).toBeInstanceOf(KuaishouCooldownError)
     expect(error.message).toContain('冷却中')
     expect(ran).toBe(false)
+  })
+
+  it('等待冷却：冷却结束后才返回', async () => {
+    try {
+      markKuaishouQuota()
+    } catch {
+      // 标记限流本身就会抛出
+    }
+    let done = false
+    const waiting = waitKuaishouCooldown(() => false).then(() => {
+      done = true
+    })
+    await vi.advanceTimersByTimeAsync(QUOTA_COOLDOWN_MS - 1000)
+    expect(done).toBe(false)
+    await vi.advanceTimersByTimeAsync(1000)
+    await waiting
+    expect(done).toBe(true)
   })
 
   it('限额只拦接口，已经列出的作品仍可以下载', async () => {

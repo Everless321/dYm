@@ -64,6 +64,10 @@ export const BILIBILI_CODEC_ID: Record<BilibiliVideoCodec, number> = {
   av1: 13
 }
 
+/** 添加快手创作者时显示在输入框下方 */
+export const KUAISHOU_RISK_NOTICE =
+  '快手究极风控，建议严格限制下载频率。作品列表每翻几十到一百多个就会被限流，约 10 分钟后才恢复（同步会自动等待后接着翻）；请设置下载数量上限，不要同时同步多个快手创作者。'
+
 export function kuaishouSecUid(userId: string): string {
   return `ks_${userId}`
 }

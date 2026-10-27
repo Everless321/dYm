@@ -18,6 +18,7 @@ import {
   CREATOR_PLATFORM_LABEL,
   defaultBilibiliCreatorSettings,
   detectCreatorPlatform,
+  KUAISHOU_RISK_NOTICE,
   type BilibiliCreatorSettings
 } from '../../../src/shared/platforms'
 
@@ -175,6 +176,9 @@ export function UsersPane({
           {adding ? '正在添加' : '添加'}
         </button>
       </form>
+      {detectCreatorPlatform(url) === 'kuaishou' ? (
+        <p className="error">{KUAISHOU_RISK_NOTICE}</p>
+      ) : null}
       {detectCreatorPlatform(url) ? (
         <AddCreatorOptions
           platform={detectCreatorPlatform(url) || 'douyin'}

@@ -47,6 +47,7 @@ import {
   defaultBilibiliCreatorSettings,
   detectCreatorPlatform,
   extractCreatorLink,
+  KUAISHOU_RISK_NOTICE,
   normalizeCreatorPlatform,
   parseBilibiliCreatorSettings,
   type CreatorPlatform
@@ -1081,6 +1082,9 @@ export default function UsersPage() {
                 disabled={loading}
                 className="h-11 border-[#E5E5E7]"
               />
+              {detectCreatorPlatform(url) === 'kuaishou' && (
+                <p className="text-xs text-red-500">{KUAISHOU_RISK_NOTICE}</p>
+              )}
             </div>
             <CreatorSettingsFields
               platform={detectCreatorPlatform(url)}
