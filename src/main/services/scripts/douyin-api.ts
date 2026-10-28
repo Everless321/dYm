@@ -6,7 +6,7 @@ import {
   getDouyinHandler,
   parseDouyinUrl
 } from '../douyin/client'
-import { fetchGuarded } from '../douyin/page'
+import { fetchProtected } from '../douyin/protected-api'
 import type {
   CollectedAweme,
   DouyinAccount,
@@ -29,7 +29,7 @@ import type {
 /** 翻页之间的默认间隔，连续请求容易触发风控；脚本可按接口用 options.intervalMs 覆盖 */
 const DEFAULT_PAGE_INTERVAL_MS = 1500
 
-/** 受 Argus 保护、必须在页面上下文里请求的三个接口 */
+/** 收藏类接口：直连优先，被拦时退回页面上下文（见 ../douyin/protected-api.ts） */
 const COLLECTS_PATH = '/aweme/v1/web/collects/list/'
 const COLLECTS_VIDEO_PATH = '/aweme/v1/web/collects/video/list/'
 const COLLECTION_PATH = '/aweme/v1/web/aweme/listcollection/'
@@ -203,7 +203,7 @@ export function createDouyinApi(
 
   /**
    * 翻完受保护接口的全部分页。
-   * 这些接口不走 polydl，所以分页逻辑得自己写：读 has_more 与 cursor，逐页累加。
+   * polydl 没有这几个接口的翻页封装，所以分页逻辑得自己写：读 has_more 与 cursor，逐页累加。
    * limit > 0 时凑够条数就停，不再翻后面的页。
    */
   async function drainPage<T>(
@@ -223,7 +223,7 @@ export function createDouyinApi(
 
     for (let page = 0; page < MAX_PAGES; page++) {
       throwIfCancelled()
-      const raw = await fetchGuarded(path, { ...extraParams, cursor, count: PAGE_SIZE }, method)
+      const raw = await fetchProtected(path, { ...extraParams, cursor, count: PAGE_SIZE }, method)
       out.push(...take(raw))
       if (limit > 0 && out.length >= limit) return out.slice(0, limit)
 
@@ -279,8 +279,7 @@ export function createDouyinApi(
       return { type, id }
     },
 
-    // 下面三个走页面上下文：它们被抖音 ArgusSecurityPlugin 保护，直连必定 403，
-    // 详见 ../douyin-page.ts
+    // 下面几个是收藏类接口，直连优先，被拦时退回页面上下文
     collects: async (options?: PagingOptions): Promise<DouyinCollect[]> =>
       drainPage(
         COLLECTS_PATH,
@@ -322,7 +321,7 @@ export function createDouyinApi(
 
     uncollect: async (awemeId: string): Promise<void> => {
       throwIfCancelled()
-      await fetchGuarded(COLLECT_PATH, {}, 'POST', {
+      await fetchProtected(COLLECT_PATH, {}, 'POST', {
         action: 0,
         aweme_id: awemeId.trim(),
         aweme_type: 0
