@@ -58,7 +58,6 @@ export default function BrowsePrototype(): React.JSX.Element {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [author, setAuthor] = useState('')
   const [authorOpen, setAuthorOpen] = useState(false)
-  const [authorSearch, setAuthorSearch] = useState('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [tagSearch, setTagSearch] = useState('')
   const [showAllTags, setShowAllTags] = useState(false)
@@ -224,9 +223,14 @@ export default function BrowsePrototype(): React.JSX.Element {
     setSelected(post)
     setViewerOpen(true)
   }
-  const filteredAuthors = authors.filter((item) =>
-    item.nickname.toLowerCase().includes(authorSearch.toLowerCase())
+  const creatorMap = useMemo(
+    () => new Map(creatorRecords.map((user) => [user.sec_uid, user])),
+    [creatorRecords]
   )
+  const selectAuthor = (secUid: string): void => {
+    setAuthor(secUid)
+    setAuthorOpen(false)
+  }
   const filteredTags = tags.filter((item) =>
     item.tag.toLowerCase().includes(tagSearch.toLowerCase())
   )
@@ -329,81 +333,37 @@ export default function BrowsePrototype(): React.JSX.Element {
             </button>
             {authorOpen && (
               <div className="absolute left-0 top-9 z-20 w-[260px] rounded-[10px] border border-[var(--border)] bg-[var(--surface)] p-1.5 shadow-[0_10px_30px_#0000001F,0_1px_3px_#0000000D]">
-                <div className="px-0.5 pb-1.5 pt-0.5">
-                  <div className="relative">
-                    <Search
-                      size={13}
-                      className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]"
-                    />
-                    <input
-                      value={authorSearch}
-                      onChange={(event) => setAuthorSearch(event.target.value)}
-                      placeholder="搜索作者…"
-                      className="h-7 w-full rounded-[6px] bg-[var(--surface-muted)] pl-7 pr-2 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)]"
-                    />
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setAuthor('')
-                    setAuthorOpen(false)
-                  }}
-                  className={`flex h-8 w-full items-center gap-2 rounded-[6px] px-2 text-left text-[13px] ${
-                    !author
-                      ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
-                      : 'text-[var(--text-primary)] hover:bg-[var(--surface-muted)]'
-                  }`}
+                <AuthorOptions
+                  authors={authors}
+                  creatorMap={creatorMap}
+                  author={author}
+                  onSelect={selectAuthor}
                 >
-                  <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-[var(--surface-muted)]">
-                    <Users size={12} className="text-[var(--text-secondary)]" />
-                  </span>
-                  <span className={`flex-1 ${!author ? 'font-medium' : ''}`}>全部作者</span>
-                  <span
-                    className={`font-mono text-[11px] ${!author ? 'text-[var(--accent)]' : 'text-[var(--text-tertiary)]'}`}
+                  <button
+                    onClick={() => {
+                      setAuthor('')
+                      setAuthorOpen(false)
+                    }}
+                    className={`flex h-8 w-full items-center gap-2 rounded-[6px] px-2 text-left text-[13px] ${
+                      !author
+                        ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                        : 'text-[var(--text-primary)] hover:bg-[var(--surface-muted)]'
+                    }`}
                   >
-                    {total.toLocaleString()}
-                  </span>
-                  <span className="grid h-3.5 w-3.5 shrink-0 place-items-center">
-                    {!author && <Check size={14} />}
-                  </span>
-                </button>
-                <div className="my-1 h-px bg-[var(--border)]" />
-                <div className="max-h-56 overflow-y-auto">
-                  {filteredAuthors.map((item) => {
-                    const creator = creatorRecords.find((user) => user.sec_uid === item.sec_uid)
-                    const active = author === item.sec_uid
-                    return (
-                      <button
-                        key={item.sec_uid}
-                        onClick={() => {
-                          setAuthor(active ? '' : item.sec_uid)
-                          setAuthorOpen(false)
-                        }}
-                        className={`flex h-8 w-full items-center gap-2 rounded-[6px] px-2 text-left text-[13px] ${
-                          active
-                            ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
-                            : 'text-[var(--text-primary)] hover:bg-[var(--surface-muted)]'
-                        }`}
-                      >
-                        {creator?.avatar_path ? (
-                          <img
-                            src={toMediaSrc(creator.avatar_path)}
-                            className="h-5 w-5 rounded-full object-cover"
-                          />
-                        ) : (
-                          <span className="h-5 w-5 rounded-full bg-[var(--accent-soft)]" />
-                        )}
-                        <span className="flex-1 truncate">{item.nickname}</span>
-                        <span className="font-mono text-[11px] text-[var(--text-tertiary)]">
-                          {creator?.downloaded_count ?? ''}
-                        </span>
-                        <span className="grid h-3.5 w-3.5 shrink-0 place-items-center">
-                          {active && <Check size={14} />}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
+                    <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-[var(--surface-muted)]">
+                      <Users size={12} className="text-[var(--text-secondary)]" />
+                    </span>
+                    <span className={`flex-1 ${!author ? 'font-medium' : ''}`}>全部作者</span>
+                    <span
+                      className={`font-mono text-[11px] ${!author ? 'text-[var(--accent)]' : 'text-[var(--text-tertiary)]'}`}
+                    >
+                      {total.toLocaleString()}
+                    </span>
+                    <span className="grid h-3.5 w-3.5 shrink-0 place-items-center">
+                      {!author && <Check size={14} />}
+                    </span>
+                  </button>
+                </AuthorOptions>
                 <div className="flex items-center justify-between border-t border-[var(--border)] px-2 pb-0.5 pt-1.5">
                   <span className="text-[11px] text-[var(--text-tertiary)]">
                     共 {creatorRecords.length} 位作者 · {hiddenCreators.length} 位已隐藏
@@ -924,5 +884,104 @@ function BrowseCard({
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
+  )
+}
+
+// 作者可能上千：搜索词放在这里，打字不重渲染整页；列表只渲染可视区附近的行
+const authorRowHeight = 32
+const authorListHeight = 224
+const authorOverscan = 5
+
+function AuthorOptions({
+  authors,
+  creatorMap,
+  author,
+  onSelect,
+  children
+}: {
+  authors: PostAuthor[]
+  creatorMap: Map<string, DbUser>
+  author: string
+  onSelect: (secUid: string) => void
+  children: React.ReactNode
+}): React.JSX.Element {
+  const [search, setSearch] = useState('')
+  const [scrollTop, setScrollTop] = useState(0)
+  const listRef = useRef<HTMLDivElement>(null)
+  const filtered = useMemo(() => {
+    const keyword = search.toLowerCase()
+    return authors.filter((item) => item.nickname.toLowerCase().includes(keyword))
+  }, [authors, search])
+  const start = Math.max(0, Math.floor(scrollTop / authorRowHeight) - authorOverscan)
+  const end = Math.min(
+    filtered.length,
+    Math.ceil((scrollTop + authorListHeight) / authorRowHeight) + authorOverscan
+  )
+
+  return (
+    <>
+      <div className="px-0.5 pb-1.5 pt-0.5">
+        <div className="relative">
+          <Search
+            size={13}
+            className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]"
+          />
+          <input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value)
+              // 结果变少后旧的滚动位置会落在列表外，回到顶部
+              listRef.current?.scrollTo({ top: 0 })
+              setScrollTop(0)
+            }}
+            placeholder="搜索作者…"
+            className="h-7 w-full rounded-[6px] bg-[var(--surface-muted)] pl-7 pr-2 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)]"
+          />
+        </div>
+      </div>
+      {children}
+      <div className="my-1 h-px bg-[var(--border)]" />
+      <div
+        ref={listRef}
+        className="overflow-y-auto"
+        style={{ maxHeight: authorListHeight }}
+        onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+      >
+        <div className="relative" style={{ height: filtered.length * authorRowHeight }}>
+          {filtered.slice(start, end).map((item, index) => {
+            const creator = creatorMap.get(item.sec_uid)
+            const active = author === item.sec_uid
+            return (
+              <button
+                key={item.sec_uid}
+                onClick={() => onSelect(active ? '' : item.sec_uid)}
+                style={{ top: (start + index) * authorRowHeight }}
+                className={`absolute left-0 flex h-8 w-full items-center gap-2 rounded-[6px] px-2 text-left text-[13px] ${
+                  active
+                    ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                    : 'text-[var(--text-primary)] hover:bg-[var(--surface-muted)]'
+                }`}
+              >
+                {creator?.avatar_path ? (
+                  <img
+                    src={toMediaSrc(creator.avatar_path)}
+                    className="h-5 w-5 rounded-full object-cover"
+                  />
+                ) : (
+                  <span className="h-5 w-5 rounded-full bg-[var(--accent-soft)]" />
+                )}
+                <span className="flex-1 truncate">{item.nickname}</span>
+                <span className="font-mono text-[11px] text-[var(--text-tertiary)]">
+                  {creator?.downloaded_count ?? ''}
+                </span>
+                <span className="grid h-3.5 w-3.5 shrink-0 place-items-center">
+                  {active && <Check size={14} />}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </>
   )
 }
