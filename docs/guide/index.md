@@ -5,7 +5,7 @@
 目录先占好位置。当前完整的功能说明请看仓库根目录的
 [README](https://github.com/Everless321/dYm/blob/main/README_CN.md)。
 
-已经写好的是[自定义脚本文档](/scripts/)。
+已经写好的是[自定义脚本文档](/scripts/)和[下载失败与风控排查](/guide/risk-control)。
 :::
 
 ## 计划中的章节

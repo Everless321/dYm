@@ -40,7 +40,15 @@ export default defineConfig({
           ]
         }
       ],
-      '/guide/': [{ text: '使用指南', items: [{ text: '概览', link: '/guide/' }] }]
+      '/guide/': [
+        {
+          text: '使用指南',
+          items: [
+            { text: '概览', link: '/guide/' },
+            { text: '下载失败与风控排查', link: '/guide/risk-control' }
+          ]
+        }
+      ]
     },
 
     socialLinks: [{ icon: 'github', link: 'https://github.com/Everless321/dYm' }],
