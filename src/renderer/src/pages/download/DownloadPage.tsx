@@ -310,7 +310,7 @@ export default function DownloadPage() {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-[#6E6E73] hover:text-[#1D1D1F]"
-                      onClick={() => navigate(`/download/${task.id}`)}
+                      onClick={() => navigate(`/tasks/${task.id}`)}
                       title="查看详情"
                     >
                       <FileText className="h-4 w-4" />

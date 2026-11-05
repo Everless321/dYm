@@ -9,6 +9,7 @@ import {
   House,
   LibraryBig,
   Link2,
+  ListTodo,
   Radio,
   Settings,
   Users
@@ -40,8 +41,13 @@ export function Sidebar({ developerMode }: SidebarProps): React.JSX.Element {
   const [unanalyzedCount, setUnanalyzedCount] = useState<number | null>(null)
   const [cookieConfigured, setCookieConfigured] = useState<boolean | null>(null)
   const [quickAddOpen, setQuickAddOpen] = useState(false)
+  const [appVersion, setAppVersion] = useState('')
 
   useEffect(() => {
+    window.api.updater
+      .getCurrentVersion()
+      .then(setAppVersion)
+      .catch(() => undefined)
     void Promise.all([
       window.api.sync.getAllSyncing().then((ids) => setSyncingIds(new Set(ids))),
       window.api.live.getRecordingUsers().then((ids) => setLiveIds(new Set(ids))),
@@ -105,6 +111,12 @@ export function Sidebar({ developerMode }: SidebarProps): React.JSX.Element {
       active: (path) => path.startsWith('/creators')
     },
     {
+      label: '下载任务',
+      to: '/tasks',
+      icon: ListTodo,
+      active: (path) => path.startsWith('/tasks')
+    },
+    {
       label: '直播录制',
       to: '/live',
       icon: Radio,
@@ -145,7 +157,9 @@ export function Sidebar({ developerMode }: SidebarProps): React.JSX.Element {
               </span>
               <span className="flex min-w-0 items-baseline gap-2">
                 <span className="text-base font-semibold tracking-tight">dYm</span>
-                <span className="font-mono text-[10px] text-[var(--text-tertiary)]">3.2</span>
+                <span className="font-mono text-[10px] text-[var(--text-tertiary)]">
+                  {appVersion}
+                </span>
               </span>
             </Link>
             <button

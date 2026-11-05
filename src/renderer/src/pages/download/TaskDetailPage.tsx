@@ -127,11 +127,11 @@ export default function TaskDetailPage() {
         setTask(data)
       } else {
         toast.error('任务不存在')
-        navigate('/download')
+        navigate('/tasks')
       }
     } catch {
       toast.error('加载任务失败')
-      navigate('/download')
+      navigate('/tasks')
     } finally {
       setLoading(false)
     }
@@ -181,7 +181,7 @@ export default function TaskDetailPage() {
         left={
           <>
             <button
-              onClick={() => navigate('/download')}
+              onClick={() => navigate('/tasks')}
               className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg hover:bg-[#F2F2F4] transition-colors"
             >
               <ArrowLeft className="h-5 w-5 text-[#6E6E73]" />
