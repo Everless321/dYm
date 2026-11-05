@@ -22,6 +22,11 @@ files:
   - '!panel'
   # ffmpeg 已通过 extraResources 单独打包，排除出 asar 避免重复打一份（省 ~130MB）
   - '!resources/ffmpeg'
+  # CI 把 electron / electron-builder 的下载缓存放在工作区 .cache 下，不排除会整个打进 asar（约 140MB）
+  - '!.cache'
+  # 运行时用不到：source map，以及 better-sqlite3 编译用的 C 源码（已编译成 build/Release 下的 .node）
+  - '!**/*.map'
+  - '!node_modules/better-sqlite3/{deps,src}'
 asarUnpack:
   - resources/**
 win:
