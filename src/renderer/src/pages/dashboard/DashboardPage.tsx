@@ -68,12 +68,30 @@ function ChartCard({ children }: { children: React.ReactNode }): React.JSX.Eleme
   )
 }
 
+const STORAGE_SNAPSHOT_KEY = 'dashboard_storage_snapshot'
+
+interface StorageSnapshot {
+  bytes: number
+  at: number
+}
+
+function readStorageSnapshot(): StorageSnapshot | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_SNAPSHOT_KEY)
+    const parsed = raw ? (JSON.parse(raw) as StorageSnapshot) : null
+    return typeof parsed?.bytes === 'number' && typeof parsed?.at === 'number' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
 export default function DashboardPage(): React.JSX.Element {
   const navigate = useNavigate()
   const [overview, setOverview] = useState<DashboardOverview | null>(null)
   const [trend, setTrend] = useState<TrendPoint[]>([])
   const [users, setUsers] = useState<DbUser[] | null>(null)
-  const [storageBytes, setStorageBytes] = useState<number | null>(null)
+  const [storage, setStorage] = useState<StorageSnapshot | null>(readStorageSnapshot)
+  const [storageComputing, setStorageComputing] = useState(false)
   const [tasks, setTasks] = useState<DbTaskWithUsers[]>([])
   const [runningTaskIds, setRunningTaskIds] = useState<Set<number>>(new Set())
   const [downloadProgress, setDownloadProgress] = useState<Map<number, DownloadProgress>>(new Map())
@@ -138,10 +156,21 @@ export default function DashboardPage(): React.JSX.Element {
 
     if (overviewResult.status === 'fulfilled') setOverview(overviewResult.value)
     if (trendResult.status === 'fulfilled') setTrend(trendResult.value)
-    if (usersResult.status === 'fulfilled') {
-      const creatorList = usersResult.value ?? []
-      setUsers(creatorList)
-      const queue = [...creatorList]
+    if (usersResult.status === 'fulfilled') setUsers(usersResult.value ?? [])
+    if (jobsResult.status === 'fulfilled') setJobs(jobsResult.value)
+    if (countResult.status === 'fulfilled') setUnanalyzedCount(countResult.value)
+    if (logsResult.status === 'fulfilled') setLogs(logsResult.value)
+    if (cookieResult.status === 'fulfilled') setCookieConfigured(Boolean(cookieResult.value))
+
+    await Promise.all([refreshTasks(), refreshLive()])
+    setLoading(false)
+  }, [refreshLive, refreshTasks])
+
+  // 占用要遍历每个创作者的下载目录，磁盘慢时会持续读盘很久，所以只在用户点击时计算
+  const computeStorage = useCallback(async (): Promise<void> => {
+    setStorageComputing(true)
+    try {
+      const queue = [...((await window.api.user.getAll()) ?? [])]
       let totalSize = 0
       const worker = async (): Promise<void> => {
         while (queue.length > 0) {
@@ -155,17 +184,20 @@ export default function DashboardPage(): React.JSX.Element {
           }
         }
       }
-      await Promise.all(Array.from({ length: Math.min(3, creatorList.length) }, worker))
-      setStorageBytes(totalSize)
+      await Promise.all(Array.from({ length: Math.min(3, queue.length) }, worker))
+      const snapshot = { bytes: totalSize, at: Date.now() }
+      setStorage(snapshot)
+      try {
+        localStorage.setItem(STORAGE_SNAPSHOT_KEY, JSON.stringify(snapshot))
+      } catch {
+        // 记不住上次结果只影响下次打开时的显示
+      }
+    } catch {
+      toast.error('计算占用失败')
+    } finally {
+      setStorageComputing(false)
     }
-    if (jobsResult.status === 'fulfilled') setJobs(jobsResult.value)
-    if (countResult.status === 'fulfilled') setUnanalyzedCount(countResult.value)
-    if (logsResult.status === 'fulfilled') setLogs(logsResult.value)
-    if (cookieResult.status === 'fulfilled') setCookieConfigured(Boolean(cookieResult.value))
-
-    await Promise.all([refreshTasks(), refreshLive()])
-    setLoading(false)
-  }, [refreshLive, refreshTasks])
+  }, [])
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadDashboard(), 0)
@@ -311,14 +343,34 @@ export default function DashboardPage(): React.JSX.Element {
                   suffix={`${analysisPercent}%`}
                   separated
                 />
-                {storageBytes !== null && (
+                <button
+                  type="button"
+                  onClick={() => void computeStorage()}
+                  disabled={storageComputing}
+                  title={
+                    storage
+                      ? `上次计算：${new Date(storage.at).toLocaleString('zh-CN')}，点击重新计算`
+                      : '遍历下载目录计算占用空间'
+                  }
+                  className="text-left disabled:cursor-wait"
+                >
                   <HeaderStat
                     label="占用"
-                    value={formatBytes(storageBytes).replace(/\s*[A-Z]+$/, '')}
-                    suffix={formatBytes(storageBytes).match(/[A-Z]+$/)?.[0]}
+                    value={
+                      storage && !storageComputing
+                        ? formatBytes(storage.bytes).replace(/\s*[A-Z]+$/, '')
+                        : '—'
+                    }
+                    suffix={
+                      storageComputing
+                        ? '计算中…'
+                        : storage
+                          ? formatBytes(storage.bytes).match(/[A-Z]+$/)?.[0]
+                          : '点击计算'
+                    }
                     separated
                   />
-                )}
+                </button>
               </>
             )}
             <button
