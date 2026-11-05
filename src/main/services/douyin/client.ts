@@ -176,7 +176,7 @@ export async function diagnosePostDetail(awemeId: string): Promise<string> {
     return '未配置 cookie'
   }
 
-  let res: { status: number; data: unknown }
+  let res: { status: number; data: unknown; headers: Headers }
   try {
     const crawler = new DouyinCrawler({ cookie })
     res = await crawler.fetchPostDetail(awemeId)
@@ -184,9 +184,31 @@ export async function diagnosePostDetail(awemeId: string): Promise<string> {
     return `详情接口请求失败：${(error as Error).message}`
   }
 
+  const contentType = res.headers?.get('content-type') ?? ''
+  const logId = res.headers?.get('x-tt-logid') ?? ''
+  const logIdPart = logId ? `，logid ${logId}` : ''
+
+  // 非 JSON 响应（风控拦截页、空体等）：响应体是唯一能说明拦截原因的线索，原样带出。
+  if (typeof res.data === 'string') {
+    const body = res.data.trim()
+    const snippet = body.length > 200 ? `${body.slice(0, 200)}…` : body
+    console.log('[Douyin] diagnosePostDetail 非 JSON 响应:', {
+      http: res.status,
+      contentType,
+      logId,
+      bodyLength: body.length,
+      body: snippet
+    })
+    return `详情接口返回 HTTP ${res.status}，非 JSON 响应（content-type: ${
+      contentType || '无'
+    }，响应体 ${body.length} 字节${body ? `：${snippet}` : '，为空'}${logIdPart}）`
+  }
+
   const data = res.data as { status_code?: number; status_msg?: string; aweme_detail?: unknown }
   console.log('[Douyin] diagnosePostDetail:', {
     http: res.status,
+    contentType,
+    logId,
     status_code: data?.status_code,
     status_msg: data?.status_msg,
     aweme_detail: data?.aweme_detail === null ? 'null' : typeof data?.aweme_detail
@@ -195,10 +217,10 @@ export async function diagnosePostDetail(awemeId: string): Promise<string> {
   if (data?.aweme_detail == null) {
     return `详情接口返回空作品（HTTP ${res.status}，status_code ${data?.status_code}${
       data?.status_msg ? `，${data.status_msg}` : ''
-    }），通常是 cookie 失效或触发风控`
+    }${logIdPart}），通常是 cookie 失效或触发风控`
   }
 
-  return `详情接口正常返回但缺少作者字段（HTTP ${res.status}，status_code ${data?.status_code}）`
+  return `详情接口正常返回但缺少作者字段（HTTP ${res.status}，status_code ${data?.status_code}${logIdPart}）`
 }
 
 /**

@@ -211,6 +211,12 @@ function createWindow(): BrowserWindow {
 
   blockCustomProtocols(mainWindow)
 
+  // 主窗口页面里的报错（ErrorBoundary、unhandledrejection 等）同时写进 main.log
+  mainWindow.webContents.on('console-message', (event) => {
+    if (event.level !== 'error') return
+    console.error('[Renderer]', event.message, `(${event.sourceId}:${event.lineNumber})`)
+  })
+
   mainWindow.webContents.setWindowOpenHandler((details) => {
     if (isBlockedProtocol(details.url) || !isAllowedExternalProtocol(details.url)) {
       return { action: 'deny' }
@@ -345,6 +351,26 @@ async function bootstrap(): Promise<void> {
   // 全局拦截所有 webContents（包括子窗口、iframe）的自定义协议跳转
   app.on('web-contents-created', (_event, contents) => {
     attachProtocolGuards(contents)
+
+    // 记录崩溃和卡死：白屏排查时 main.log 里要能看到是哪个进程出了事
+    const tag = `[WebContents ${contents.id} ${contents.getType()}]`
+    contents.on('render-process-gone', (_e, details) => {
+      console.error(tag, '渲染进程退出:', details.reason, 'exitCode:', details.exitCode)
+    })
+    contents.on('unresponsive', () => console.warn(tag, '页面无响应'))
+    contents.on('responsive', () => console.warn(tag, '页面恢复响应'))
+  })
+
+  // GPU 等子进程崩溃也会让窗口白屏
+  app.on('child-process-gone', (_event, details) => {
+    console.error(
+      '[ChildProcess] 子进程退出:',
+      details.type,
+      details.reason,
+      'exitCode:',
+      details.exitCode,
+      details.name ?? ''
+    )
   })
 
   // 初始化数据库
