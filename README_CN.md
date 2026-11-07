@@ -11,7 +11,7 @@
 
 dYm 是一个将**无水印视频下载**与 **AI 内容分析**相结合的桌面应用。专为内容创作者、社交媒体运营和研究人员打造，高效采集、整理和理解短视频内容。
 
-[仓库地址](https://github.com/Everless321/dYm) · [Telegram 群组](https://t.me/+a02Yk5OY4gk1N2I1) · [Linux.do](https://linux.do)
+[仓库地址](https://github.com/Everless321/dYm) · [Telegram 群组](https://t.me/+a02Yk5OY4gk1N2I1) · [Linux.do](https://linux.do/u/everless/)
 
 > 💬 加入 [Telegram 群组](https://t.me/+a02Yk5OY4gk1N2I1)，获取更新、交流与支持。
 

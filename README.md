@@ -11,7 +11,7 @@
 
 dYm is a desktop application that combines **watermark-free video downloading** with **AI-driven content analysis**. Built for content creators, social media managers, and researchers who need to efficiently collect, organize, and understand short-form video content at scale.
 
-[Repository](https://github.com/Everless321/dYm) · [Telegram Group](https://t.me/+a02Yk5OY4gk1N2I1) · [Linux.do](https://linux.do)
+[Repository](https://github.com/Everless321/dYm) · [Telegram Group](https://t.me/+a02Yk5OY4gk1N2I1) · [Linux.do](https://linux.do/u/everless/)
 
 > 💬 Join our [Telegram group](https://t.me/+a02Yk5OY4gk1N2I1) for updates, support, and discussion.
 
