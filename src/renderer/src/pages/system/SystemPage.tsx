@@ -41,6 +41,7 @@ export default function SystemPage() {
   const [scheduleGapSeconds, setScheduleGapSeconds] = useState('15')
   const [convertToJpg, setConvertToJpg] = useState(false)
   const [downloadPostOnAddUser, setDownloadPostOnAddUser] = useState(true)
+  const [jingxuanVideo, setJingxuanVideo] = useState(false)
   const originalDownloadPath = useRef('')
 
   // 迁移
@@ -120,6 +121,7 @@ export default function SystemPage() {
       setScheduleGapSeconds(settings.schedule_sync_gap_seconds || '15')
       setConvertToJpg(settings.convert_images_to_jpg === 'true')
       setDownloadPostOnAddUser(settings.download_post_on_add_user !== 'false')
+      setJingxuanVideo(settings.jingxuan_video_download === 'true')
       setCollectEnabled(settings.collect_sync_enabled === 'true')
       setCollectBaseUrl(settings.collect_sync_base_url || 'https://dymserver.everless.app')
       setCollectToken(settings.collect_sync_token || '')
@@ -304,6 +306,7 @@ export default function SystemPage() {
       'download_post_on_add_user',
       downloadPostOnAddUser ? 'true' : 'false'
     )
+    await window.api.settings.set('jingxuan_video_download', jingxuanVideo ? 'true' : 'false')
     originalDownloadPath.current = downloadPath
     toast.success('下载设置已保存')
   }
@@ -749,6 +752,29 @@ export default function SystemPage() {
                           <span
                             className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
                               downloadPostOnAddUser ? 'translate-x-[22px]' : 'translate-x-0.5'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                      {/* Experimental: download douyin videos via jingxuan endpoint */}
+                      <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="text-sm text-[#1D1D1F]">精选接口下载视频（实验）</p>
+                          <p className="text-xs text-[#A1A1A6] mt-1">
+                            下载抖音视频时优先走精选接口取原画：不需要
+                            Cookie，风控概率更低，解析更快，但不保证长期有效；失败自动回退原方式。原画体积可能大数倍
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setJingxuanVideo(!jingxuanVideo)}
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                            jingxuanVideo ? 'bg-[#0A84FF]' : 'bg-[#D1D1D6]'
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                              jingxuanVideo ? 'translate-x-[22px]' : 'translate-x-0.5'
                             }`}
                           />
                         </button>

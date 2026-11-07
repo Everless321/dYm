@@ -5,6 +5,7 @@ import { mkdir } from 'fs/promises'
 import { pipeline } from 'stream/promises'
 import { getSetting } from '../database'
 import { fetchVideoDetail } from '../services/douyin/client'
+import { resolveOriginalVideoUrl } from '../services/douyin/jingxuan'
 import { convertFolderImagesToJpg } from '../services/download/downloader'
 
 export function registerVideoIpc(): void {
@@ -80,10 +81,24 @@ export function registerVideoIpc(): void {
 
       if (info.type === 'video' && info.videoUrl) {
         const videoPath = join(folderPath, `${info.awemeId}.mp4`)
-        const response = await fetch(info.videoUrl, { headers })
-        if (!response.ok || !response.body) throw new Error('下载视频失败')
-        const fileStream = createWriteStream(videoPath)
-        await pipeline(response.body as unknown as NodeJS.ReadableStream, fileStream)
+        const save = async (url: string): Promise<void> => {
+          const response = await fetch(url, { headers })
+          if (!response.ok || !response.body) throw new Error('下载视频失败')
+          const fileStream = createWriteStream(videoPath)
+          await pipeline(response.body as unknown as NodeJS.ReadableStream, fileStream)
+        }
+        // 开启精选接口时先下原画，失败回退原地址
+        const original = await resolveOriginalVideoUrl(info.awemeId)
+        let saved = false
+        if (original) {
+          try {
+            await save(original)
+            saved = true
+          } catch (error) {
+            console.warn('[Video] 原画下载失败，回退原地址:', (error as Error).message)
+          }
+        }
+        if (!saved) await save(info.videoUrl)
       } else if (info.type === 'images' && info.imageUrls) {
         const failedImages: number[] = []
         for (let i = 0; i < info.imageUrls.length; i++) {

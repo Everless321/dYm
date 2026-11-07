@@ -21,6 +21,7 @@ import { emitPostDownloaded } from '../scripts/emit'
 import { track } from '../telemetry'
 import { getDownloadPath } from '../media'
 import { diagnoseUserPost } from '../douyin/client'
+import { withOriginalVideo } from '../douyin/jingxuan'
 import { fetchUserPostPages } from '../douyin/user-post'
 import { runWithConcurrency } from '../../utils/concurrency'
 import { emitPanelProgress } from '../panel/progress'
@@ -472,7 +473,8 @@ async function downloadUserVideos(
           try {
             const expectMusic = expectsMusic(awemeData)
 
-            await downloader.createDownloadTasks(awemeData, userPath)
+            // 开启精选接口时先下原画；校验失败后的重试用原数据，即回退
+            await downloader.createDownloadTasks(await withOriginalVideo(awemeData), userPath)
 
             const folderPath = join(userPath, folderName)
 
@@ -656,7 +658,8 @@ async function downloadSinglePostInner(
 
     const expectMusic = expectsMusic(awemeData)
 
-    await downloader.createDownloadTasks(awemeData, userPath)
+    // 开启精选接口时先下原画；校验失败后的重试用原数据，即回退
+    await downloader.createDownloadTasks(await withOriginalVideo(awemeData), userPath)
 
     if (!validateDownloadFolder(folderPath, awemeData.awemeType || 0, expectMusic)) {
       cleanupFailedDownload(folderPath)
