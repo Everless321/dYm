@@ -25,6 +25,7 @@ import {
   migrateTagsFromJsonColumns
 } from './database'
 import { initStorageUploader } from './services/storage/uploader'
+import { initPoolShare } from './services/pool/share'
 import { initDouyinHandler } from './services/douyin/client'
 import { extractCreatorLink } from '../shared/platforms'
 import {
@@ -390,6 +391,8 @@ async function bootstrap(): Promise<void> {
   initAnalysisQueue()
   // 对象存储：恢复未完成的上传，新下载的作品自动入队
   initStorageUploader()
+  // 共享计划：新下载的作品上传到共享池，新添加的作者上传资料
+  initPoolShare()
 
   // 初始化抖音客户端
   initDouyinHandler()

@@ -18,6 +18,7 @@ import {
 import { emitDeveloperModeChange } from '@/lib/developer-mode'
 import { StorageSettingsCard } from './StorageSettingsCard'
 import { PanelSettingsCard } from './PanelSettingsCard'
+import { PoolSettingsCard } from './PoolSettingsCard'
 import { ProvidersPanel } from '@/pages/analysis/ProvidersPanel'
 import { AsrProvidersPanel } from '@/pages/analysis/AsrProvidersPanel'
 import { SettingsPanel } from '@/pages/analysis/SettingsPanel'
@@ -993,6 +994,12 @@ export default function SystemPage() {
 
             {section === 'panel' && <PanelSettingsCard />}
 
+            {section === 'pool' && (
+              <Section eyebrow="系统" title="共享计划">
+                <PoolSettingsCard />
+              </Section>
+            )}
+
             {section === 'ai' && (
               <Section eyebrow="AI 分析" title="AI 模型">
                 <ProvidersPanel />
@@ -1284,6 +1291,7 @@ const SETTINGS_NAV: SettingsNavGroup[] = [
     items: [
       { key: 'storage', label: '对象存储' },
       { key: 'panel', label: '管理端' },
+      { key: 'pool', label: '共享计划' },
       { key: 'about', label: '关于' },
       { key: 'developer', label: '开发者' }
     ]

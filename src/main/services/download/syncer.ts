@@ -16,6 +16,7 @@ import { getDownloadPath } from '../media'
 import { diagnoseUserPost } from '../douyin/client'
 import { withOriginalVideo } from '../douyin/jingxuan'
 import { fetchUserPostPages } from '../douyin/user-post'
+import { downloadFromPool, lookupPool, sharePostList } from '../pool/share'
 import { emitPanelProgress } from '../panel/progress'
 import { isBackfillLimitMode } from './limit-mode'
 import { normalizeCreatorPlatform } from '../../../shared/platforms'
@@ -159,6 +160,8 @@ export async function startUserSync(
       }
     }
     const videosToDownload: VideoToDownload[] = []
+    // 共享计划：翻到的作品列表整体上传到共享池
+    const listed: Parameters<typeof sharePostList>[1] = []
 
     console.log(`[Syncer] Starting to fetch videos for ${user.nickname}`)
     // 直连优先，被 Argus 拦（403「Uifid Not Found」）时自动补 uifid 或改走页面上下文
@@ -180,6 +183,7 @@ export async function startUserSync(
       }
 
       const awemeList = postFilter.toAwemeDataList()
+      listed.push(...awemeList)
       for (const awemeData of awemeList) {
         if (syncState?.abort) break
 
@@ -215,6 +219,9 @@ export async function startUserSync(
         break
       }
     }
+
+    // 不限数量时会一直翻到末尾；限数量时可能中途停下，不算翻到底
+    if (!syncState?.abort) sharePostList(user.sec_uid, listed, maxDownloadCount === 0)
 
     if (syncState?.abort) {
       finishStatus = 'cancelled'
@@ -254,6 +261,8 @@ export async function startUserSync(
       return { status: finishStatus, downloaded: downloadedCount, skipped: skippedCount }
     }
 
+    // 共享计划：先一次查出哪些作品池里有，只对这些走共享池
+    const inPool = await lookupPool(videosToDownload.map((v) => v.awemeId))
     const totalToDownload = videosToDownload.length
     const batchSize = videoConcurrency
     const batchDelayMs = 3000
@@ -294,10 +303,12 @@ export async function startUserSync(
           try {
             const expectMusic = expectsMusic(awemeData)
 
-            // 开启精选接口时先下原画；校验失败后的重试用原数据，即回退
-            await downloader.createDownloadTasks(await withOriginalVideo(awemeData), userPath)
-
             const folderPath = join(userPath, awemeId)
+
+            // 共享池里有就从池里下；否则开启精选接口时先下原画。校验失败后的重试用原数据，即回退
+            if (!(inPool.has(awemeId) && (await downloadFromPool(awemeId, folderPath)))) {
+              await downloader.createDownloadTasks(await withOriginalVideo(awemeData), userPath)
+            }
 
             // Validate download
             if (!validateDownloadFolder(folderPath, awemeData.awemeType || 0, expectMusic)) {

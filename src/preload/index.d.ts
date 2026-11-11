@@ -16,6 +16,7 @@ import type {
   CreateAnalysisJobInput
 } from '../shared/ai'
 import type { PostAnalysisDetail } from '../shared/analysis'
+import type { PoolStatus } from '../shared/pool'
 import type {
   MigrationStatus,
   PrunePreview,
@@ -738,6 +739,15 @@ declare global {
     agentError: string | null
   }
 
+  interface PoolAPI {
+    status: () => Promise<PoolStatus>
+    setEnabled: (enabled: boolean) => Promise<PoolStatus>
+    sendCode: (email: string) => Promise<void>
+    register: (email: string, password: string, code: string) => Promise<PoolStatus>
+    login: (email: string, password: string) => Promise<PoolStatus>
+    logout: () => Promise<PoolStatus>
+  }
+
   interface PanelAPI {
     status: () => Promise<PanelRuntimeStatus>
     apply: () => Promise<PanelRuntimeStatus>
@@ -881,6 +891,7 @@ declare global {
     scripts: ScriptsAPI
     storage: StorageAPI
     panel: PanelAPI
+    pool: PoolAPI
   }
 
   interface Window {

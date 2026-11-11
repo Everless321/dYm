@@ -6,6 +6,7 @@ import {
   type CreateUserInput
 } from '../../database'
 import { fetchUserProfileSmart } from '../douyin/client'
+import { shareAuthor } from '../pool/share'
 import { downloadAvatar } from './avatar'
 import { normalizeCreatorPlatform } from '../../../shared/platforms'
 import { bilibiliHeaders, fetchCreatorProfile } from '../bilibili/client'
@@ -101,6 +102,8 @@ export async function refreshUserProfile(id: number): Promise<RefreshOutcome> {
     if (avatarPath) update.avatar_path = avatarPath
   }
   const user = updateUser(id, update)
+  // 共享计划：作者资料上传到共享池（只收不发）
+  if (user) shareAuthor(user)
   return { status: 'success', user }
 }
 

@@ -26,6 +26,7 @@ import type {
   CreateAnalysisJobInput
 } from '../shared/ai'
 import type { PostAnalysisDetail } from '../shared/analysis'
+import type { PoolStatus } from '../shared/pool'
 
 const dbAPI = {
   execute: (sql: string, params?: unknown[]): Promise<unknown> =>
@@ -478,6 +479,18 @@ const storageAPI = {
     ipcRenderer.invoke('storage:startPrune', fraction)
 }
 
+const poolAPI = {
+  status: (): Promise<PoolStatus> => ipcRenderer.invoke('pool:status'),
+  setEnabled: (enabled: boolean): Promise<PoolStatus> =>
+    ipcRenderer.invoke('pool:setEnabled', enabled),
+  sendCode: (email: string): Promise<void> => ipcRenderer.invoke('pool:sendCode', email),
+  register: (email: string, password: string, code: string): Promise<PoolStatus> =>
+    ipcRenderer.invoke('pool:register', email, password, code),
+  login: (email: string, password: string): Promise<PoolStatus> =>
+    ipcRenderer.invoke('pool:login', email, password),
+  logout: (): Promise<PoolStatus> => ipcRenderer.invoke('pool:logout')
+}
+
 const api = {
   db: dbAPI,
   settings: settingsAPI,
@@ -504,7 +517,8 @@ const api = {
   dashboard: dashboardAPI,
   scripts: scriptsAPI,
   storage: storageAPI,
-  panel: panelAPI
+  panel: panelAPI,
+  pool: poolAPI
 }
 
 if (process.contextIsolated) {
